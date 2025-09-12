@@ -7,6 +7,7 @@ import {
   insertProjectSchema,
   insertAssignmentSchema,
   insertPaymentSchema,
+  insertMaintenanceRecordSchema,
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -314,6 +315,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/payments/:id", async (req, res) => {
     try {
       await storage.deletePayment(req.params.id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Maintenance Record routes
+  app.get("/api/maintenance", async (req, res) => {
+    try {
+      const records = await storage.getMaintenanceRecords();
+      res.json(records);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/maintenance/vehicle/:vehicleId", async (req, res) => {
+    try {
+      const records = await storage.getMaintenanceRecordsByVehicle(req.params.vehicleId);
+      res.json(records);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/maintenance/:id", async (req, res) => {
+    try {
+      const record = await storage.getMaintenanceRecord(req.params.id);
+      if (!record) {
+        return res.status(404).json({ message: "Maintenance record not found" });
+      }
+      res.json(record);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/maintenance", async (req, res) => {
+    try {
+      const validatedData = insertMaintenanceRecordSchema.parse(req.body);
+      const record = await storage.createMaintenanceRecord(validatedData);
+      res.status(201).json(record);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/maintenance/:id", async (req, res) => {
+    try {
+      const validatedData = insertMaintenanceRecordSchema.partial().parse(req.body);
+      const record = await storage.updateMaintenanceRecord(req.params.id, validatedData);
+      res.json(record);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/maintenance/:id", async (req, res) => {
+    try {
+      await storage.deleteMaintenanceRecord(req.params.id);
       res.status(204).send();
     } catch (error: any) {
       res.status(500).json({ message: error.message });

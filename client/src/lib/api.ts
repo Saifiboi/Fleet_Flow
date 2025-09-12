@@ -8,6 +8,8 @@ import type {
   AssignmentWithDetails, 
   Payment, 
   PaymentWithDetails, 
+  MaintenanceRecord,
+  MaintenanceRecordWithVehicle,
   DashboardStats 
 } from "@shared/schema";
 
@@ -54,4 +56,12 @@ export const useAssignmentsByVehicle = (vehicleId: string) => useQuery<Assignmen
 
 export const usePaymentsByAssignment = (assignmentId: string) => useQuery<PaymentWithDetails[]>({
   queryKey: ["/api/payments/assignment", assignmentId],
+});
+
+export const useMaintenanceRecords = () => useQuery<MaintenanceRecordWithVehicle[]>({
+  queryKey: ["/api/maintenance"],
+});
+
+export const useMaintenanceRecordsByVehicle = (vehicleId: string) => useQuery<MaintenanceRecordWithVehicle[]>({
+  queryKey: ["/api/maintenance/vehicle", vehicleId],
 });

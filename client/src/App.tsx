@@ -10,6 +10,7 @@ import Owners from "@/pages/owners";
 import Projects from "@/pages/projects";
 import Assignments from "@/pages/assignments";
 import Payments from "@/pages/payments";
+import Maintenance from "@/pages/maintenance";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -22,6 +23,7 @@ function Router() {
         <Route path="/projects" component={Projects} />
         <Route path="/assignments" component={Assignments} />
         <Route path="/payments" component={Payments} />
+        <Route path="/maintenance" component={Maintenance} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

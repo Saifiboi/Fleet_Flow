@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Truck, BarChart3, Car, Users, FolderKanban, Calendar, CreditCard, FileText, ChartBar } from "lucide-react";
+import { Truck, BarChart3, Car, Users, FolderKanban, Calendar, CreditCard, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface SidebarProps {
@@ -14,6 +14,7 @@ const navigationItems = [
   { path: "/projects", label: "Projects", icon: FolderKanban },
   { path: "/assignments", label: "Assignments", icon: Calendar },
   { path: "/payments", label: "Payments", icon: CreditCard },
+  { path: "/maintenance", label: "Maintenance", icon: Wrench },
 ];
 
 export default function Sidebar({ isOpen }: SidebarProps) {

@@ -4,6 +4,7 @@ import {
   projects,
   assignments,
   payments,
+  maintenanceRecords,
   type Owner,
   type InsertOwner,
   type Vehicle,
@@ -14,9 +15,12 @@ import {
   type InsertAssignment,
   type Payment,
   type InsertPayment,
+  type MaintenanceRecord,
+  type InsertMaintenanceRecord,
   type VehicleWithOwner,
   type AssignmentWithDetails,
   type PaymentWithDetails,
+  type MaintenanceRecordWithVehicle,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql } from "drizzle-orm";
@@ -61,6 +65,14 @@ export interface IStorage {
   createPayment(payment: InsertPayment): Promise<Payment>;
   updatePayment(id: string, payment: Partial<InsertPayment>): Promise<Payment>;
   deletePayment(id: string): Promise<void>;
+
+  // Maintenance Records
+  getMaintenanceRecords(): Promise<MaintenanceRecordWithVehicle[]>;
+  getMaintenanceRecord(id: string): Promise<MaintenanceRecordWithVehicle | undefined>;
+  getMaintenanceRecordsByVehicle(vehicleId: string): Promise<MaintenanceRecordWithVehicle[]>;
+  createMaintenanceRecord(record: InsertMaintenanceRecord): Promise<MaintenanceRecord>;
+  updateMaintenanceRecord(id: string, record: Partial<InsertMaintenanceRecord>): Promise<MaintenanceRecord>;
+  deleteMaintenanceRecord(id: string): Promise<void>;
 
   // Dashboard stats
   getDashboardStats(): Promise<{
@@ -423,6 +435,80 @@ export class DatabaseStorage implements IStorage {
 
   async deletePayment(id: string): Promise<void> {
     await db.delete(payments).where(eq(payments.id, id));
+  }
+
+  async getMaintenanceRecords(): Promise<MaintenanceRecordWithVehicle[]> {
+    return await db
+      .select()
+      .from(maintenanceRecords)
+      .leftJoin(vehicles, eq(maintenanceRecords.vehicleId, vehicles.id))
+      .leftJoin(owners, eq(vehicles.ownerId, owners.id))
+      .orderBy(desc(maintenanceRecords.createdAt))
+      .then((rows) =>
+        rows.map((row) => ({
+          ...row.maintenance_records,
+          vehicle: {
+            ...row.vehicles!,
+            owner: row.owners!,
+          },
+        }))
+      );
+  }
+
+  async getMaintenanceRecord(id: string): Promise<MaintenanceRecordWithVehicle | undefined> {
+    const [result] = await db
+      .select()
+      .from(maintenanceRecords)
+      .leftJoin(vehicles, eq(maintenanceRecords.vehicleId, vehicles.id))
+      .leftJoin(owners, eq(vehicles.ownerId, owners.id))
+      .where(eq(maintenanceRecords.id, id));
+
+    if (!result) return undefined;
+
+    return {
+      ...result.maintenance_records,
+      vehicle: {
+        ...result.vehicles!,
+        owner: result.owners!,
+      },
+    };
+  }
+
+  async getMaintenanceRecordsByVehicle(vehicleId: string): Promise<MaintenanceRecordWithVehicle[]> {
+    return await db
+      .select()
+      .from(maintenanceRecords)
+      .leftJoin(vehicles, eq(maintenanceRecords.vehicleId, vehicles.id))
+      .leftJoin(owners, eq(vehicles.ownerId, owners.id))
+      .where(eq(maintenanceRecords.vehicleId, vehicleId))
+      .orderBy(desc(maintenanceRecords.createdAt))
+      .then((rows) =>
+        rows.map((row) => ({
+          ...row.maintenance_records,
+          vehicle: {
+            ...row.vehicles!,
+            owner: row.owners!,
+          },
+        }))
+      );
+  }
+
+  async createMaintenanceRecord(insertRecord: InsertMaintenanceRecord): Promise<MaintenanceRecord> {
+    const [record] = await db.insert(maintenanceRecords).values(insertRecord).returning();
+    return record;
+  }
+
+  async updateMaintenanceRecord(id: string, insertRecord: Partial<InsertMaintenanceRecord>): Promise<MaintenanceRecord> {
+    const [record] = await db
+      .update(maintenanceRecords)
+      .set(insertRecord)
+      .where(eq(maintenanceRecords.id, id))
+      .returning();
+    return record;
+  }
+
+  async deleteMaintenanceRecord(id: string): Promise<void> {
+    await db.delete(maintenanceRecords).where(eq(maintenanceRecords.id, id));
   }
 
   async getDashboardStats() {

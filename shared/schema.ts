@@ -57,6 +57,21 @@ export const payments = pgTable("payments", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const maintenanceRecords = pgTable("maintenance_records", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  vehicleId: varchar("vehicle_id").notNull().references(() => vehicles.id, { onDelete: "cascade" }),
+  type: text("type").notNull(), // scheduled, repair, inspection, service
+  description: text("description").notNull(),
+  cost: decimal("cost", { precision: 10, scale: 2 }).notNull(),
+  performedBy: text("performed_by").notNull(),
+  serviceDate: date("service_date").notNull(),
+  nextServiceDate: date("next_service_date"),
+  mileage: integer("mileage"),
+  status: text("status").notNull().default("completed"), // scheduled, in_progress, completed, cancelled
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Relations
 export const ownersRelations = relations(owners, ({ many }) => ({
   vehicles: many(vehicles),
@@ -68,6 +83,7 @@ export const vehiclesRelations = relations(vehicles, ({ one, many }) => ({
     references: [owners.id],
   }),
   assignments: many(assignments),
+  maintenanceRecords: many(maintenanceRecords),
 }));
 
 export const projectsRelations = relations(projects, ({ many }) => ({
@@ -90,6 +106,13 @@ export const paymentsRelations = relations(payments, ({ one }) => ({
   assignment: one(assignments, {
     fields: [payments.assignmentId],
     references: [assignments.id],
+  }),
+}));
+
+export const maintenanceRecordsRelations = relations(maintenanceRecords, ({ one }) => ({
+  vehicle: one(vehicles, {
+    fields: [maintenanceRecords.vehicleId],
+    references: [vehicles.id],
   }),
 }));
 
@@ -119,6 +142,11 @@ export const insertPaymentSchema = createInsertSchema(payments).omit({
   createdAt: true,
 });
 
+export const insertMaintenanceRecordSchema = createInsertSchema(maintenanceRecords).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type Owner = typeof owners.$inferSelect;
 export type InsertOwner = z.infer<typeof insertOwnerSchema>;
@@ -135,6 +163,9 @@ export type InsertAssignment = z.infer<typeof insertAssignmentSchema>;
 export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 
+export type MaintenanceRecord = typeof maintenanceRecords.$inferSelect;
+export type InsertMaintenanceRecord = z.infer<typeof insertMaintenanceRecordSchema>;
+
 // Extended types for frontend use
 export type VehicleWithOwner = Vehicle & {
   owner: Owner;
@@ -147,6 +178,10 @@ export type AssignmentWithDetails = Assignment & {
 
 export type PaymentWithDetails = Payment & {
   assignment: AssignmentWithDetails;
+};
+
+export type MaintenanceRecordWithVehicle = MaintenanceRecord & {
+  vehicle: VehicleWithOwner;
 };
 
 // Dashboard stats type
