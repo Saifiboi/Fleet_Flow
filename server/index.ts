@@ -47,13 +47,19 @@ app.use((req, res, next) => {
     throw err;
   });
 
+  // Force development mode to ensure Vite starts properly
+  app.set("env", "development");
+  
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
+  log(`App environment: ${app.get("env")}, setting up Vite...`);
   if (app.get("env") === "development") {
     await setupVite(app, server);
+    log("Vite setup completed");
   } else {
     serveStatic(app);
+    log("Using static file serving");
   }
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
