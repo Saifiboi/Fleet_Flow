@@ -25,6 +25,39 @@ import {
 import { db } from "./db";
 import { eq, desc, and, sql } from "drizzle-orm";
 
+// Helper function to retry database operations on connection failures
+async function withRetry<T>(operation: () => Promise<T>, maxRetries: number = 3): Promise<T> {
+  let lastError: Error | undefined;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error: any) {
+      lastError = error;
+      
+      // Check if it's a connection-related error that should be retried
+      const isConnectionError = error.message?.includes('connection') || 
+                               error.message?.includes('terminating') ||
+                               error.code === '57P01' || // Admin shutdown
+                               error.code === '08P01' || // Protocol violation  
+                               error.code === '08006' || // Connection failure
+                               error.code === '08003';   // Connection does not exist
+      
+      if (isConnectionError && attempt < maxRetries) {
+        console.log(`Database operation failed on attempt ${attempt}, retrying...`, error.message);
+        // Exponential backoff: wait 1s, then 2s, then 4s
+        const delayMs = Math.pow(2, attempt - 1) * 1000;
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        continue;
+      }
+      
+      throw error;
+    }
+  }
+  
+  throw lastError;
+}
+
 export interface IStorage {
   // Owners
   getOwners(): Promise<Owner[]>;
@@ -91,7 +124,7 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
   async getOwners(): Promise<Owner[]> {
-    return await db.select().from(owners).orderBy(desc(owners.createdAt));
+    return await withRetry(() => db.select().from(owners).orderBy(desc(owners.createdAt)));
   }
 
   async getOwner(id: string): Promise<Owner | undefined> {
@@ -118,17 +151,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getVehicles(): Promise<VehicleWithOwner[]> {
-    return await db
-      .select()
-      .from(vehicles)
-      .leftJoin(owners, eq(vehicles.ownerId, owners.id))
-      .orderBy(desc(vehicles.createdAt))
-      .then((rows) =>
-        rows.map((row) => ({
-          ...row.vehicles,
-          owner: row.owners!,
-        }))
-      );
+    return await withRetry(() =>
+      db
+        .select()
+        .from(vehicles)
+        .leftJoin(owners, eq(vehicles.ownerId, owners.id))
+        .orderBy(desc(vehicles.createdAt))
+        .then((rows) =>
+          rows.map((row) => ({
+            ...row.vehicles,
+            owner: row.owners!,
+          }))
+        )
+    );
   }
 
   async getVehicle(id: string): Promise<VehicleWithOwner | undefined> {
@@ -207,13 +242,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAssignments(): Promise<AssignmentWithDetails[]> {
-    const results = await db
-      .select()
-      .from(assignments)
-      .leftJoin(vehicles, eq(assignments.vehicleId, vehicles.id))
-      .leftJoin(owners, eq(vehicles.ownerId, owners.id))
-      .leftJoin(projects, eq(assignments.projectId, projects.id))
-      .orderBy(desc(assignments.createdAt));
+    const results = await withRetry(() =>
+      db
+        .select()
+        .from(assignments)
+        .leftJoin(vehicles, eq(assignments.vehicleId, vehicles.id))
+        .leftJoin(owners, eq(vehicles.ownerId, owners.id))
+        .leftJoin(projects, eq(assignments.projectId, projects.id))
+        .orderBy(desc(assignments.createdAt))
+    );
 
     return results.map((row) => ({
       ...row.assignments,
@@ -396,15 +433,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getOutstandingPayments(): Promise<PaymentWithDetails[]> {
-    const results = await db
-      .select()
-      .from(payments)
-      .leftJoin(assignments, eq(payments.assignmentId, assignments.id))
-      .leftJoin(vehicles, eq(assignments.vehicleId, vehicles.id))
-      .leftJoin(owners, eq(vehicles.ownerId, owners.id))
-      .leftJoin(projects, eq(assignments.projectId, projects.id))
-      .where(and(eq(payments.status, "pending"), sql`${payments.dueDate} <= CURRENT_DATE`))
-      .orderBy(payments.dueDate);
+    const results = await withRetry(() =>
+      db
+        .select()
+        .from(payments)
+        .leftJoin(assignments, eq(payments.assignmentId, assignments.id))
+        .leftJoin(vehicles, eq(assignments.vehicleId, vehicles.id))
+        .leftJoin(owners, eq(vehicles.ownerId, owners.id))
+        .leftJoin(projects, eq(assignments.projectId, projects.id))
+        .where(and(eq(payments.status, "pending"), sql`${payments.dueDate} <= CURRENT_DATE`))
+        .orderBy(payments.dueDate)
+    );
 
     return results.map((row) => ({
       ...row.payments,
@@ -518,7 +557,7 @@ export class DatabaseStorage implements IStorage {
       outstandingAmountResult,
       monthlyRevenueResult,
       vehicleStatusResult,
-    ] = await Promise.all([
+    ] = await withRetry(() => Promise.all([
       db.select({ count: sql<number>`count(*)` }).from(vehicles),
       db
         .select({ count: sql<number>`count(*)` })
@@ -539,7 +578,7 @@ export class DatabaseStorage implements IStorage {
         })
         .from(vehicles)
         .groupBy(vehicles.status),
-    ]);
+    ]));
 
     const vehicleStatusCounts = {
       available: 0,
