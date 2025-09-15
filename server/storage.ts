@@ -336,11 +336,24 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateAssignment(id: string, insertAssignment: Partial<InsertAssignment>): Promise<Assignment> {
+    // Get the existing assignment to capture original vehicleId before update
+    const [existingAssignment] = await db.select().from(assignments).where(eq(assignments.id, id));
+    
     const [assignment] = await db
       .update(assignments)
       .set(insertAssignment)
       .where(eq(assignments.id, id))
       .returning();
+    
+    // If assignment status is changed to completed, update the ORIGINAL vehicle status to available
+    // This handles the edge case where vehicleId might be changed in the same update
+    if (insertAssignment.status === "completed" && existingAssignment) {
+      await db
+        .update(vehicles)
+        .set({ status: "available" })
+        .where(eq(vehicles.id, existingAssignment.vehicleId));
+    }
+    
     return assignment;
   }
 
