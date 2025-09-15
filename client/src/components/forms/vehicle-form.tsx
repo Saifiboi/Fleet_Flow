@@ -29,6 +29,12 @@ export default function VehicleForm({ vehicle, onSuccess }: VehicleFormProps) {
       model: vehicle?.model || "",
       year: vehicle?.year || new Date().getFullYear(),
       licensePlate: vehicle?.licensePlate || "",
+      vin: vehicle?.vin || "",
+      currentOdometer: vehicle?.currentOdometer || undefined,
+      fuelType: vehicle?.fuelType as any || undefined,
+      transmissionType: vehicle?.transmissionType as any || undefined,
+      category: vehicle?.category as any || undefined,
+      passengerCapacity: vehicle?.passengerCapacity || undefined,
       ownerId: vehicle?.ownerId || "",
       status: vehicle?.status || "available",
     },
@@ -60,8 +66,8 @@ export default function VehicleForm({ vehicle, onSuccess }: VehicleFormProps) {
     },
   });
 
-  const onSubmit = (data: InsertVehicle) => {
-    createVehicleMutation.mutate(data);
+  const onSubmit = (data: any) => {
+    createVehicleMutation.mutate(data as InsertVehicle);
   };
 
   return (
@@ -110,7 +116,7 @@ export default function VehicleForm({ vehicle, onSuccess }: VehicleFormProps) {
                     min="1900" 
                     max={new Date().getFullYear() + 1}
                     {...field}
-                    onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                    onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
                     data-testid="input-year" 
                   />
                 </FormControl>
@@ -127,6 +133,153 @@ export default function VehicleForm({ vehicle, onSuccess }: VehicleFormProps) {
                 <FormLabel>License Plate</FormLabel>
                 <FormControl>
                   <Input placeholder="ABC-123" {...field} data-testid="input-license-plate" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="vin"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>VIN (Vehicle Identification Number)</FormLabel>
+                <FormControl>
+                  <Input 
+                    placeholder="17-character VIN" 
+                    maxLength={17}
+                    {...field} 
+                    data-testid="input-vin" 
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="currentOdometer"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Current Odometer Reading</FormLabel>
+                <FormControl>
+                  <Input 
+                    type="number" 
+                    placeholder="Miles or Kilometers"
+                    min="0"
+                    {...field}
+                    onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
+                    data-testid="input-odometer" 
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="fuelType"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Fuel Type</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value || ""}>
+                  <FormControl>
+                    <SelectTrigger data-testid="select-fuel-type">
+                      <SelectValue placeholder="Select fuel type" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="gasoline">Gasoline</SelectItem>
+                    <SelectItem value="diesel">Diesel</SelectItem>
+                    <SelectItem value="electric">Electric</SelectItem>
+                    <SelectItem value="hybrid">Hybrid</SelectItem>
+                    <SelectItem value="plug_in_hybrid">Plug-in Hybrid</SelectItem>
+                    <SelectItem value="natural_gas">Natural Gas</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="transmissionType"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Transmission Type</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value || ""}>
+                  <FormControl>
+                    <SelectTrigger data-testid="select-transmission-type">
+                      <SelectValue placeholder="Select transmission type" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="automatic">Automatic</SelectItem>
+                    <SelectItem value="manual">Manual</SelectItem>
+                    <SelectItem value="cvt">CVT</SelectItem>
+                    <SelectItem value="dual_clutch">Dual Clutch</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="category"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Vehicle Category</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value || ""}>
+                  <FormControl>
+                    <SelectTrigger data-testid="select-category">
+                      <SelectValue placeholder="Select vehicle category" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="sedan">Sedan</SelectItem>
+                    <SelectItem value="suv">SUV</SelectItem>
+                    <SelectItem value="truck">Truck</SelectItem>
+                    <SelectItem value="van">Van</SelectItem>
+                    <SelectItem value="pickup">Pickup</SelectItem>
+                    <SelectItem value="coupe">Coupe</SelectItem>
+                    <SelectItem value="convertible">Convertible</SelectItem>
+                    <SelectItem value="wagon">Wagon</SelectItem>
+                    <SelectItem value="hatchback">Hatchback</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="passengerCapacity"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Passenger Capacity</FormLabel>
+                <FormControl>
+                  <Input 
+                    type="number" 
+                    placeholder="Number of passengers"
+                    min="1"
+                    max="50"
+                    {...field}
+                    onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
+                    data-testid="input-passenger-capacity" 
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>

@@ -6,10 +6,16 @@ import { z } from "zod";
 
 export const owners = pgTable("owners", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(),
+  ownerType: text("owner_type").notNull().default("individual"), // individual, corporate
+  // Individual fields
+  name: text("name").notNull(), // Individual name or fallback name
   phone: text("phone").notNull(),
   email: text("email").notNull(),
   address: text("address").notNull(),
+  // Corporate-specific fields
+  companyName: text("company_name"), // Required for corporate
+  contactPerson: text("contact_person"), // Required for corporate
+  companyRegistrationNumber: text("company_registration_number"), // Required for corporate
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -20,6 +26,12 @@ export const vehicles = pgTable("vehicles", {
   model: text("model").notNull(),
   year: integer("year").notNull(),
   licensePlate: text("license_plate").notNull().unique(),
+  vin: varchar("vin", { length: 17 }), // Vehicle Identification Number (unique constraint can be added later)
+  currentOdometer: integer("current_odometer"), // Current odometer reading in miles/km
+  fuelType: text("fuel_type"), // gasoline, diesel, electric, hybrid, etc.
+  transmissionType: text("transmission_type"), // automatic, manual, cvt
+  category: text("category"), // sedan, suv, truck, van, etc.
+  passengerCapacity: integer("passenger_capacity"), // Number of passengers
   status: text("status").notNull().default("available"), // available, assigned, maintenance, out_of_service
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -72,9 +84,22 @@ export const maintenanceRecords = pgTable("maintenance_records", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const ownershipHistory = pgTable("ownership_history", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  vehicleId: varchar("vehicle_id").notNull().references(() => vehicles.id, { onDelete: "cascade" }),
+  ownerId: varchar("owner_id").notNull().references(() => owners.id, { onDelete: "cascade" }),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date"), // null means current owner
+  transferReason: text("transfer_reason"), // sale, lease_transfer, internal_transfer, etc.
+  transferPrice: decimal("transfer_price", { precision: 10, scale: 2 }), // optional purchase/sale price
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Relations
 export const ownersRelations = relations(owners, ({ many }) => ({
   vehicles: many(vehicles),
+  ownershipHistory: many(ownershipHistory),
 }));
 
 export const vehiclesRelations = relations(vehicles, ({ one, many }) => ({
@@ -84,6 +109,7 @@ export const vehiclesRelations = relations(vehicles, ({ one, many }) => ({
   }),
   assignments: many(assignments),
   maintenanceRecords: many(maintenanceRecords),
+  ownershipHistory: many(ownershipHistory),
 }));
 
 export const projectsRelations = relations(projects, ({ many }) => ({
@@ -116,15 +142,52 @@ export const maintenanceRecordsRelations = relations(maintenanceRecords, ({ one 
   }),
 }));
 
+export const ownershipHistoryRelations = relations(ownershipHistory, ({ one }) => ({
+  vehicle: one(vehicles, {
+    fields: [ownershipHistory.vehicleId],
+    references: [vehicles.id],
+  }),
+  owner: one(owners, {
+    fields: [ownershipHistory.ownerId],
+    references: [owners.id],
+  }),
+}));
+
 // Insert schemas
 export const insertOwnerSchema = createInsertSchema(owners).omit({
   id: true,
   createdAt: true,
-});
+}).extend({
+  ownerType: z.enum(["individual", "corporate"]).default("individual"),
+  // Corporate fields are optional for individual owners
+  companyName: z.string().optional(),
+  contactPerson: z.string().optional(),
+  companyRegistrationNumber: z.string().optional(),
+}).refine(
+  (data) => {
+    // If owner type is corporate, require corporate fields
+    if (data.ownerType === "corporate") {
+      return data.companyName && data.contactPerson && data.companyRegistrationNumber;
+    }
+    return true;
+  },
+  {
+    message: "Company name, contact person, and registration number are required for corporate owners",
+    path: ["companyName"],
+  }
+);
 
 export const insertVehicleSchema = createInsertSchema(vehicles).omit({
   id: true,
   createdAt: true,
+}).extend({
+  vin: z.preprocess(val => val === "" ? undefined : val, z.string().length(17, "VIN must be exactly 17 characters").optional()),
+  currentOdometer: z.number().min(0, "Odometer reading must be positive").optional(),
+  fuelType: z.enum(["gasoline", "diesel", "electric", "hybrid", "plug_in_hybrid", "natural_gas"]).optional(),
+  transmissionType: z.enum(["automatic", "manual", "cvt", "dual_clutch"]).optional(),
+  category: z.enum(["sedan", "suv", "truck", "van", "pickup", "coupe", "convertible", "wagon", "hatchback"]).optional(),
+  passengerCapacity: z.number().min(1).max(50, "Passenger capacity must be between 1 and 50").optional(),
+  year: z.number().min(1900, "Year must be 1900 or later").max(new Date().getFullYear() + 1, "Year cannot be in the future"),
 });
 
 // Schema specifically for creating new vehicles - defaults to available
@@ -162,6 +225,14 @@ export const insertMaintenanceRecordSchema = createInsertSchema(maintenanceRecor
 }).extend({
   nextServiceDate: z.string().optional().transform(val => val === "" ? null : val), // Make nextServiceDate truly optional
   mileage: z.number().optional(), // Make mileage truly optional
+});
+
+export const insertOwnershipHistorySchema = createInsertSchema(ownershipHistory).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  endDate: z.string().optional().transform(val => val === "" ? null : val), // Make endDate truly optional
+  transferPrice: z.number().min(0, "Transfer price must be positive").optional(),
 });
 
 // Types

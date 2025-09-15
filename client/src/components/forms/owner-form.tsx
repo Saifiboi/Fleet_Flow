@@ -5,6 +5,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -22,10 +23,14 @@ export default function OwnerForm({ owner, onSuccess }: OwnerFormProps) {
   const form = useForm<InsertOwner>({
     resolver: zodResolver(insertOwnerSchema),
     defaultValues: {
+      ownerType: (owner?.ownerType as any) || "individual",
       name: owner?.name || "",
       email: owner?.email || "",
       phone: owner?.phone || "",
       address: owner?.address || "",
+      companyName: owner?.companyName || "",
+      contactPerson: owner?.contactPerson || "",
+      companyRegistrationNumber: owner?.companyRegistrationNumber || "",
     },
   });
 
@@ -54,22 +59,94 @@ export default function OwnerForm({ owner, onSuccess }: OwnerFormProps) {
     },
   });
 
-  const onSubmit = (data: InsertOwner) => {
-    createOwnerMutation.mutate(data);
+  const onSubmit = (data: any) => {
+    createOwnerMutation.mutate(data as InsertOwner);
   };
+
+  const ownerType = form.watch("ownerType");
 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" data-testid="owner-form">
+        <FormField
+          control={form.control}
+          name="ownerType"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Owner Type</FormLabel>
+              <Select onValueChange={field.onChange} value={field.value}>
+                <FormControl>
+                  <SelectTrigger data-testid="select-owner-type">
+                    <SelectValue placeholder="Select owner type" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="individual">Individual</SelectItem>
+                  <SelectItem value="corporate">Corporate</SelectItem>
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {ownerType === "corporate" && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="companyName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Company Name *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter company name" {...field} data-testid="input-company-name" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="contactPerson"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Contact Person *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter contact person name" {...field} data-testid="input-contact-person" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <FormField
+              control={form.control}
+              name="companyRegistrationNumber"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Company Registration Number *</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Enter registration number" {...field} data-testid="input-registration-number" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormField
             control={form.control}
             name="name"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Full Name</FormLabel>
+                <FormLabel>{ownerType === "corporate" ? "Display Name" : "Full Name"}</FormLabel>
                 <FormControl>
-                  <Input placeholder="Enter owner's full name" {...field} data-testid="input-name" />
+                  <Input placeholder={ownerType === "corporate" ? "Company display name" : "Enter owner's full name"} {...field} data-testid="input-name" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
