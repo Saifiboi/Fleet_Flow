@@ -127,24 +127,41 @@ export const insertVehicleSchema = createInsertSchema(vehicles).omit({
   createdAt: true,
 });
 
+// Schema specifically for creating new vehicles - defaults to available
+export const createVehicleSchema = insertVehicleSchema.extend({
+  status: z.enum(["available"]).default("available").optional(),
+});
+
+// Schema for updating vehicles - allows all statuses
+export const updateVehicleSchema = insertVehicleSchema.partial();
+
 export const insertProjectSchema = createInsertSchema(projects).omit({
   id: true,
   createdAt: true,
+}).extend({
+  endDate: z.string().optional().transform(val => val === "" ? null : val), // Make endDate truly optional
 });
 
 export const insertAssignmentSchema = createInsertSchema(assignments).omit({
   id: true,
   createdAt: true,
+}).extend({
+  endDate: z.string().optional().transform(val => val === "" ? null : val), // Make endDate truly optional
 });
 
 export const insertPaymentSchema = createInsertSchema(payments).omit({
   id: true,
   createdAt: true,
+}).extend({
+  paidDate: z.string().optional().transform(val => val === "" ? null : val), // Make paidDate truly optional
 });
 
 export const insertMaintenanceRecordSchema = createInsertSchema(maintenanceRecords).omit({
   id: true,
   createdAt: true,
+}).extend({
+  nextServiceDate: z.string().optional().transform(val => val === "" ? null : val), // Make nextServiceDate truly optional
+  mileage: z.number().optional(), // Make mileage truly optional
 });
 
 // Types

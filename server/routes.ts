@@ -4,6 +4,8 @@ import { storage } from "./storage";
 import {
   insertOwnerSchema,
   insertVehicleSchema,
+  createVehicleSchema,
+  updateVehicleSchema,
   insertProjectSchema,
   insertAssignmentSchema,
   insertPaymentSchema,
@@ -105,7 +107,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/vehicles", async (req, res) => {
     try {
-      const validatedData = insertVehicleSchema.parse(req.body);
+      const validatedData = createVehicleSchema.parse(req.body);
       const vehicle = await storage.createVehicle(validatedData);
       res.status(201).json(vehicle);
     } catch (error: any) {
@@ -115,7 +117,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/vehicles/:id", async (req, res) => {
     try {
-      const validatedData = insertVehicleSchema.partial().parse(req.body);
+      const validatedData = updateVehicleSchema.parse(req.body);
       const vehicle = await storage.updateVehicle(req.params.id, validatedData);
       res.json(vehicle);
     } catch (error: any) {

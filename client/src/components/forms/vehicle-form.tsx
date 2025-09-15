@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { insertVehicleSchema, type VehicleWithOwner, type InsertVehicle, type Owner } from "@shared/schema";
+import { insertVehicleSchema, createVehicleSchema, updateVehicleSchema, type VehicleWithOwner, type InsertVehicle, type Owner } from "@shared/schema";
 
 interface VehicleFormProps {
   vehicle?: VehicleWithOwner | null;
@@ -23,7 +23,7 @@ export default function VehicleForm({ vehicle, onSuccess }: VehicleFormProps) {
   const { data: owners = [] } = useOwners();
 
   const form = useForm<InsertVehicle>({
-    resolver: zodResolver(insertVehicleSchema),
+    resolver: zodResolver(isEditing ? updateVehicleSchema : createVehicleSchema),
     defaultValues: {
       make: vehicle?.make || "",
       model: vehicle?.model || "",
@@ -174,9 +174,13 @@ export default function VehicleForm({ vehicle, onSuccess }: VehicleFormProps) {
                   </FormControl>
                   <SelectContent>
                     <SelectItem value="available">Available</SelectItem>
-                    <SelectItem value="assigned">Assigned</SelectItem>
-                    <SelectItem value="maintenance">Maintenance</SelectItem>
-                    <SelectItem value="out_of_service">Out of Service</SelectItem>
+                    {isEditing && (
+                      <>
+                        <SelectItem value="assigned">Assigned</SelectItem>
+                        <SelectItem value="maintenance">Maintenance</SelectItem>
+                        <SelectItem value="out_of_service">Out of Service</SelectItem>
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
                 <FormMessage />
