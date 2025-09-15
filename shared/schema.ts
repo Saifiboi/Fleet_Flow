@@ -195,8 +195,34 @@ export const createVehicleSchema = insertVehicleSchema.extend({
   status: z.enum(["available"]).default("available").optional(),
 });
 
-// Schema for updating vehicles - allows all statuses
-export const updateVehicleSchema = insertVehicleSchema.partial();
+// Schema for updating vehicles - explicitly excludes ownerId to prevent bypassing transfer system
+export const updateVehicleSchema = z.object({
+  make: z.string().optional(),
+  model: z.string().optional(),
+  year: z.number().min(1900, "Year must be 1900 or later").max(new Date().getFullYear() + 1, "Year cannot be in the future").optional(),
+  licensePlate: z.string().optional(),
+  vin: z.preprocess(val => val === "" ? undefined : val, z.string().length(17, "VIN must be exactly 17 characters").optional()).optional(),
+  currentOdometer: z.number().min(0, "Odometer reading must be positive").optional(),
+  fuelType: z.enum(["gasoline", "diesel", "electric", "hybrid", "plug_in_hybrid", "natural_gas"]).optional(),
+  transmissionType: z.enum(["automatic", "manual", "cvt", "dual_clutch"]).optional(),
+  category: z.enum(["sedan", "suv", "truck", "van", "pickup", "coupe", "convertible", "wagon", "hatchback"]).optional(),
+  passengerCapacity: z.number().min(1).max(50, "Passenger capacity must be between 1 and 50").optional(),
+  status: z.enum(["available", "assigned", "maintenance", "out_of_service"]).optional(),
+}).strict(); // strict() prevents unknown fields including ownerId
+
+// Schema for vehicle ownership transfer validation
+export const transferVehicleOwnershipSchema = z.object({
+  newOwnerId: z.string().min(1, "New owner ID is required"),
+  transferReason: z.string().optional(),
+  transferPrice: z.preprocess(
+    (val) => val === "" ? undefined : val,
+    z.string().optional().refine(
+      (val) => !val || (!isNaN(parseFloat(val)) && parseFloat(val) >= 0),
+      "Transfer price must be a valid positive number"
+    )
+  ),
+  notes: z.string().optional(),
+});
 
 export const insertProjectSchema = createInsertSchema(projects).omit({
   id: true,
@@ -232,15 +258,50 @@ export const insertOwnershipHistorySchema = createInsertSchema(ownershipHistory)
   createdAt: true,
 }).extend({
   endDate: z.string().optional().transform(val => val === "" ? null : val), // Make endDate truly optional
-  transferPrice: z.number().min(0, "Transfer price must be positive").optional(),
+  transferPrice: z.string().optional().refine(
+    (val) => !val || parseFloat(val) >= 0,
+    "Transfer price must be positive"
+  ),
 });
+
+// Update schemas
+export const updateOwnerSchema = z.object({
+  ownerType: z.enum(["individual", "corporate"]).optional(),
+  name: z.string().optional(),
+  phone: z.string().optional(),
+  email: z.string().optional(),
+  address: z.string().optional(),
+  companyName: z.string().optional(),
+  contactPerson: z.string().optional(),
+  companyRegistrationNumber: z.string().optional(),
+}).refine(
+  (data) => {
+    // If owner type is corporate, require corporate fields
+    if (data.ownerType === "corporate") {
+      return data.companyName && data.contactPerson && data.companyRegistrationNumber;
+    }
+    return true;
+  },
+  {
+    message: "Company name, contact person, and registration number are required for corporate owners",
+    path: ["companyName"],
+  }
+);
+
+export const updateOwnershipHistorySchema = insertOwnershipHistorySchema.partial();
 
 // Types
 export type Owner = typeof owners.$inferSelect;
 export type InsertOwner = z.infer<typeof insertOwnerSchema>;
+export type UpdateOwner = z.infer<typeof updateOwnerSchema>;
+
+export type OwnershipHistory = typeof ownershipHistory.$inferSelect;
+export type InsertOwnershipHistory = z.infer<typeof insertOwnershipHistorySchema>;
+export type UpdateOwnershipHistory = z.infer<typeof updateOwnershipHistorySchema>;
 
 export type Vehicle = typeof vehicles.$inferSelect;
 export type InsertVehicle = z.infer<typeof insertVehicleSchema>;
+export type TransferVehicleOwnership = z.infer<typeof transferVehicleOwnershipSchema>;
 
 export type Project = typeof projects.$inferSelect;
 export type InsertProject = z.infer<typeof insertProjectSchema>;

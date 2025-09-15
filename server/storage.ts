@@ -5,8 +5,10 @@ import {
   assignments,
   payments,
   maintenanceRecords,
+  ownershipHistory,
   type Owner,
   type InsertOwner,
+  type UpdateOwner,
   type Vehicle,
   type InsertVehicle,
   type Project,
@@ -17,6 +19,9 @@ import {
   type InsertPayment,
   type MaintenanceRecord,
   type InsertMaintenanceRecord,
+  type OwnershipHistory,
+  type InsertOwnershipHistory,
+  type UpdateOwnershipHistory,
   type VehicleWithOwner,
   type AssignmentWithDetails,
   type PaymentWithDetails,
@@ -63,7 +68,7 @@ export interface IStorage {
   getOwners(): Promise<Owner[]>;
   getOwner(id: string): Promise<Owner | undefined>;
   createOwner(owner: InsertOwner): Promise<Owner>;
-  updateOwner(id: string, owner: Partial<InsertOwner>): Promise<Owner>;
+  updateOwner(id: string, owner: Partial<UpdateOwner>): Promise<Owner>;
   deleteOwner(id: string): Promise<void>;
 
   // Vehicles
@@ -107,6 +112,16 @@ export interface IStorage {
   updateMaintenanceRecord(id: string, record: Partial<InsertMaintenanceRecord>): Promise<MaintenanceRecord>;
   deleteMaintenanceRecord(id: string): Promise<void>;
 
+  // Ownership History
+  getOwnershipHistory(): Promise<OwnershipHistory[]>;
+  getOwnershipHistoryByVehicle(vehicleId: string): Promise<OwnershipHistory[]>;
+  createOwnershipHistoryRecord(record: InsertOwnershipHistory): Promise<OwnershipHistory>;
+  updateOwnershipHistoryRecord(id: string, record: Partial<UpdateOwnershipHistory>): Promise<OwnershipHistory>;
+  deleteOwnershipHistoryRecord(id: string): Promise<void>;
+  
+  // New method for transferring vehicle ownership with proper tracking
+  transferVehicleOwnership(vehicleId: string, newOwnerId: string, transferReason?: string, transferPrice?: string, notes?: string): Promise<void>;
+
   // Dashboard stats
   getDashboardStats(): Promise<{
     totalVehicles: number;
@@ -137,10 +152,10 @@ export class DatabaseStorage implements IStorage {
     return owner;
   }
 
-  async updateOwner(id: string, insertOwner: Partial<InsertOwner>): Promise<Owner> {
+  async updateOwner(id: string, updateOwner: Partial<UpdateOwner>): Promise<Owner> {
     const [owner] = await db
       .update(owners)
-      .set(insertOwner)
+      .set(updateOwner)
       .where(eq(owners.id, id))
       .returning();
     return owner;
@@ -197,8 +212,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createVehicle(insertVehicle: InsertVehicle): Promise<Vehicle> {
-    const [vehicle] = await db.insert(vehicles).values(insertVehicle).returning();
-    return vehicle;
+    // Use a transaction to ensure both vehicle and ownership record are created
+    return await db.transaction(async (tx) => {
+      // 1. Create the vehicle
+      const [vehicle] = await tx.insert(vehicles).values(insertVehicle).returning();
+      
+      // 2. Create initial ownership record
+      const today = new Date().toISOString().split('T')[0];
+      await tx.insert(ownershipHistory).values({
+        vehicleId: vehicle.id,
+        ownerId: vehicle.ownerId,
+        startDate: today,
+        transferReason: 'initial_registration',
+        notes: 'Initial vehicle registration',
+      });
+      
+      return vehicle;
+    });
   }
 
   async updateVehicle(id: string, insertVehicle: Partial<InsertVehicle>): Promise<Vehicle> {
@@ -614,6 +644,79 @@ export class DatabaseStorage implements IStorage {
       monthlyRevenue: Number(monthlyRevenueResult[0]?.total || 0),
       vehicleStatusCounts,
     };
+  }
+
+  async getOwnershipHistory(): Promise<OwnershipHistory[]> {
+    return await db.select().from(ownershipHistory).orderBy(desc(ownershipHistory.createdAt));
+  }
+
+  async getOwnershipHistoryByVehicle(vehicleId: string): Promise<OwnershipHistory[]> {
+    return await db.select().from(ownershipHistory)
+      .where(eq(ownershipHistory.vehicleId, vehicleId))
+      .orderBy(desc(ownershipHistory.startDate));
+  }
+
+  async createOwnershipHistoryRecord(record: InsertOwnershipHistory): Promise<OwnershipHistory> {
+    const [ownershipRecord] = await db.insert(ownershipHistory).values(record).returning();
+    return ownershipRecord;
+  }
+
+  async updateOwnershipHistoryRecord(id: string, record: Partial<UpdateOwnershipHistory>): Promise<OwnershipHistory> {
+    const [ownershipRecord] = await db
+      .update(ownershipHistory)
+      .set(record)
+      .where(eq(ownershipHistory.id, id))
+      .returning();
+    return ownershipRecord;
+  }
+
+  async deleteOwnershipHistoryRecord(id: string): Promise<void> {
+    await db.delete(ownershipHistory).where(eq(ownershipHistory.id, id));
+  }
+
+  async transferVehicleOwnership(
+    vehicleId: string, 
+    newOwnerId: string, 
+    transferReason?: string, 
+    transferPrice?: string, 
+    notes?: string
+  ): Promise<void> {
+    // Start a transaction to ensure data consistency
+    await db.transaction(async (tx) => {
+      // 1. Get the current vehicle to find current owner
+      const [vehicle] = await tx.select().from(vehicles).where(eq(vehicles.id, vehicleId));
+      if (!vehicle) {
+        throw new Error('Vehicle not found');
+      }
+      
+      // 2. Close the current ownership record (set endDate)
+      const today = new Date().toISOString().split('T')[0];
+      await tx
+        .update(ownershipHistory)
+        .set({ endDate: today })
+        .where(
+          and(
+            eq(ownershipHistory.vehicleId, vehicleId),
+            sql`${ownershipHistory.endDate} IS NULL`
+          )
+        );
+      
+      // 3. Create new ownership history record
+      await tx.insert(ownershipHistory).values({
+        vehicleId,
+        ownerId: newOwnerId,
+        startDate: today,
+        transferReason: transferReason || 'transfer',
+        transferPrice: transferPrice || null,
+        notes,
+      });
+      
+      // 4. Update the vehicle's current owner
+      await tx
+        .update(vehicles)
+        .set({ ownerId: newOwnerId })
+        .where(eq(vehicles.id, vehicleId));
+    });
   }
 }
 

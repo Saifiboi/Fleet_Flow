@@ -10,6 +10,10 @@ import {
   insertAssignmentSchema,
   insertPaymentSchema,
   insertMaintenanceRecordSchema,
+  insertOwnershipHistorySchema,
+  updateOwnerSchema,
+  updateOwnershipHistorySchema,
+  transferVehicleOwnershipSchema,
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -57,7 +61,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/owners/:id", async (req, res) => {
     try {
-      const validatedData = insertOwnerSchema.partial().parse(req.body);
+      const validatedData = updateOwnerSchema.parse(req.body);
       const owner = await storage.updateOwner(req.params.id, validatedData);
       res.json(owner);
     } catch (error: any) {
@@ -380,6 +384,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(204).send();
     } catch (error: any) {
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Ownership History routes
+  app.get("/api/ownership-history", async (req, res) => {
+    try {
+      const history = await storage.getOwnershipHistory();
+      res.json(history);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/ownership-history/vehicle/:vehicleId", async (req, res) => {
+    try {
+      const history = await storage.getOwnershipHistoryByVehicle(req.params.vehicleId);
+      res.json(history);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/ownership-history", async (req, res) => {
+    try {
+      const validatedData = insertOwnershipHistorySchema.parse(req.body);
+      const record = await storage.createOwnershipHistoryRecord(validatedData);
+      res.status(201).json(record);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/ownership-history/:id", async (req, res) => {
+    try {
+      const validatedData = updateOwnershipHistorySchema.parse(req.body);
+      const record = await storage.updateOwnershipHistoryRecord(req.params.id, validatedData);
+      res.json(record);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/ownership-history/:id", async (req, res) => {
+    try {
+      await storage.deleteOwnershipHistoryRecord(req.params.id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Vehicle ownership transfer route
+  app.post("/api/vehicles/:vehicleId/transfer-ownership", async (req, res) => {
+    try {
+      const validatedData = transferVehicleOwnershipSchema.parse(req.body);
+      
+      await storage.transferVehicleOwnership(
+        req.params.vehicleId,
+        validatedData.newOwnerId,
+        validatedData.transferReason,
+        validatedData.transferPrice,
+        validatedData.notes
+      );
+      
+      res.status(200).json({ message: "Vehicle ownership transferred successfully" });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
     }
   });
 
