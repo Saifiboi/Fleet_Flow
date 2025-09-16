@@ -18,12 +18,12 @@ function Router() {
     <Layout>
       <Switch>
         <Route path="/" component={Dashboard} />
-        <Route path="/vehicles" component={Vehicles} />
         <Route path="/owners" component={Owners} />
+        <Route path="/vehicles" component={Vehicles} />
         <Route path="/projects" component={Projects} />
         <Route path="/assignments" component={Assignments} />
-        <Route path="/payments" component={Payments} />
         <Route path="/maintenance" component={Maintenance} />
+        <Route path="/payments" component={Payments} />
         <Route component={NotFound} />
       </Switch>
     </Layout>
