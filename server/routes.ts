@@ -480,7 +480,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/vehicle-attendance/batch", async (req, res) => {
     try {
       const body = req.body;
-      console.log(req.body);
       if (!Array.isArray(body)) {
         return res.status(400).json({ message: "Expected an array of attendance records" });
       }
