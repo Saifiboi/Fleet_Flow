@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { useAssignments } from "@/lib/api";
+import { useAssignments, useVehicleAttendance } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -10,8 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Select as UiSelect, SelectTrigger as UiSelectTrigger, SelectContent as UiSelectContent, SelectItem as UiSelectItem, SelectValue as UiSelectValue } from "@/components/ui/select";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval } from "date-fns";
-import type { AssignmentWithDetails } from "@shared/schema";
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, parseISO, startOfToday, isBefore } from "date-fns";
+import type { AssignmentWithDetails, VehicleAttendanceWithVehicle } from "@shared/schema";
 
 function getDaysForMonth(date = new Date()) {
   const start = startOfMonth(date);
@@ -26,6 +26,27 @@ export default function Attendance() {
   const days = useMemo(() => getDaysForMonth(selectedMonth), [selectedMonth]);
   const [selectedDays, setSelectedDays] = useState<Record<string, { selected: boolean; status: string; note?: string }>>({});
   const { toast } = useToast();
+  const today = useMemo(() => startOfToday(), []);
+
+  const selectedAssignment = useMemo(
+    () => assignments.find((a: AssignmentWithDetails) => a.id === selectedAssignmentId) || null,
+    [assignments, selectedAssignmentId]
+  );
+
+  const { data: attendanceRecords = [], isLoading: attendanceLoading } = useVehicleAttendance({
+    vehicleId: selectedAssignment?.vehicle.id,
+  });
+
+  const attendanceByDate = useMemo(() => {
+    const map: Record<string, VehicleAttendanceWithVehicle> = {};
+    attendanceRecords.forEach((record) => {
+      const recordDate = parseISO(record.attendanceDate);
+      if (isSameMonth(recordDate, selectedMonth)) {
+        map[record.attendanceDate] = record;
+      }
+    });
+    return map;
+  }, [attendanceRecords, selectedMonth]);
 
   useEffect(() => {
     // reset selected days when month or assignment changes
@@ -57,8 +78,15 @@ export default function Attendance() {
     },
   });
 
-  const handleToggleDay = (dateStr: string) => {
-    setSelectedDays((s) => ({ ...s, [dateStr]: { selected: !s[dateStr]?.selected, status: s[dateStr]?.status || 'present', note: s[dateStr]?.note } }));
+  const handleToggleDay = (dateStr: string, defaultStatus: string, defaultNote?: string) => {
+    setSelectedDays((s) => ({
+      ...s,
+      [dateStr]: {
+        selected: !s[dateStr]?.selected,
+        status: s[dateStr]?.status || defaultStatus,
+        note: s[dateStr]?.note ?? defaultNote,
+      },
+    }));
   };
 
   const handleStatusChange = (dateStr: string, status: string) => {
@@ -71,12 +99,13 @@ export default function Attendance() {
 
   const handleSubmit = () => {
     if (!selectedAssignmentId) return toast({ title: "Select vehicle", description: "Please select an assigned vehicle first.", variant: "destructive" });
-    const assignment = assignments.find((a: AssignmentWithDetails) => a.id === selectedAssignmentId);
-    if (!assignment) return toast({ title: "Invalid assignment", description: "Selected assignment not found.", variant: "destructive" });
+    if (!selectedAssignment) {
+      return toast({ title: "Invalid assignment", description: "Selected assignment not found.", variant: "destructive" });
+    }
 
     const payloads = Object.entries(selectedDays)
       .filter(([, v]) => v.selected)
-      .map(([date, v]) => ({ vehicleId: assignment.vehicle.id, projectId: assignment.projectId || null, attendanceDate: date, status: v.status || 'present', notes: v.note ? v.note : undefined }));
+      .map(([date, v]) => ({ vehicleId: selectedAssignment.vehicle.id, projectId: selectedAssignment.projectId || null, attendanceDate: date, status: v.status || 'present', notes: v.note ? v.note : undefined }));
 
     if (payloads.length === 0) return toast({ title: "No days selected", description: "Please select at least one day to mark attendance.", variant: "destructive" });
 
@@ -115,13 +144,17 @@ export default function Attendance() {
           </div>
         </CardHeader>
         <CardContent>
-          {selectedAssignmentId ? (
+          {selectedAssignment ? (
             <div className="max-h-[55vh] overflow-auto">
+              {attendanceLoading && (
+                <div className="p-3 text-sm text-muted-foreground">Loading previous attendance...</div>
+              )}
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Date</TableHead>
                     <TableHead>Day</TableHead>
+                    <TableHead>Previous Status</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Note</TableHead>
                     <TableHead>Mark</TableHead>
@@ -130,11 +163,32 @@ export default function Attendance() {
                 <TableBody>
                   {days.map((d) => {
                     const dateStr = format(d, "yyyy-MM-dd");
-                    const state = selectedDays[dateStr] || { selected: false, status: 'present', note: '' };
+                    const existingRecord = attendanceByDate[dateStr];
+                    const defaultState = {
+                      selected: false,
+                      status: existingRecord ? existingRecord.status : 'present',
+                      note: existingRecord?.notes ?? '',
+                    };
+                    const state = selectedDays[dateStr] || defaultState;
+                    const isPastDate = isBefore(d, today);
                     return (
                       <TableRow key={dateStr}>
                         <TableCell>{format(d, "MMM dd, yyyy")}</TableCell>
                         <TableCell>{format(d, "EEEE")}</TableCell>
+                        <TableCell>
+                          {existingRecord && isPastDate ? (
+                            <div className="space-y-1">
+                              <div className="text-sm font-medium capitalize">{existingRecord.status}</div>
+                              {existingRecord.notes ? (
+                                <div className="text-xs text-muted-foreground">{existingRecord.notes}</div>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              {isPastDate ? 'No record' : 'Upcoming'}
+                            </span>
+                          )}
+                        </TableCell>
                         <TableCell>
                           <UiSelect value={state.status} onValueChange={(v) => handleStatusChange(dateStr, v)}>
                             <UiSelectTrigger className="w-36">
@@ -154,7 +208,7 @@ export default function Attendance() {
                           )}
                         </TableCell>
                         <TableCell>
-                          <Checkbox checked={!!state.selected} onCheckedChange={() => handleToggleDay(dateStr)} />
+                          <Checkbox checked={!!state.selected} onCheckedChange={() => handleToggleDay(dateStr, state.status, state.note)} />
                         </TableCell>
                       </TableRow>
                     );
