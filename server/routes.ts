@@ -14,6 +14,7 @@ import {
   updateOwnerSchema,
   updateOwnershipHistorySchema,
   transferVehicleOwnershipSchema,
+  insertVehicleAttendanceSchema,
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -451,6 +452,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(200).json({ message: "Vehicle ownership transferred successfully" });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
+    }
+  });
+
+  // Vehicle Attendance routes
+  app.get("/api/vehicle-attendance", async (req, res) => {
+    try {
+      const { vehicleId, date, projectId } = req.query as Record<string, string | undefined>;
+      const attendance = await storage.getVehicleAttendance({ vehicleId, date, projectId });
+      res.json(attendance);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/vehicle-attendance", async (req, res) => {
+    try {
+      const validated = insertVehicleAttendanceSchema.parse(req.body);
+      const created = await storage.createVehicleAttendance(validated);
+      res.status(201).json(created);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // Batch create attendance records
+  app.post("/api/vehicle-attendance/batch", async (req, res) => {
+    try {
+      const body = req.body;
+      if (!Array.isArray(body)) {
+        return res.status(400).json({ message: "Expected an array of attendance records" });
+      }
+
+      console.log('[vehicle-attendance/batch] received', { count: body.length });
+      const validatedRecords = body.map((b) => insertVehicleAttendanceSchema.parse(b));
+      const created = await storage.createVehicleAttendanceBatch(validatedRecords);
+      console.log('[vehicle-attendance/batch] created', { createdCount: created.length });
+      res.status(201).json(created);
+    } catch (error: any) {
+      console.error('[vehicle-attendance/batch] error', error);
+      res.status(400).json({ message: error?.message || 'Unknown error', stack: error?.stack });
     }
   });
 

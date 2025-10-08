@@ -225,7 +225,7 @@ export default function Dashboard() {
                   ))
                 )}
               </div>
-              <Button variant="ghost" className="w-full mt-4 text-primary" data-testid="view-all-assignments" o>
+              <Button variant="ghost" className="w-full mt-4 text-primary" data-testid="view-all-assignments">
                 View All Assignments
               </Button>
             </CardContent>

@@ -6,6 +6,7 @@ import {
   payments,
   maintenanceRecords,
   ownershipHistory,
+  vehicleAttendance,
   type Owner,
   type InsertOwner,
   type UpdateOwner,
@@ -23,6 +24,9 @@ import {
   type InsertOwnershipHistory,
   type UpdateOwnershipHistory,
   type VehicleWithOwner,
+  type VehicleAttendance,
+  type InsertVehicleAttendance,
+  type VehicleAttendanceWithVehicle,
   type AssignmentWithDetails,
   type PaymentWithDetails,
   type MaintenanceRecordWithVehicle,
@@ -118,6 +122,11 @@ export interface IStorage {
   createOwnershipHistoryRecord(record: InsertOwnershipHistory): Promise<OwnershipHistory>;
   updateOwnershipHistoryRecord(id: string, record: Partial<UpdateOwnershipHistory>): Promise<OwnershipHistory>;
   deleteOwnershipHistoryRecord(id: string): Promise<void>;
+  
+  // Vehicle attendance
+  getVehicleAttendance(filter?: { vehicleId?: string; date?: string; projectId?: string }): Promise<VehicleAttendanceWithVehicle[]>;
+  createVehicleAttendance(record: InsertVehicleAttendance): Promise<VehicleAttendance>;
+  createVehicleAttendanceBatch(records: InsertVehicleAttendance[]): Promise<VehicleAttendance[]>;
   
   // New method for transferring vehicle ownership with proper tracking
   transferVehicleOwnership(vehicleId: string, newOwnerId: string, transferReason?: string, transferPrice?: string, notes?: string): Promise<void>;
@@ -716,6 +725,99 @@ export class DatabaseStorage implements IStorage {
         .update(vehicles)
         .set({ ownerId: newOwnerId })
         .where(eq(vehicles.id, vehicleId));
+    });
+  }
+
+  // Vehicle attendance methods
+  async getVehicleAttendance(filter?: { vehicleId?: string; date?: string; projectId?: string }): Promise<VehicleAttendanceWithVehicle[]> {
+    const query = db.select().from(vehicleAttendance)
+      .leftJoin(vehicles, eq(vehicleAttendance.vehicleId, vehicles.id))
+      .leftJoin(owners, eq(vehicles.ownerId, owners.id))
+      .leftJoin(projects, eq(vehicleAttendance.projectId, projects.id))
+      .orderBy(desc(vehicleAttendance.createdAt));
+
+    if (filter?.vehicleId) {
+      query.where(eq(vehicleAttendance.vehicleId, filter.vehicleId));
+    }
+    if (filter?.date) {
+      query.where(eq(vehicleAttendance.attendanceDate, filter.date));
+    }
+    if (filter?.projectId) {
+      query.where(eq(vehicleAttendance.projectId, filter.projectId));
+    }
+
+    const results = await query;
+
+    return results.map((row) => ({
+      ...row.vehicle_attendance,
+      vehicle: {
+        ...row.vehicles!,
+        owner: row.owners!,
+      },
+      project: row.projects || null,
+    }));
+  }
+
+  async createVehicleAttendance(record: InsertVehicleAttendance): Promise<VehicleAttendance> {
+    const [created] = await db.insert(vehicleAttendance).values(record).returning();
+    return created;
+  }
+
+  async createVehicleAttendanceBatch(records: InsertVehicleAttendance[]): Promise<VehicleAttendance[]> {
+    if (records.length === 0) return [];
+
+    // Use a transaction and perform an INSERT ... ON CONFLICT DO NOTHING to avoid duplicates
+    return await db.transaction(async (tx) => {
+      // Perform per-record upsert within a single transaction without relying on ON CONFLICT/index
+      const insertedOrUpdatedIds: string[] = [];
+      for (const r of records) {
+        // Check if a record already exists for this vehicle & date
+        const [existing] = await tx.select().from(vehicleAttendance).where(
+          and(eq(vehicleAttendance.vehicleId, r.vehicleId), eq(vehicleAttendance.attendanceDate, r.attendanceDate))
+        );
+
+        if (existing) {
+          // Update existing record
+          const [updated] = await tx
+            .update(vehicleAttendance)
+            .set({ status: r.status, notes: r.notes ?? null })
+            .where(eq(vehicleAttendance.id, existing.id))
+            .returning();
+          if (updated) insertedOrUpdatedIds.push(updated.id);
+        } else {
+          // Insert new record
+          const [created] = await tx
+            .insert(vehicleAttendance)
+            .values({
+              vehicleId: r.vehicleId,
+              projectId: r.projectId ?? null,
+              attendanceDate: r.attendanceDate,
+              status: r.status,
+              notes: r.notes ?? null,
+            })
+            .returning();
+          if (created) insertedOrUpdatedIds.push(created.id);
+        }
+      }
+
+      // Fetch inserted/updated rows using a simple IN + date range query for reliability
+      // Fetch inserted/updated rows by id if available, otherwise fallback to vehicle/date range
+      if (insertedOrUpdatedIds.length > 0) {
+        const rows = await tx.select().from(vehicleAttendance).where(sql`${vehicleAttendance.id} IN (${sql.join(insertedOrUpdatedIds.map(id => sql`${id}`), sql`,`)})`);
+        return rows as VehicleAttendance[];
+      }
+
+      const vehicleIds = Array.from(new Set(records.map(r => r.vehicleId)));
+      const dates = records.map(r => r.attendanceDate).sort();
+      const minDate = dates[0];
+      const maxDate = dates[dates.length - 1];
+
+      const rows = await tx
+        .select()
+        .from(vehicleAttendance)
+        .where(sql`${vehicleAttendance.vehicleId} IN (${sql.join(vehicleIds.map(v => sql`${v}`), sql`,`)}) AND ${vehicleAttendance.attendanceDate} BETWEEN ${minDate} AND ${maxDate}`);
+
+      return rows as VehicleAttendance[];
     });
   }
 }

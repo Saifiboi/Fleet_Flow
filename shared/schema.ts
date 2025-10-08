@@ -84,6 +84,16 @@ export const maintenanceRecords = pgTable("maintenance_records", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const vehicleAttendance = pgTable("vehicle_attendance", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  vehicleId: varchar("vehicle_id").notNull().references(() => vehicles.id, { onDelete: "cascade" }),
+  projectId: varchar("project_id").references(() => projects.id, { onDelete: "set null" }),
+  attendanceDate: date("attendance_date").notNull(),
+  status: text("status").notNull().default("present"), // present, off, standby, maintenance
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const ownershipHistory = pgTable("ownership_history", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   vehicleId: varchar("vehicle_id").notNull().references(() => vehicles.id, { onDelete: "cascade" }),
@@ -110,10 +120,12 @@ export const vehiclesRelations = relations(vehicles, ({ one, many }) => ({
   assignments: many(assignments),
   maintenanceRecords: many(maintenanceRecords),
   ownershipHistory: many(ownershipHistory),
+  vehicleAttendance: many(vehicleAttendance),
 }));
 
 export const projectsRelations = relations(projects, ({ many }) => ({
   assignments: many(assignments),
+  vehicleAttendance: many(vehicleAttendance),
 }));
 
 export const assignmentsRelations = relations(assignments, ({ one, many }) => ({
@@ -139,6 +151,17 @@ export const maintenanceRecordsRelations = relations(maintenanceRecords, ({ one 
   vehicle: one(vehicles, {
     fields: [maintenanceRecords.vehicleId],
     references: [vehicles.id],
+  }),
+}));
+
+export const vehicleAttendanceRelations = relations(vehicleAttendance, ({ one }) => ({
+  vehicle: one(vehicles, {
+    fields: [vehicleAttendance.vehicleId],
+    references: [vehicles.id],
+  }),
+  project: one(projects, {
+    fields: [vehicleAttendance.projectId],
+    references: [projects.id],
   }),
 }));
 
@@ -264,6 +287,16 @@ export const insertOwnershipHistorySchema = createInsertSchema(ownershipHistory)
   ),
 });
 
+export const insertVehicleAttendanceSchema = createInsertSchema(vehicleAttendance).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  attendanceDate: z.string().transform((val) => val), // accept ISO date strings
+  status: z.enum(["present", "off", "standby", "maintenance"]).default("present"),
+  notes: z.string().optional(),
+  projectId: z.string().optional().transform(val => val === "" ? null : val),
+});
+
 // Update schemas
 export const updateOwnerSchema = z.object({
   ownerType: z.enum(["individual", "corporate"]).optional(),
@@ -315,6 +348,9 @@ export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 export type MaintenanceRecord = typeof maintenanceRecords.$inferSelect;
 export type InsertMaintenanceRecord = z.infer<typeof insertMaintenanceRecordSchema>;
 
+export type VehicleAttendance = typeof vehicleAttendance.$inferSelect;
+export type InsertVehicleAttendance = z.infer<typeof insertVehicleAttendanceSchema>;
+
 // Extended types for frontend use
 export type VehicleWithOwner = Vehicle & {
   owner: Owner;
@@ -331,6 +367,11 @@ export type PaymentWithDetails = Payment & {
 
 export type MaintenanceRecordWithVehicle = MaintenanceRecord & {
   vehicle: VehicleWithOwner;
+};
+
+export type VehicleAttendanceWithVehicle = VehicleAttendance & {
+  vehicle: VehicleWithOwner;
+  project?: Project | null;
 };
 
 // Dashboard stats type

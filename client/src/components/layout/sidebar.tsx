@@ -22,6 +22,7 @@ const navigationItems = [
   { path: "/vehicles", label: "Vehicles", icon: Car },
   { path: "/projects", label: "Projects", icon: FolderKanban },
   { path: "/assignments", label: "Assignments", icon: Calendar },
+  { path: "/attendance", label: "Attendance", icon: Calendar },
   { path: "/payments", label: "Payments", icon: CreditCard },
   { path: "/maintenance", label: "Maintenance", icon: Wrench },
 ];
