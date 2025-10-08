@@ -7,7 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Select as UiSelect, SelectTrigger as UiSelectTrigger, SelectContent as UiSelectContent, SelectItem as UiSelectItem, SelectValue as UiSelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select as UiSelect,
+  SelectTrigger as UiSelectTrigger,
+  SelectContent as UiSelectContent,
+  SelectItem as UiSelectItem,
+  SelectValue as UiSelectValue,
+} from "@/components/ui/select";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -34,11 +41,12 @@ type DaySelectionState = { selected: boolean; status: string; note?: string };
 export default function Attendance() {
   const { data: assignments = [] } = useAssignments();
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
+  const [selectedMonth, setSelectedMonth] = useState<Date>(startOfMonth(new Date()));
   const days = useMemo(() => getDaysForMonth(selectedMonth), [selectedMonth]);
   const [selectedDays, setSelectedDays] = useState<Record<string, DaySelectionState>>({});
   const { toast } = useToast();
   const today = useMemo(() => startOfToday(), []);
+  const maxMonth = useMemo(() => startOfMonth(today), [today]);
 
   const selectedAssignment = useMemo(
     () => assignments.find((a: AssignmentWithDetails) => a.id === selectedAssignmentId) || null,
@@ -70,12 +78,25 @@ export default function Attendance() {
 
     const assignmentStart = startOfMonth(parseISO(selectedAssignment.startDate));
     setSelectedMonth((current) => {
-      if (isBefore(current, assignmentStart)) {
-        return assignmentStart;
+      let next = startOfMonth(current);
+      if (isBefore(next, assignmentStart)) {
+        next = assignmentStart;
       }
-      return current;
+      if (isAfter(next, maxMonth)) {
+        next = maxMonth;
+      }
+      return next;
     });
-  }, [selectedAssignment]);
+  }, [selectedAssignment, maxMonth]);
+
+  useEffect(() => {
+    setSelectedMonth((current) => {
+      if (isAfter(current, maxMonth)) {
+        return maxMonth;
+      }
+      return startOfMonth(current);
+    });
+  }, [maxMonth]);
 
   const mutation = useMutation({
     mutationFn: async (payloads: Array<{ vehicleId: string; projectId?: string | null; attendanceDate: string; status: string }>) => {
@@ -215,7 +236,18 @@ export default function Attendance() {
                   Prev
                 </Button>
                 <div className="px-3 py-2 text-sm font-medium">{format(selectedMonth, "MMMM yyyy")}</div>
-                <Button size="sm" onClick={() => setSelectedMonth(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 1))}>Next</Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const nextMonth = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 1);
+                    if (!isAfter(nextMonth, maxMonth)) {
+                      setSelectedMonth(nextMonth);
+                    }
+                  }}
+                  disabled={!isBefore(selectedMonth, maxMonth)}
+                >
+                  Next
+                </Button>
               </div>
             </div>
           </div>
@@ -243,36 +275,55 @@ export default function Attendance() {
                     const dateStr = format(d, "yyyy-MM-dd");
                     const existingRecord = attendanceByDate[dateStr];
                     const defaultState: DaySelectionState = {
-                      selected: !!existingRecord,
-                      status: existingRecord ? existingRecord.status : 'present',
-                      note: existingRecord?.notes ?? '',
+                      selected: !!existingRecord && !isAfter(d, today),
+                      status: existingRecord ? existingRecord.status : "present",
+                      note: existingRecord?.notes ?? "",
                     };
                     const state = selectedDays[dateStr]
                       ? { ...defaultState, ...selectedDays[dateStr] }
                       : defaultState;
-                    const isPastDate = isBefore(d, today);
+                    const isFutureDate = isAfter(d, today);
+                    const isCurrentOrPastDate = !isFutureDate;
+                    const statusBadgeClass = (() => {
+                      switch (existingRecord?.status) {
+                        case "present":
+                          return "bg-green-100 text-green-800 border-green-200";
+                        case "standby":
+                          return "bg-yellow-100 text-yellow-800 border-yellow-200";
+                        case "off":
+                          return "bg-red-100 text-red-800 border-red-200";
+                        default:
+                          return "bg-slate-100 text-slate-800 border-slate-200";
+                      }
+                    })();
+                    const formatStatusLabel = (status: string) =>
+                      status ? status.charAt(0).toUpperCase() + status.slice(1) : status;
                     return (
                       <TableRow key={dateStr}>
                         <TableCell>{format(d, "MMM dd, yyyy")}</TableCell>
                         <TableCell>{format(d, "EEEE")}</TableCell>
                         <TableCell>{selectedAssignment?.project?.name ?? '-'}</TableCell>
                         <TableCell>
-                          {existingRecord && isPastDate ? (
+                          {existingRecord && isCurrentOrPastDate ? (
                             <div className="space-y-1">
-                              <div className="text-sm font-medium capitalize">{existingRecord.status}</div>
+                              <Badge className={statusBadgeClass}>{formatStatusLabel(existingRecord.status)}</Badge>
                               {existingRecord.notes ? (
                                 <div className="text-xs text-muted-foreground">{existingRecord.notes}</div>
                               ) : null}
                             </div>
                           ) : (
                             <span className="text-xs text-muted-foreground">
-                              {isPastDate ? 'No record' : 'Upcoming'}
+                              {isCurrentOrPastDate ? "No record" : "Upcoming"}
                             </span>
                           )}
                         </TableCell>
                         <TableCell>
-                          <UiSelect value={state.status} onValueChange={(v) => handleStatusChange(dateStr, v, defaultState)}>
-                            <UiSelectTrigger className="w-36">
+                          <UiSelect
+                            value={state.status}
+                            onValueChange={(v) => handleStatusChange(dateStr, v, defaultState)}
+                            disabled={isFutureDate}
+                          >
+                            <UiSelectTrigger className="w-36" disabled={isFutureDate}>
                               <UiSelectValue />
                             </UiSelectTrigger>
                             <UiSelectContent>
@@ -284,14 +335,23 @@ export default function Attendance() {
                           </UiSelect>
                         </TableCell>
                         <TableCell>
-                          {state.status !== 'present' && (
-                            <Input value={state.note || ''} onChange={(e) => handleNoteChange(dateStr, e.target.value, defaultState)} placeholder="Note (optional)" />
+                          {state.status !== "present" && !isFutureDate && (
+                            <Input
+                              value={state.note || ""}
+                              onChange={(e) => handleNoteChange(dateStr, e.target.value, defaultState)}
+                              placeholder="Note (optional)"
+                            />
                           )}
                         </TableCell>
                         <TableCell>
                           <Checkbox
                             checked={!!state.selected}
-                            onCheckedChange={() => handleToggleDay(dateStr, defaultState)}
+                            onCheckedChange={() => {
+                              if (!isFutureDate) {
+                                handleToggleDay(dateStr, defaultState);
+                              }
+                            }}
+                            disabled={isFutureDate}
                           />
                         </TableCell>
                       </TableRow>
