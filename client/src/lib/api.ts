@@ -1,16 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
-import type { 
-  Owner, 
-  Vehicle, 
-  VehicleWithOwner, 
-  Project, 
-  Assignment, 
-  AssignmentWithDetails, 
-  Payment, 
-  PaymentWithDetails, 
+import { apiRequest } from "@/lib/queryClient";
+import type {
+  Owner,
+  Vehicle,
+  VehicleWithOwner,
+  Project,
+  Assignment,
+  AssignmentWithDetails,
+  Payment,
+  PaymentWithDetails,
   MaintenanceRecord,
   MaintenanceRecordWithVehicle,
-  DashboardStats 
+  DashboardStats,
+  VehicleAttendanceWithVehicle
 } from "@shared/schema";
 
 // Typed query hooks to fix TypeScript issues
@@ -65,3 +67,21 @@ export const useMaintenanceRecords = () => useQuery<MaintenanceRecordWithVehicle
 export const useMaintenanceRecordsByVehicle = (vehicleId: string) => useQuery<MaintenanceRecordWithVehicle[]>({
   queryKey: ["/api/maintenance/vehicle", vehicleId],
 });
+
+export const useVehicleAttendance = (params: { vehicleId?: string; projectId?: string | null }) =>
+  useQuery<VehicleAttendanceWithVehicle[]>({
+    queryKey: ["/api/vehicle-attendance", params?.vehicleId ?? "all", params?.projectId ?? "all"],
+    enabled: !!params.vehicleId,
+    queryFn: async () => {
+      const searchParams = new URLSearchParams();
+      if (params.vehicleId) {
+        searchParams.set("vehicleId", params.vehicleId);
+      }
+      if (params.projectId) {
+        searchParams.set("projectId", params.projectId);
+      }
+      const query = searchParams.toString();
+      const res = await apiRequest("GET", query ? `/api/vehicle-attendance?${query}` : "/api/vehicle-attendance");
+      return (await res.json()) as VehicleAttendanceWithVehicle[];
+    },
+  });

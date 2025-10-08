@@ -15,6 +15,7 @@ import {
   updateOwnershipHistorySchema,
   transferVehicleOwnershipSchema,
   insertVehicleAttendanceSchema,
+  deleteVehicleAttendanceSchema,
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -492,6 +493,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('[vehicle-attendance/batch] error', error);
       res.status(400).json({ message: error?.message || 'Unknown error', stack: error?.stack });
+    }
+  });
+
+  app.post("/api/vehicle-attendance/delete", async (req, res) => {
+    try {
+      const body = req.body;
+      if (!Array.isArray(body)) {
+        return res.status(400).json({ message: "Expected an array of attendance identifiers" });
+      }
+
+      const validated = body.map((item) => deleteVehicleAttendanceSchema.parse(item));
+      const deleted = await storage.deleteVehicleAttendanceBatch(validated);
+      res.status(200).json(deleted);
+    } catch (error: any) {
+      res.status(400).json({ message: error?.message || "Failed to delete attendance" });
     }
   });
 

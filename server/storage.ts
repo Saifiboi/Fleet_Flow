@@ -26,13 +26,14 @@ import {
   type VehicleWithOwner,
   type VehicleAttendance,
   type InsertVehicleAttendance,
+  type DeleteVehicleAttendance,
   type VehicleAttendanceWithVehicle,
   type AssignmentWithDetails,
   type PaymentWithDetails,
   type MaintenanceRecordWithVehicle,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, isNull } from "drizzle-orm";
 
 // Helper function to retry database operations on connection failures
 async function withRetry<T>(operation: () => Promise<T>, maxRetries: number = 3): Promise<T> {
@@ -127,6 +128,7 @@ export interface IStorage {
   getVehicleAttendance(filter?: { vehicleId?: string; date?: string; projectId?: string }): Promise<VehicleAttendanceWithVehicle[]>;
   createVehicleAttendance(record: InsertVehicleAttendance): Promise<VehicleAttendance>;
   createVehicleAttendanceBatch(records: InsertVehicleAttendance[]): Promise<VehicleAttendance[]>;
+  deleteVehicleAttendanceBatch(records: DeleteVehicleAttendance[]): Promise<VehicleAttendance[]>;
   
   // New method for transferring vehicle ownership with proper tracking
   transferVehicleOwnership(vehicleId: string, newOwnerId: string, transferReason?: string, transferPrice?: string, notes?: string): Promise<void>;
@@ -772,15 +774,26 @@ export class DatabaseStorage implements IStorage {
       const insertedOrUpdatedIds: string[] = [];
       for (const r of records) {
         // Check if a record already exists for this vehicle & date
-        const [existing] = await tx.select().from(vehicleAttendance).where(
-          and(eq(vehicleAttendance.vehicleId, r.vehicleId), eq(vehicleAttendance.attendanceDate, r.attendanceDate))
-        );
+        const projectCondition = r.projectId
+          ? eq(vehicleAttendance.projectId, r.projectId)
+          : isNull(vehicleAttendance.projectId);
+
+        const [existing] = await tx
+          .select()
+          .from(vehicleAttendance)
+          .where(
+            and(
+              eq(vehicleAttendance.vehicleId, r.vehicleId),
+              eq(vehicleAttendance.attendanceDate, r.attendanceDate),
+              projectCondition
+            )
+          );
 
         if (existing) {
           // Update existing record
           const [updated] = await tx
             .update(vehicleAttendance)
-            .set({ status: r.status, notes: r.notes ?? null })
+            .set({ status: r.status, notes: r.notes ?? null, projectId: r.projectId ?? null })
             .where(eq(vehicleAttendance.id, existing.id))
             .returning();
           if (updated) insertedOrUpdatedIds.push(updated.id);
@@ -818,6 +831,34 @@ export class DatabaseStorage implements IStorage {
         .where(sql`${vehicleAttendance.vehicleId} IN (${sql.join(vehicleIds.map(v => sql`${v}`), sql`,`)}) AND ${vehicleAttendance.attendanceDate} BETWEEN ${minDate} AND ${maxDate}`);
 
       return rows as VehicleAttendance[];
+    });
+  }
+
+  async deleteVehicleAttendanceBatch(records: DeleteVehicleAttendance[]): Promise<VehicleAttendance[]> {
+    if (records.length === 0) return [];
+
+    return await db.transaction(async (tx) => {
+      const deleted: VehicleAttendance[] = [];
+      for (const r of records) {
+        const projectCondition = r.projectId
+          ? eq(vehicleAttendance.projectId, r.projectId)
+          : isNull(vehicleAttendance.projectId);
+
+        const rows = await tx
+          .delete(vehicleAttendance)
+          .where(
+            and(
+              eq(vehicleAttendance.vehicleId, r.vehicleId),
+              eq(vehicleAttendance.attendanceDate, r.attendanceDate),
+              projectCondition
+            )
+          )
+          .returning();
+
+        deleted.push(...(rows as VehicleAttendance[]));
+      }
+
+      return deleted;
     });
   }
 }

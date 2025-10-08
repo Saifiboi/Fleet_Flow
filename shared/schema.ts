@@ -297,6 +297,12 @@ export const insertVehicleAttendanceSchema = createInsertSchema(vehicleAttendanc
   projectId: z.string().optional().transform(val => val === "" ? null : val),
 });
 
+export const deleteVehicleAttendanceSchema = z.object({
+  vehicleId: z.string(),
+  attendanceDate: z.string(),
+  projectId: z.string().nullable().optional(),
+});
+
 // Update schemas
 export const updateOwnerSchema = z.object({
   ownerType: z.enum(["individual", "corporate"]).optional(),
@@ -350,6 +356,7 @@ export type InsertMaintenanceRecord = z.infer<typeof insertMaintenanceRecordSche
 
 export type VehicleAttendance = typeof vehicleAttendance.$inferSelect;
 export type InsertVehicleAttendance = z.infer<typeof insertVehicleAttendanceSchema>;
+export type DeleteVehicleAttendance = z.infer<typeof deleteVehicleAttendanceSchema>;
 
 // Extended types for frontend use
 export type VehicleWithOwner = Vehicle & {
