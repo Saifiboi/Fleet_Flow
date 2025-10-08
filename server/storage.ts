@@ -772,15 +772,26 @@ export class DatabaseStorage implements IStorage {
       const insertedOrUpdatedIds: string[] = [];
       for (const r of records) {
         // Check if a record already exists for this vehicle & date
-        const [existing] = await tx.select().from(vehicleAttendance).where(
-          and(eq(vehicleAttendance.vehicleId, r.vehicleId), eq(vehicleAttendance.attendanceDate, r.attendanceDate))
-        );
+        const projectCondition = r.projectId
+          ? eq(vehicleAttendance.projectId, r.projectId)
+          : sql`${vehicleAttendance.projectId} IS NULL`;
+
+        const [existing] = await tx
+          .select()
+          .from(vehicleAttendance)
+          .where(
+            and(
+              eq(vehicleAttendance.vehicleId, r.vehicleId),
+              eq(vehicleAttendance.attendanceDate, r.attendanceDate),
+              projectCondition
+            )
+          );
 
         if (existing) {
           // Update existing record
           const [updated] = await tx
             .update(vehicleAttendance)
-            .set({ status: r.status, notes: r.notes ?? null })
+            .set({ status: r.status, notes: r.notes ?? null, projectId: r.projectId ?? null })
             .where(eq(vehicleAttendance.id, existing.id))
             .returning();
           if (updated) insertedOrUpdatedIds.push(updated.id);
