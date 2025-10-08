@@ -44,6 +44,9 @@ export default function Attendance() {
   const [selectedMonth, setSelectedMonth] = useState<Date>(startOfMonth(new Date()));
   const days = useMemo(() => getDaysForMonth(selectedMonth), [selectedMonth]);
   const [selectedDays, setSelectedDays] = useState<Record<string, DaySelectionState>>({});
+  const [bulkStatus, setBulkStatus] = useState<string>("present");
+  const [rangeStart, setRangeStart] = useState<string | undefined>(undefined);
+  const [rangeEnd, setRangeEnd] = useState<string | undefined>(undefined);
   const { toast } = useToast();
   const today = useMemo(() => startOfToday(), []);
   const maxMonth = useMemo(() => startOfMonth(today), [today]);
@@ -68,10 +71,65 @@ export default function Attendance() {
     return map;
   }, [attendanceRecords, selectedMonth]);
 
+  const defaultDayStates = useMemo(() => {
+    const map: Record<string, DaySelectionState> = {};
+    days.forEach((d) => {
+      const dateStr = format(d, "yyyy-MM-dd");
+      const existingRecord = attendanceByDate[dateStr];
+      map[dateStr] = {
+        selected: !!existingRecord && !isAfter(d, today),
+        status: existingRecord ? existingRecord.status : "present",
+        note: existingRecord?.notes ?? "",
+      };
+    });
+    return map;
+  }, [attendanceByDate, days, today]);
+
+  const dayStates = useMemo(() => {
+    const map: Record<string, DaySelectionState> = {};
+    days.forEach((d) => {
+      const dateStr = format(d, "yyyy-MM-dd");
+      const base = defaultDayStates[dateStr] ?? { selected: false, status: "present", note: "" };
+      const override = selectedDays[dateStr];
+      map[dateStr] = override ? { ...base, ...override } : base;
+    });
+    return map;
+  }, [days, defaultDayStates, selectedDays]);
+
+  const nonFutureDays = useMemo(() => days.filter((d) => !isAfter(d, today)), [days, today]);
+
+  const { selectableCount, selectedCount } = useMemo(() => {
+    const selectable = nonFutureDays.length;
+    let selectedTotal = 0;
+    nonFutureDays.forEach((d) => {
+      const dateStr = format(d, "yyyy-MM-dd");
+      if (dayStates[dateStr]?.selected) {
+        selectedTotal += 1;
+      }
+    });
+    return { selectableCount: selectable, selectedCount: selectedTotal };
+  }, [dayStates, nonFutureDays]);
+
+  const allSelected = selectableCount > 0 && selectedCount === selectableCount;
+  const partiallySelected = selectedCount > 0 && selectedCount < selectableCount;
+
   useEffect(() => {
     // reset selected days when month or assignment changes
     setSelectedDays({});
   }, [selectedMonth, selectedAssignmentId]);
+
+  useEffect(() => {
+    if (nonFutureDays.length === 0) {
+      setRangeStart(undefined);
+      setRangeEnd(undefined);
+      return;
+    }
+
+    const first = format(nonFutureDays[0], "yyyy-MM-dd");
+    const last = format(nonFutureDays[nonFutureDays.length - 1], "yyyy-MM-dd");
+    setRangeStart(first);
+    setRangeEnd(last);
+  }, [nonFutureDays, selectedMonth]);
 
   useEffect(() => {
     if (!selectedAssignment?.startDate) return;
@@ -123,46 +181,189 @@ export default function Attendance() {
     },
   });
 
-  const handleToggleDay = (dateStr: string, defaultState: DaySelectionState) => {
+  const handleToggleDay = (dateStr: string) => {
+    const defaultState = defaultDayStates[dateStr];
+    if (!defaultState) return;
+
     setSelectedDays((prev) => {
       const current = prev[dateStr];
-      const nextSelected = !(current?.selected ?? defaultState.selected);
+      const merged = current ? { ...defaultState, ...current } : defaultState;
+      const nextSelected = !merged.selected;
       return {
         ...prev,
         [dateStr]: {
+          ...merged,
           selected: nextSelected,
-          status: current?.status ?? defaultState.status,
-          note: current?.note ?? defaultState.note,
         },
       };
     });
   };
 
-  const handleStatusChange = (dateStr: string, status: string, defaultState: DaySelectionState) => {
+  const handleStatusChange = (dateStr: string, status: string) => {
+    const defaultState = defaultDayStates[dateStr];
+    if (!defaultState) return;
+
     setSelectedDays((prev) => {
-      const current = prev[dateStr] ?? defaultState;
+      const current = prev[dateStr];
+      const merged = current ? { ...defaultState, ...current } : defaultState;
       return {
         ...prev,
         [dateStr]: {
-          ...current,
-          selected: current.selected ?? defaultState.selected,
+          ...merged,
+          selected: merged.selected ?? defaultState.selected,
           status,
         },
       };
     });
   };
 
-  const handleNoteChange = (dateStr: string, note: string, defaultState: DaySelectionState) => {
+  const handleNoteChange = (dateStr: string, note: string) => {
+    const defaultState = defaultDayStates[dateStr];
+    if (!defaultState) return;
+
     setSelectedDays((prev) => {
-      const current = prev[dateStr] ?? defaultState;
+      const current = prev[dateStr];
+      const merged = current ? { ...defaultState, ...current } : defaultState;
       return {
         ...prev,
         [dateStr]: {
-          ...current,
-          selected: current.selected ?? defaultState.selected,
+          ...merged,
+          selected: merged.selected ?? defaultState.selected,
           note,
         },
       };
+    });
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (nonFutureDays.length === 0) return;
+
+    setSelectedDays((prev) => {
+      const next = { ...prev };
+      nonFutureDays.forEach((d) => {
+        const dateStr = format(d, "yyyy-MM-dd");
+        const defaultState = defaultDayStates[dateStr];
+        if (!defaultState) return;
+        const current = prev[dateStr];
+        const merged = current ? { ...defaultState, ...current } : defaultState;
+        next[dateStr] = {
+          ...merged,
+          selected: checked,
+        };
+      });
+      return next;
+    });
+  };
+
+  const applyStatusToDates = (dates: Date[], status: string) => {
+    if (dates.length === 0) return;
+
+    setSelectedDays((prev) => {
+      const next = { ...prev };
+      dates.forEach((d) => {
+        const dateStr = format(d, "yyyy-MM-dd");
+        const defaultState = defaultDayStates[dateStr];
+        if (!defaultState) return;
+        const current = prev[dateStr];
+        const merged = current ? { ...defaultState, ...current } : defaultState;
+        next[dateStr] = {
+          ...merged,
+          status,
+          selected: true,
+        };
+        if (status === "present") {
+          next[dateStr].note = "";
+        }
+      });
+      return next;
+    });
+  };
+
+  const handleApplyStatusToAll = () => {
+    if (!selectedAssignment) {
+      return toast({
+        title: "Select assignment",
+        description: "Choose an assignment before applying attendance.",
+        variant: "destructive",
+      });
+    }
+
+    if (nonFutureDays.length === 0) {
+      return toast({
+        title: "No days to update",
+        description: "There are no past days in this month to update.",
+        variant: "destructive",
+      });
+    }
+
+    applyStatusToDates(nonFutureDays, bulkStatus);
+  };
+
+  const handleApplyStatusToRange = () => {
+    if (!selectedAssignment) {
+      return toast({
+        title: "Select assignment",
+        description: "Choose an assignment before applying attendance.",
+        variant: "destructive",
+      });
+    }
+
+    if (!rangeStart || !rangeEnd) {
+      return toast({
+        title: "Select a range",
+        description: "Please choose both start and end dates to apply attendance.",
+        variant: "destructive",
+      });
+    }
+
+    const startDate = parseISO(rangeStart);
+    const endDate = parseISO(rangeEnd);
+    if (isAfter(startDate, endDate)) {
+      return toast({
+        title: "Invalid range",
+        description: "The start date must be before the end date.",
+        variant: "destructive",
+      });
+    }
+
+    const targetDates = nonFutureDays.filter(
+      (d) => !isBefore(d, startDate) && !isAfter(d, endDate)
+    );
+
+    if (targetDates.length === 0) {
+      return toast({
+        title: "No days to update",
+        description: "The selected range does not contain any past days.",
+        variant: "destructive",
+      });
+    }
+
+    applyStatusToDates(targetDates, bulkStatus);
+  };
+
+  const handleRangeStartChange = (value: string) => {
+    setRangeStart(value);
+    setRangeEnd((prevEnd) => {
+      if (!prevEnd) return value;
+      const prevEndDate = parseISO(prevEnd);
+      const nextStartDate = parseISO(value);
+      if (isBefore(prevEndDate, nextStartDate)) {
+        return value;
+      }
+      return prevEnd;
+    });
+  };
+
+  const handleRangeEndChange = (value: string) => {
+    setRangeEnd(value);
+    setRangeStart((prevStart) => {
+      if (!prevStart) return value;
+      const prevStartDate = parseISO(prevStart);
+      const nextEndDate = parseISO(value);
+      if (isAfter(prevStartDate, nextEndDate)) {
+        return value;
+      }
+      return prevStart;
     });
   };
 
@@ -254,11 +455,99 @@ export default function Attendance() {
         </CardHeader>
         <CardContent>
           {selectedAssignment ? (
-            <div className="max-h-[55vh] overflow-auto">
-              {attendanceLoading && (
-                <div className="p-3 text-sm text-muted-foreground">Loading previous attendance...</div>
-              )}
-              <Table>
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3 rounded-md border p-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      checked={allSelected ? true : partiallySelected ? "indeterminate" : false}
+                      onCheckedChange={(value) => handleSelectAll(value === true)}
+                      disabled={nonFutureDays.length === 0}
+                      id="select-all-days"
+                    />
+                    <label htmlFor="select-all-days" className="text-sm font-medium">
+                      Select all available days
+                    </label>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium">Set status</span>
+                    <UiSelect value={bulkStatus} onValueChange={setBulkStatus}>
+                      <UiSelectTrigger className="w-36">
+                        <UiSelectValue />
+                      </UiSelectTrigger>
+                      <UiSelectContent>
+                        <UiSelectItem value="present">Present</UiSelectItem>
+                        <UiSelectItem value="off">Off</UiSelectItem>
+                        <UiSelectItem value="standby">Standby</UiSelectItem>
+                        <UiSelectItem value="maintenance">Maintenance</UiSelectItem>
+                      </UiSelectContent>
+                    </UiSelect>
+                    <Button variant="outline" size="sm" onClick={handleApplyStatusToAll} disabled={nonFutureDays.length === 0}>
+                      Apply to all days
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium">Date range</span>
+                    <UiSelect
+                      value={rangeStart ?? undefined}
+                      onValueChange={handleRangeStartChange}
+                      disabled={nonFutureDays.length === 0}
+                    >
+                      <UiSelectTrigger className="w-32">
+                        <UiSelectValue placeholder="Start date" />
+                      </UiSelectTrigger>
+                      <UiSelectContent>
+                        {nonFutureDays.map((day) => {
+                          const value = format(day, "yyyy-MM-dd");
+                          return (
+                            <UiSelectItem key={value} value={value}>
+                              {format(day, "MMM dd")}
+                            </UiSelectItem>
+                          );
+                        })}
+                      </UiSelectContent>
+                    </UiSelect>
+                    <span className="text-sm text-muted-foreground">to</span>
+                    <UiSelect
+                      value={rangeEnd ?? undefined}
+                      onValueChange={handleRangeEndChange}
+                      disabled={nonFutureDays.length === 0}
+                    >
+                      <UiSelectTrigger className="w-32">
+                        <UiSelectValue placeholder="End date" />
+                      </UiSelectTrigger>
+                      <UiSelectContent>
+                        {nonFutureDays.map((day) => {
+                          const value = format(day, "yyyy-MM-dd");
+                          return (
+                            <UiSelectItem key={value} value={value}>
+                              {format(day, "MMM dd")}
+                            </UiSelectItem>
+                          );
+                        })}
+                      </UiSelectContent>
+                    </UiSelect>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={handleApplyStatusToRange}
+                      disabled={nonFutureDays.length === 0 || !rangeStart || !rangeEnd}
+                    >
+                      Apply to range
+                    </Button>
+                  </div>
+                  <div className="text-xs text-muted-foreground sm:text-right">
+                    {selectedCount} of {selectableCount} days selected
+                  </div>
+                </div>
+              </div>
+              <div className="max-h-[55vh] overflow-auto">
+                {attendanceLoading && (
+                  <div className="p-3 text-sm text-muted-foreground">Loading previous attendance...</div>
+                )}
+                <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Date</TableHead>
@@ -274,14 +563,8 @@ export default function Attendance() {
                   {days.map((d) => {
                     const dateStr = format(d, "yyyy-MM-dd");
                     const existingRecord = attendanceByDate[dateStr];
-                    const defaultState: DaySelectionState = {
-                      selected: !!existingRecord && !isAfter(d, today),
-                      status: existingRecord ? existingRecord.status : "present",
-                      note: existingRecord?.notes ?? "",
-                    };
-                    const state = selectedDays[dateStr]
-                      ? { ...defaultState, ...selectedDays[dateStr] }
-                      : defaultState;
+                    const defaultState = defaultDayStates[dateStr];
+                    const state = dayStates[dateStr] ?? defaultState;
                     const isFutureDate = isAfter(d, today);
                     const isCurrentOrPastDate = !isFutureDate;
                     const statusBadgeClass = (() => {
@@ -320,7 +603,7 @@ export default function Attendance() {
                         <TableCell>
                           <UiSelect
                             value={state.status}
-                            onValueChange={(v) => handleStatusChange(dateStr, v, defaultState)}
+                            onValueChange={(v) => handleStatusChange(dateStr, v)}
                             disabled={isFutureDate}
                           >
                             <UiSelectTrigger className="w-36" disabled={isFutureDate}>
@@ -338,7 +621,7 @@ export default function Attendance() {
                           {state.status !== "present" && !isFutureDate && (
                             <Input
                               value={state.note || ""}
-                              onChange={(e) => handleNoteChange(dateStr, e.target.value, defaultState)}
+                              onChange={(e) => handleNoteChange(dateStr, e.target.value)}
                               placeholder="Note (optional)"
                             />
                           )}
@@ -348,7 +631,7 @@ export default function Attendance() {
                             checked={!!state.selected}
                             onCheckedChange={() => {
                               if (!isFutureDate) {
-                                handleToggleDay(dateStr, defaultState);
+                                handleToggleDay(dateStr);
                               }
                             }}
                             disabled={isFutureDate}
@@ -358,7 +641,8 @@ export default function Attendance() {
                     );
                   })}
                 </TableBody>
-              </Table>
+                </Table>
+              </div>
             </div>
           ) : (
             <div className="py-12 text-center text-muted-foreground">Please select an assigned vehicle to view the calendar</div>
