@@ -36,7 +36,14 @@ function getDaysForMonth(date = new Date()) {
   return eachDayOfInterval({ start, end });
 }
 
-type DaySelectionState = { selected: boolean; status: string; note?: string };
+type DaySelectionState = {
+  selected: boolean;
+  status: string;
+  note?: string;
+  locked?: boolean;
+  lockedProjectName?: string;
+  lockedStatus?: string;
+};
 
 export default function Attendance() {
   const { data: assignments = [] } = useAssignments();
@@ -60,30 +67,57 @@ export default function Attendance() {
     vehicleId: selectedAssignment?.vehicle.id,
   });
 
-  const attendanceByDate = useMemo(() => {
+  const projectAttendanceRecords = useMemo(() => {
+    if (!selectedAssignment?.projectId) {
+      return attendanceRecords.filter((record) => !record.projectId);
+    }
+    return attendanceRecords.filter((record) => record.projectId === selectedAssignment.projectId);
+  }, [attendanceRecords, selectedAssignment?.projectId]);
+
+  const crossProjectAttendanceByDate = useMemo(() => {
     const map: Record<string, VehicleAttendanceWithVehicle> = {};
     attendanceRecords.forEach((record) => {
+      const matchesSelectedProject = selectedAssignment?.projectId
+        ? record.projectId === selectedAssignment.projectId
+        : !record.projectId;
+      if (!matchesSelectedProject && record.status === "present") {
+        if (!map[record.attendanceDate] || map[record.attendanceDate].createdAt < record.createdAt) {
+          map[record.attendanceDate] = record;
+        }
+      }
+    });
+    return map;
+  }, [attendanceRecords, selectedAssignment?.projectId]);
+
+  const attendanceByDate = useMemo(() => {
+    const map: Record<string, VehicleAttendanceWithVehicle> = {};
+    projectAttendanceRecords.forEach((record) => {
       const recordDate = parseISO(record.attendanceDate);
       if (isSameMonth(recordDate, selectedMonth)) {
         map[record.attendanceDate] = record;
       }
     });
     return map;
-  }, [attendanceRecords, selectedMonth]);
+  }, [projectAttendanceRecords, selectedMonth]);
 
   const defaultDayStates = useMemo(() => {
     const map: Record<string, DaySelectionState> = {};
     days.forEach((d) => {
       const dateStr = format(d, "yyyy-MM-dd");
       const existingRecord = attendanceByDate[dateStr];
+      const crossProjectRecord = crossProjectAttendanceByDate[dateStr];
+      const isLocked = !!crossProjectRecord;
       map[dateStr] = {
         selected: !!existingRecord && !isAfter(d, today),
         status: existingRecord ? existingRecord.status : "present",
         note: existingRecord?.notes ?? "",
+        locked: isLocked,
+        lockedProjectName: crossProjectRecord?.project?.name || crossProjectRecord?.projectId || undefined,
+        lockedStatus: crossProjectRecord?.status,
       };
     });
     return map;
-  }, [attendanceByDate, days, today]);
+  }, [attendanceByDate, crossProjectAttendanceByDate, days, today]);
 
   const dayStates = useMemo(() => {
     const map: Record<string, DaySelectionState> = {};
@@ -99,11 +133,16 @@ export default function Attendance() {
   const nonFutureDays = useMemo(() => days.filter((d) => !isAfter(d, today)), [days, today]);
 
   const { selectableCount, selectedCount } = useMemo(() => {
-    const selectable = nonFutureDays.length;
+    let selectable = 0;
     let selectedTotal = 0;
     nonFutureDays.forEach((d) => {
       const dateStr = format(d, "yyyy-MM-dd");
-      if (dayStates[dateStr]?.selected) {
+      const state = dayStates[dateStr];
+      if (state?.locked) {
+        return;
+      }
+      selectable += 1;
+      if (state?.selected) {
         selectedTotal += 1;
       }
     });
@@ -188,6 +227,9 @@ export default function Attendance() {
     setSelectedDays((prev) => {
       const current = prev[dateStr];
       const merged = current ? { ...defaultState, ...current } : defaultState;
+      if (merged.locked) {
+        return prev;
+      }
       const nextSelected = !merged.selected;
       return {
         ...prev,
@@ -206,6 +248,9 @@ export default function Attendance() {
     setSelectedDays((prev) => {
       const current = prev[dateStr];
       const merged = current ? { ...defaultState, ...current } : defaultState;
+      if (merged.locked) {
+        return prev;
+      }
       return {
         ...prev,
         [dateStr]: {
@@ -224,6 +269,9 @@ export default function Attendance() {
     setSelectedDays((prev) => {
       const current = prev[dateStr];
       const merged = current ? { ...defaultState, ...current } : defaultState;
+      if (merged.locked) {
+        return prev;
+      }
       return {
         ...prev,
         [dateStr]: {
@@ -246,6 +294,10 @@ export default function Attendance() {
         if (!defaultState) return;
         const current = prev[dateStr];
         const merged = current ? { ...defaultState, ...current } : defaultState;
+        if (merged.locked) {
+          next[dateStr] = merged;
+          return;
+        }
         next[dateStr] = {
           ...merged,
           selected: checked,
@@ -266,6 +318,10 @@ export default function Attendance() {
         if (!defaultState) return;
         const current = prev[dateStr];
         const merged = current ? { ...defaultState, ...current } : defaultState;
+        if (merged.locked) {
+          next[dateStr] = merged;
+          return;
+        }
         next[dateStr] = {
           ...merged,
           status,
@@ -374,7 +430,7 @@ export default function Attendance() {
     }
 
     const payloads = Object.entries(selectedDays)
-      .filter(([, v]) => v.selected)
+      .filter(([, v]) => v.selected && !v.locked)
       .map(([date, v]) => ({ vehicleId: selectedAssignment.vehicle.id, projectId: selectedAssignment.projectId || null, attendanceDate: date, status: v.status || 'present', notes: v.note ? v.note : undefined }));
 
     if (payloads.length === 0) return toast({ title: "No days selected", description: "Please select at least one day to mark attendance.", variant: "destructive" });
@@ -462,7 +518,7 @@ export default function Attendance() {
                     <Checkbox
                       checked={allSelected ? true : partiallySelected ? "indeterminate" : false}
                       onCheckedChange={(value) => handleSelectAll(value === true)}
-                      disabled={nonFutureDays.length === 0}
+                      disabled={nonFutureDays.length === 0 || selectableCount === 0}
                       id="select-all-days"
                     />
                     <label htmlFor="select-all-days" className="text-sm font-medium">
@@ -482,7 +538,12 @@ export default function Attendance() {
                         <UiSelectItem value="maintenance">Maintenance</UiSelectItem>
                       </UiSelectContent>
                     </UiSelect>
-                    <Button variant="outline" size="sm" onClick={handleApplyStatusToAll} disabled={nonFutureDays.length === 0}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleApplyStatusToAll}
+                      disabled={nonFutureDays.length === 0 || selectableCount === 0}
+                    >
                       Apply to all days
                     </Button>
                   </div>
@@ -567,6 +628,7 @@ export default function Attendance() {
                     const state = dayStates[dateStr] ?? defaultState;
                     const isFutureDate = isAfter(d, today);
                     const isCurrentOrPastDate = !isFutureDate;
+                    const isLocked = state?.locked;
                     const statusBadgeClass = (() => {
                       switch (existingRecord?.status) {
                         case "present":
@@ -594,6 +656,13 @@ export default function Attendance() {
                                 <div className="text-xs text-muted-foreground">{existingRecord.notes}</div>
                               ) : null}
                             </div>
+                          ) : isLocked && isCurrentOrPastDate ? (
+                            <div className="space-y-1">
+                              <Badge className="bg-slate-100 text-slate-800 border-slate-200">Reserved for another project</Badge>
+                              <div className="text-xs text-muted-foreground">
+                                {state.lockedProjectName ? `Attendance already marked for ${state.lockedProjectName}.` : "Attendance already marked for another project."}
+                              </div>
+                            </div>
                           ) : (
                             <span className="text-xs text-muted-foreground">
                               {isCurrentOrPastDate ? "No record" : "Upcoming"}
@@ -604,9 +673,9 @@ export default function Attendance() {
                           <UiSelect
                             value={state.status}
                             onValueChange={(v) => handleStatusChange(dateStr, v)}
-                            disabled={isFutureDate}
+                            disabled={isFutureDate || isLocked}
                           >
-                            <UiSelectTrigger className="w-36" disabled={isFutureDate}>
+                            <UiSelectTrigger className="w-36" disabled={isFutureDate || isLocked}>
                               <UiSelectValue />
                             </UiSelectTrigger>
                             <UiSelectContent>
@@ -618,7 +687,7 @@ export default function Attendance() {
                           </UiSelect>
                         </TableCell>
                         <TableCell>
-                          {state.status !== "present" && !isFutureDate && (
+                          {state.status !== "present" && !isFutureDate && !isLocked && (
                             <Input
                               value={state.note || ""}
                               onChange={(e) => handleNoteChange(dateStr, e.target.value)}
@@ -630,11 +699,11 @@ export default function Attendance() {
                           <Checkbox
                             checked={!!state.selected}
                             onCheckedChange={() => {
-                              if (!isFutureDate) {
+                              if (!isFutureDate && !isLocked) {
                                 handleToggleDay(dateStr);
                               }
                             }}
-                            disabled={isFutureDate}
+                            disabled={isFutureDate || isLocked}
                           />
                         </TableCell>
                       </TableRow>

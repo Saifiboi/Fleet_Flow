@@ -68,14 +68,17 @@ export const useMaintenanceRecordsByVehicle = (vehicleId: string) => useQuery<Ma
   queryKey: ["/api/maintenance/vehicle", vehicleId],
 });
 
-export const useVehicleAttendance = (params: { vehicleId?: string }) =>
+export const useVehicleAttendance = (params: { vehicleId?: string; projectId?: string | null }) =>
   useQuery<VehicleAttendanceWithVehicle[]>({
-    queryKey: ["/api/vehicle-attendance", params?.vehicleId ?? "all"],
+    queryKey: ["/api/vehicle-attendance", params?.vehicleId ?? "all", params?.projectId ?? "all"],
     enabled: !!params.vehicleId,
     queryFn: async () => {
       const searchParams = new URLSearchParams();
       if (params.vehicleId) {
         searchParams.set("vehicleId", params.vehicleId);
+      }
+      if (params.projectId) {
+        searchParams.set("projectId", params.projectId);
       }
       const query = searchParams.toString();
       const res = await apiRequest("GET", query ? `/api/vehicle-attendance?${query}` : "/api/vehicle-attendance");
