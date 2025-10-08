@@ -381,6 +381,15 @@ export type VehicleAttendanceWithVehicle = VehicleAttendance & {
   project?: Project | null;
 };
 
+export type VehicleAttendanceSummary = {
+  projectId: string | null;
+  projectName: string | null;
+  totalDays: number;
+  statusCounts: Record<string, number>;
+  firstAttendanceDate: string | null;
+  lastAttendanceDate: string | null;
+};
+
 // Dashboard stats type
 export type DashboardStats = {
   totalVehicles: number;

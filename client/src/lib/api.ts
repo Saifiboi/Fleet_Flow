@@ -12,7 +12,8 @@ import type {
   MaintenanceRecord,
   MaintenanceRecordWithVehicle,
   DashboardStats,
-  VehicleAttendanceWithVehicle
+  VehicleAttendanceWithVehicle,
+  VehicleAttendanceSummary
 } from "@shared/schema";
 
 // Typed query hooks to fix TypeScript issues
@@ -83,5 +84,43 @@ export const useVehicleAttendance = (params: { vehicleId?: string; projectId?: s
       const query = searchParams.toString();
       const res = await apiRequest("GET", query ? `/api/vehicle-attendance?${query}` : "/api/vehicle-attendance");
       return (await res.json()) as VehicleAttendanceWithVehicle[];
+    },
+  });
+
+export const useVehicleAttendanceSummary = (params: {
+  vehicleId?: string;
+  projectId?: string | null;
+  startDate?: string;
+  endDate?: string;
+}) =>
+  useQuery<VehicleAttendanceSummary[]>({
+    queryKey: [
+      "/api/vehicle-attendance/summary",
+      params?.vehicleId ?? "none",
+      params?.projectId === undefined ? "all" : params?.projectId ?? "null",
+      params?.startDate ?? "none",
+      params?.endDate ?? "none",
+    ],
+    enabled: !!params.vehicleId,
+    queryFn: async () => {
+      const searchParams = new URLSearchParams();
+      if (params.vehicleId) {
+        searchParams.set("vehicleId", params.vehicleId);
+      }
+      if (params.projectId !== undefined) {
+        searchParams.set("projectId", params.projectId === null ? "null" : params.projectId);
+      }
+      if (params.startDate) {
+        searchParams.set("startDate", params.startDate);
+      }
+      if (params.endDate) {
+        searchParams.set("endDate", params.endDate);
+      }
+      const query = searchParams.toString();
+      const res = await apiRequest(
+        "GET",
+        query ? `/api/vehicle-attendance/summary?${query}` : "/api/vehicle-attendance/summary"
+      );
+      return (await res.json()) as VehicleAttendanceSummary[];
     },
   });

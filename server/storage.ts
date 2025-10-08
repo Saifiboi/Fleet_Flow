@@ -28,12 +28,13 @@ import {
   type InsertVehicleAttendance,
   type DeleteVehicleAttendance,
   type VehicleAttendanceWithVehicle,
+  type VehicleAttendanceSummary,
   type AssignmentWithDetails,
   type PaymentWithDetails,
   type MaintenanceRecordWithVehicle,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, sql, isNull } from "drizzle-orm";
+import { eq, desc, and, sql, isNull, gte, lte } from "drizzle-orm";
 
 // Helper function to retry database operations on connection failures
 async function withRetry<T>(operation: () => Promise<T>, maxRetries: number = 3): Promise<T> {
@@ -125,6 +126,12 @@ export interface IStorage {
   deleteOwnershipHistoryRecord(id: string): Promise<void>;
   
   // Vehicle attendance
+  getVehicleAttendanceSummary(filter: {
+    vehicleId: string;
+    projectId?: string | null;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<VehicleAttendanceSummary[]>;
   getVehicleAttendance(filter?: { vehicleId?: string; date?: string; projectId?: string }): Promise<VehicleAttendanceWithVehicle[]>;
   createVehicleAttendance(record: InsertVehicleAttendance): Promise<VehicleAttendance>;
   createVehicleAttendanceBatch(records: InsertVehicleAttendance[]): Promise<VehicleAttendance[]>;
@@ -731,6 +738,83 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Vehicle attendance methods
+  async getVehicleAttendanceSummary(filter: {
+    vehicleId: string;
+    projectId?: string | null;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<VehicleAttendanceSummary[]> {
+    if (!filter.vehicleId) {
+      return [];
+    }
+
+    const conditions = [eq(vehicleAttendance.vehicleId, filter.vehicleId)];
+
+    if (filter.projectId !== undefined) {
+      conditions.push(
+        filter.projectId === null
+          ? isNull(vehicleAttendance.projectId)
+          : eq(vehicleAttendance.projectId, filter.projectId)
+      );
+    }
+
+    if (filter.startDate) {
+      conditions.push(gte(vehicleAttendance.attendanceDate, filter.startDate));
+    }
+
+    if (filter.endDate) {
+      conditions.push(lte(vehicleAttendance.attendanceDate, filter.endDate));
+    }
+
+    const whereClause = conditions.length > 1 ? and(...conditions) : conditions[0];
+
+    const rows = await db
+      .select({
+        projectId: vehicleAttendance.projectId,
+        projectName: projects.name,
+        attendanceDate: vehicleAttendance.attendanceDate,
+        status: vehicleAttendance.status,
+      })
+      .from(vehicleAttendance)
+      .leftJoin(projects, eq(vehicleAttendance.projectId, projects.id))
+      .where(whereClause);
+
+    const summaryMap = new Map<string | null, VehicleAttendanceSummary>();
+
+    for (const row of rows) {
+      const key = row.projectId ?? null;
+      const existing = summaryMap.get(key);
+      const base: VehicleAttendanceSummary =
+        existing ?? {
+          projectId: row.projectId ?? null,
+          projectName: row.projectName ?? null,
+          totalDays: 0,
+          statusCounts: {},
+          firstAttendanceDate: null,
+          lastAttendanceDate: null,
+        };
+
+      base.totalDays += 1;
+      base.statusCounts[row.status] = (base.statusCounts[row.status] ?? 0) + 1;
+
+      if (!base.firstAttendanceDate || row.attendanceDate < base.firstAttendanceDate) {
+        base.firstAttendanceDate = row.attendanceDate;
+      }
+
+      if (!base.lastAttendanceDate || row.attendanceDate > base.lastAttendanceDate) {
+        base.lastAttendanceDate = row.attendanceDate;
+      }
+
+      summaryMap.set(key, base);
+    }
+
+    return Array.from(summaryMap.values()).sort((a, b) => {
+      const nameA = (a.projectName ?? "Unassigned").toLowerCase();
+      const nameB = (b.projectName ?? "Unassigned").toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+  }
+
   async getVehicleAttendance(filter?: { vehicleId?: string; date?: string; projectId?: string }): Promise<VehicleAttendanceWithVehicle[]> {
     const query = db.select().from(vehicleAttendance)
       .leftJoin(vehicles, eq(vehicleAttendance.vehicleId, vehicles.id))

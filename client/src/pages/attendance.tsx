@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { useAssignments, useVehicleAttendance } from "@/lib/api";
+import { useAssignments, useVehicleAttendance, useVehicleAttendanceSummary } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +45,8 @@ type DaySelectionState = {
   lockedStatus?: string;
 };
 
+const UNASSIGNED_SUMMARY_KEY = "unassigned";
+
 export default function Attendance() {
   const { data: assignments = [] } = useAssignments();
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
@@ -54,6 +56,9 @@ export default function Attendance() {
   const [bulkStatus, setBulkStatus] = useState<string>("present");
   const [rangeStart, setRangeStart] = useState<string | undefined>(undefined);
   const [rangeEnd, setRangeEnd] = useState<string | undefined>(undefined);
+  const [summaryProjectFilter, setSummaryProjectFilter] = useState<string>("all");
+  const [summaryStartDate, setSummaryStartDate] = useState<string>("");
+  const [summaryEndDate, setSummaryEndDate] = useState<string>("");
   const { toast } = useToast();
   const today = useMemo(() => startOfToday(), []);
   const maxMonth = useMemo(() => startOfMonth(today), [today]);
@@ -63,8 +68,10 @@ export default function Attendance() {
     [assignments, selectedAssignmentId]
   );
 
+  const selectedVehicleId = selectedAssignment?.vehicle.id ?? null;
+
   const { data: attendanceRecords = [], isLoading: attendanceLoading } = useVehicleAttendance({
-    vehicleId: selectedAssignment?.vehicle.id,
+    vehicleId: selectedVehicleId ?? undefined,
   });
 
   const projectAttendanceRecords = useMemo(() => {
@@ -99,6 +106,143 @@ export default function Attendance() {
     });
     return map;
   }, [projectAttendanceRecords, selectedMonth]);
+
+  const summaryProjectOptions = useMemo(() => {
+    if (!selectedVehicleId) {
+      return [] as Array<{ id: string | null; name: string | null }>;
+    }
+
+    const map = new Map<string | null, { id: string | null; name: string | null }>();
+
+    assignments.forEach((assignment: AssignmentWithDetails) => {
+      if (assignment.vehicle.id === selectedVehicleId) {
+        map.set(assignment.project.id, { id: assignment.project.id, name: assignment.project.name });
+      }
+    });
+
+    attendanceRecords.forEach((record) => {
+      const key = record.projectId ?? null;
+      if (!map.has(key)) {
+        map.set(key, { id: key, name: record.project?.name ?? "Unassigned" });
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => {
+      const nameA = (a.name ?? "Unassigned").toLowerCase();
+      const nameB = (b.name ?? "Unassigned").toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+  }, [assignments, attendanceRecords, selectedVehicleId]);
+
+  const summaryRangeError = useMemo(() => {
+    if (summaryStartDate && summaryEndDate && summaryStartDate > summaryEndDate) {
+      return "Start date must be on or before end date.";
+    }
+    return null;
+  }, [summaryStartDate, summaryEndDate]);
+
+  const summaryQueryParams = useMemo<{
+    vehicleId?: string;
+    projectId?: string | null;
+    startDate?: string;
+    endDate?: string;
+  }>(() => {
+    if (!selectedVehicleId || summaryRangeError) {
+      return { vehicleId: undefined };
+    }
+
+    const params: {
+      vehicleId?: string;
+      projectId?: string | null;
+      startDate?: string;
+      endDate?: string;
+    } = {
+      vehicleId: selectedVehicleId,
+    };
+
+    if (summaryProjectFilter === UNASSIGNED_SUMMARY_KEY) {
+      params.projectId = null;
+    } else if (summaryProjectFilter !== "all") {
+      params.projectId = summaryProjectFilter;
+    }
+
+    if (summaryStartDate) {
+      params.startDate = summaryStartDate;
+    }
+
+    if (summaryEndDate) {
+      params.endDate = summaryEndDate;
+    }
+
+    return params;
+  }, [selectedVehicleId, summaryProjectFilter, summaryStartDate, summaryEndDate, summaryRangeError]);
+
+  const { data: summaryData = [], isLoading: summaryLoading } = useVehicleAttendanceSummary(summaryQueryParams);
+
+  const summaryStatuses = useMemo(() => {
+    const counts = new Set<string>();
+    summaryData.forEach((item) => {
+      Object.keys(item.statusCounts).forEach((status) => counts.add(status));
+    });
+    const defaultOrder = ["present", "standby", "off", "maintenance"];
+    const ordered = Array.from(counts).sort((a, b) => {
+      const aIndex = defaultOrder.indexOf(a);
+      const bIndex = defaultOrder.indexOf(b);
+      if (aIndex === -1 && bIndex === -1) {
+        return a.localeCompare(b);
+      }
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      return aIndex - bIndex;
+    });
+    return ordered.length > 0 ? ordered : defaultOrder;
+  }, [summaryData]);
+
+  const summaryTotals = useMemo(() => {
+    const totals: { totalDays: number; statusCounts: Record<string, number> } = {
+      totalDays: 0,
+      statusCounts: {},
+    };
+
+    summaryData.forEach((item) => {
+      totals.totalDays += item.totalDays;
+      Object.entries(item.statusCounts).forEach(([status, count]) => {
+        totals.statusCounts[status] = (totals.statusCounts[status] ?? 0) + count;
+      });
+    });
+
+    return totals;
+  }, [summaryData]);
+
+  const summaryHasFilters = useMemo(
+    () => summaryProjectFilter !== "all" || !!summaryStartDate || !!summaryEndDate,
+    [summaryProjectFilter, summaryStartDate, summaryEndDate]
+  );
+
+  const handleResetSummaryFilters = useCallback(() => {
+    setSummaryProjectFilter("all");
+    setSummaryStartDate("");
+    setSummaryEndDate("");
+  }, []);
+
+  const formatSummaryRange = useCallback((first: string | null, last: string | null) => {
+    if (first && last) {
+      if (first === last) {
+        return format(parseISO(first), "MMM dd, yyyy");
+      }
+      return `${format(parseISO(first), "MMM dd, yyyy")} – ${format(parseISO(last), "MMM dd, yyyy")}`;
+    }
+
+    if (first) {
+      return format(parseISO(first), "MMM dd, yyyy");
+    }
+
+    if (last) {
+      return format(parseISO(last), "MMM dd, yyyy");
+    }
+
+    return "—";
+  }, []);
 
   const defaultDayStates = useMemo(() => {
     const map: Record<string, DaySelectionState> = {};
@@ -169,6 +313,12 @@ export default function Attendance() {
     // reset selected days when month or assignment changes
     setSelectedDays({});
   }, [selectedMonth, selectedAssignmentId]);
+
+  useEffect(() => {
+    setSummaryProjectFilter("all");
+    setSummaryStartDate("");
+    setSummaryEndDate("");
+  }, [selectedVehicleId]);
 
   useEffect(() => {
     if (nonFutureDays.length === 0) {
@@ -816,6 +966,137 @@ export default function Attendance() {
             </div>
           ) : (
             <div className="py-12 text-center text-muted-foreground">Please select an assigned vehicle to view the calendar</div>
+          )}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-1">
+            <CardTitle>Attendance Summary</CardTitle>
+            {selectedAssignment ? (
+              <p className="text-sm text-muted-foreground">
+                {selectedAssignment.vehicle.make} {selectedAssignment.vehicle.model} · {selectedAssignment.vehicle.licensePlate}
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">Select an assignment to view the attendance summary.</p>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {selectedAssignment ? (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-medium uppercase text-muted-foreground">Project</span>
+                    <Select value={summaryProjectFilter} onValueChange={setSummaryProjectFilter} disabled={!selectedVehicleId}>
+                      <SelectTrigger className="w-full sm:w-56">
+                        <SelectValue placeholder="All projects" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All projects</SelectItem>
+                        {summaryProjectOptions.map((option) => (
+                          <SelectItem
+                            key={option.id ?? UNASSIGNED_SUMMARY_KEY}
+                            value={option.id ?? UNASSIGNED_SUMMARY_KEY}
+                          >
+                            {option.name ?? "Unassigned"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-medium uppercase text-muted-foreground">Start date</span>
+                    <Input
+                      type="date"
+                      value={summaryStartDate}
+                      onChange={(event) => setSummaryStartDate(event.target.value)}
+                      max={format(today, "yyyy-MM-dd")}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-medium uppercase text-muted-foreground">End date</span>
+                    <Input
+                      type="date"
+                      value={summaryEndDate}
+                      onChange={(event) => setSummaryEndDate(event.target.value)}
+                      min={summaryStartDate || undefined}
+                      max={format(today, "yyyy-MM-dd")}
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleResetSummaryFilters}
+                    disabled={!summaryHasFilters}
+                  >
+                    Clear filters
+                  </Button>
+                </div>
+              </div>
+              {summaryRangeError ? (
+                <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                  {summaryRangeError}
+                </div>
+              ) : summaryLoading ? (
+                <div className="p-3 text-sm text-muted-foreground">Loading summary...</div>
+              ) : summaryData.length === 0 ? (
+                <div className="p-3 text-sm text-muted-foreground">No attendance records found for this selection.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Project</TableHead>
+                        <TableHead>Date coverage</TableHead>
+                        <TableHead className="text-right">Marked days</TableHead>
+                        {summaryStatuses.map((status) => (
+                          <TableHead key={status} className="text-right">
+                            {status.charAt(0).toUpperCase() + status.slice(1)}
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {summaryData.map((item, index) => {
+                        const rowKey = item.projectId ?? `${UNASSIGNED_SUMMARY_KEY}-${index}`;
+                        return (
+                          <TableRow key={rowKey}>
+                            <TableCell className="font-medium">{item.projectName ?? "Unassigned"}</TableCell>
+                            <TableCell>{formatSummaryRange(item.firstAttendanceDate, item.lastAttendanceDate)}</TableCell>
+                            <TableCell className="text-right font-medium">{item.totalDays}</TableCell>
+                            {summaryStatuses.map((status) => (
+                              <TableCell key={`${rowKey}-${status}`} className="text-right">
+                                {item.statusCounts[status] ?? 0}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                    <TableFooter>
+                      <TableRow>
+                        <TableCell className="font-semibold">Total</TableCell>
+                        <TableCell>—</TableCell>
+                        <TableCell className="text-right font-semibold">{summaryTotals.totalDays}</TableCell>
+                        {summaryStatuses.map((status) => (
+                          <TableCell key={`total-${status}`} className="text-right font-semibold">
+                            {summaryTotals.statusCounts[status] ?? 0}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    </TableFooter>
+                  </Table>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="py-12 text-center text-muted-foreground">
+              Select an assignment to see a project summary for the vehicle.
+            </div>
           )}
         </CardContent>
       </Card>
