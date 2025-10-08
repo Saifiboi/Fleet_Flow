@@ -33,7 +33,7 @@ import {
   type MaintenanceRecordWithVehicle,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, isNull } from "drizzle-orm";
 
 // Helper function to retry database operations on connection failures
 async function withRetry<T>(operation: () => Promise<T>, maxRetries: number = 3): Promise<T> {
@@ -776,7 +776,7 @@ export class DatabaseStorage implements IStorage {
         // Check if a record already exists for this vehicle & date
         const projectCondition = r.projectId
           ? eq(vehicleAttendance.projectId, r.projectId)
-          : sql`${vehicleAttendance.projectId} IS NULL`;
+          : isNull(vehicleAttendance.projectId);
 
         const [existing] = await tx
           .select()
@@ -842,7 +842,7 @@ export class DatabaseStorage implements IStorage {
       for (const r of records) {
         const projectCondition = r.projectId
           ? eq(vehicleAttendance.projectId, r.projectId)
-          : sql`${vehicleAttendance.projectId} IS NULL`;
+          : isNull(vehicleAttendance.projectId);
 
         const rows = await tx
           .delete(vehicleAttendance)
