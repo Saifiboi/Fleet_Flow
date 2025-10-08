@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useAssignments, useVehicleAttendance } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -208,6 +208,22 @@ export default function Attendance() {
     });
   }, [maxMonth]);
 
+  const parseJsonResponse = useCallback(
+    async <T,>(res: Response, fallbackErrorMessage: string, emptyBodyValue: T) => {
+      const text = await res.text();
+      if (!text) {
+        return emptyBodyValue;
+      }
+
+      try {
+        return JSON.parse(text) as T;
+      } catch (err) {
+        throw new Error(text || fallbackErrorMessage);
+      }
+    },
+    []
+  );
+
   const saveMutation = useMutation({
     mutationFn: async (
       payloads: Array<{
@@ -220,15 +236,7 @@ export default function Attendance() {
     ) => {
       // submit payloads in a single batch request
       const res = await apiRequest("POST", "/api/vehicle-attendance/batch", payloads);
-      // Some servers may return non-JSON (HTML) on error; try JSON first, fall back to text
-      try {
-        const json = await res.json();
-        return json as any[];
-      } catch (err) {
-        const text = await res.text();
-        // throw a clearer error message that the UI can show
-        throw new Error(text || 'Server returned non-JSON response');
-      }
+      return parseJsonResponse<any[]>(res, "Server returned non-JSON response", []);
     },
     onSuccess: (created: any[]) => {
       queryClient.invalidateQueries({ queryKey: ["/api/vehicle-attendance"] });
@@ -244,13 +252,7 @@ export default function Attendance() {
   const deleteMutation = useMutation({
     mutationFn: async (payloads: Array<{ vehicleId: string; projectId?: string | null; attendanceDate: string }>) => {
       const res = await apiRequest("POST", "/api/vehicle-attendance/delete", payloads);
-      try {
-        const json = await res.json();
-        return json as any[];
-      } catch (err) {
-        const text = await res.text();
-        throw new Error(text || "Server returned non-JSON response");
-      }
+      return parseJsonResponse<any[]>(res, "Server returned non-JSON response", []);
     },
     onSuccess: (deleted: any[]) => {
       queryClient.invalidateQueries({ queryKey: ["/api/vehicle-attendance"] });
