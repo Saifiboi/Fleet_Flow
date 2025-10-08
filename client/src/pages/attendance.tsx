@@ -151,6 +151,19 @@ export default function Attendance() {
 
   const allSelected = selectableCount > 0 && selectedCount === selectableCount;
   const partiallySelected = selectedCount > 0 && selectedCount < selectableCount;
+  const isViewingCurrentMonth = useMemo(() => isSameMonth(selectedMonth, maxMonth), [selectedMonth, maxMonth]);
+
+  const deletableSelectedCount = useMemo(() => {
+    let count = 0;
+    days.forEach((d) => {
+      const dateStr = format(d, "yyyy-MM-dd");
+      const state = dayStates[dateStr];
+      if (state?.selected && !state.locked && attendanceByDate[dateStr]) {
+        count += 1;
+      }
+    });
+    return count;
+  }, [attendanceByDate, dayStates, days]);
 
   useEffect(() => {
     // reset selected days when month or assignment changes
@@ -195,8 +208,16 @@ export default function Attendance() {
     });
   }, [maxMonth]);
 
-  const mutation = useMutation({
-    mutationFn: async (payloads: Array<{ vehicleId: string; projectId?: string | null; attendanceDate: string; status: string }>) => {
+  const saveMutation = useMutation({
+    mutationFn: async (
+      payloads: Array<{
+        vehicleId: string;
+        projectId?: string | null;
+        attendanceDate: string;
+        status: string;
+        notes?: string;
+      }>
+    ) => {
       // submit payloads in a single batch request
       const res = await apiRequest("POST", "/api/vehicle-attendance/batch", payloads);
       // Some servers may return non-JSON (HTML) on error; try JSON first, fall back to text
@@ -217,6 +238,28 @@ export default function Attendance() {
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message || "Failed to save attendance", variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (payloads: Array<{ vehicleId: string; projectId?: string | null; attendanceDate: string }>) => {
+      const res = await apiRequest("POST", "/api/vehicle-attendance/delete", payloads);
+      try {
+        const json = await res.json();
+        return json as any[];
+      } catch (err) {
+        const text = await res.text();
+        throw new Error(text || "Server returned non-JSON response");
+      }
+    },
+    onSuccess: (deleted: any[]) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicle-attendance"] });
+      const count = Array.isArray(deleted) ? deleted.length : 0;
+      toast({ title: "Attendance deleted", description: `${count} records removed.` });
+      setSelectedDays({});
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to delete attendance", variant: "destructive" });
     },
   });
 
@@ -435,7 +478,48 @@ export default function Attendance() {
 
     if (payloads.length === 0) return toast({ title: "No days selected", description: "Please select at least one day to mark attendance.", variant: "destructive" });
 
-    mutation.mutate(payloads);
+    saveMutation.mutate(payloads);
+  };
+
+  const handleDeleteSelected = () => {
+    if (!selectedAssignmentId)
+      return toast({
+        title: "Select vehicle",
+        description: "Please select an assigned vehicle first.",
+        variant: "destructive",
+      });
+    if (!selectedAssignment) {
+      return toast({ title: "Invalid assignment", description: "Selected assignment not found.", variant: "destructive" });
+    }
+    if (!isViewingCurrentMonth) {
+      return toast({
+        title: "Current month only",
+        description: "Attendance can only be deleted for the current month.",
+        variant: "destructive",
+      });
+    }
+
+    const payloads = days
+      .map((d) => format(d, "yyyy-MM-dd"))
+      .filter((dateStr) => {
+        const state = dayStates[dateStr];
+        return state?.selected && !state.locked && !!attendanceByDate[dateStr];
+      })
+      .map((dateStr) => ({
+        vehicleId: selectedAssignment.vehicle.id,
+        projectId: selectedAssignment.projectId ?? null,
+        attendanceDate: dateStr,
+      }));
+
+    if (payloads.length === 0) {
+      return toast({
+        title: "No attendance selected",
+        description: "Select marked days from this month to delete.",
+        variant: "destructive",
+      });
+    }
+
+    deleteMutation.mutate(payloads);
   };
 
   return (
@@ -445,13 +529,28 @@ export default function Attendance() {
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle>Vehicle Attendance</CardTitle>
-              <Button
-                className="w-full sm:w-auto"
-                onClick={handleSubmit}
-                disabled={mutation.isPending || !selectedAssignment}
-              >
-                Save Attendance
-              </Button>
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                <Button
+                  variant="destructive"
+                  className="w-full sm:w-auto"
+                  onClick={handleDeleteSelected}
+                  disabled={
+                    deleteMutation.isPending ||
+                    !selectedAssignment ||
+                    deletableSelectedCount === 0 ||
+                    !isViewingCurrentMonth
+                  }
+                >
+                  Delete Selected
+                </Button>
+                <Button
+                  className="w-full sm:w-auto"
+                  onClick={handleSubmit}
+                  disabled={saveMutation.isPending || !selectedAssignment}
+                >
+                  Save Attendance
+                </Button>
+              </div>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="w-full sm:w-80">

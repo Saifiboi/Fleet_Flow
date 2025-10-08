@@ -26,6 +26,7 @@ import {
   type VehicleWithOwner,
   type VehicleAttendance,
   type InsertVehicleAttendance,
+  type DeleteVehicleAttendance,
   type VehicleAttendanceWithVehicle,
   type AssignmentWithDetails,
   type PaymentWithDetails,
@@ -127,6 +128,7 @@ export interface IStorage {
   getVehicleAttendance(filter?: { vehicleId?: string; date?: string; projectId?: string }): Promise<VehicleAttendanceWithVehicle[]>;
   createVehicleAttendance(record: InsertVehicleAttendance): Promise<VehicleAttendance>;
   createVehicleAttendanceBatch(records: InsertVehicleAttendance[]): Promise<VehicleAttendance[]>;
+  deleteVehicleAttendanceBatch(records: DeleteVehicleAttendance[]): Promise<VehicleAttendance[]>;
   
   // New method for transferring vehicle ownership with proper tracking
   transferVehicleOwnership(vehicleId: string, newOwnerId: string, transferReason?: string, transferPrice?: string, notes?: string): Promise<void>;
@@ -829,6 +831,34 @@ export class DatabaseStorage implements IStorage {
         .where(sql`${vehicleAttendance.vehicleId} IN (${sql.join(vehicleIds.map(v => sql`${v}`), sql`,`)}) AND ${vehicleAttendance.attendanceDate} BETWEEN ${minDate} AND ${maxDate}`);
 
       return rows as VehicleAttendance[];
+    });
+  }
+
+  async deleteVehicleAttendanceBatch(records: DeleteVehicleAttendance[]): Promise<VehicleAttendance[]> {
+    if (records.length === 0) return [];
+
+    return await db.transaction(async (tx) => {
+      const deleted: VehicleAttendance[] = [];
+      for (const r of records) {
+        const projectCondition = r.projectId
+          ? eq(vehicleAttendance.projectId, r.projectId)
+          : sql`${vehicleAttendance.projectId} IS NULL`;
+
+        const rows = await tx
+          .delete(vehicleAttendance)
+          .where(
+            and(
+              eq(vehicleAttendance.vehicleId, r.vehicleId),
+              eq(vehicleAttendance.attendanceDate, r.attendanceDate),
+              projectCondition
+            )
+          )
+          .returning();
+
+        deleted.push(...(rows as VehicleAttendance[]));
+      }
+
+      return deleted;
     });
   }
 }
