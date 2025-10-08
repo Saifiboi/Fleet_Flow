@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, Table
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select as UiSelect,
   SelectTrigger as UiSelectTrigger,
@@ -51,6 +52,7 @@ export default function Attendance() {
   const { data: assignments = [] } = useAssignments();
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<Date>(startOfMonth(new Date()));
+  const [activeTab, setActiveTab] = useState<string>("attendance");
   const days = useMemo(() => getDaysForMonth(selectedMonth), [selectedMonth]);
   const [selectedDays, setSelectedDays] = useState<Record<string, DaySelectionState>>({});
   const [bulkStatus, setBulkStatus] = useState<string>("present");
@@ -676,7 +678,13 @@ export default function Attendance() {
 
   return (
     <div className="space-y-6">
-      <Card>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-2 sm:w-auto">
+          <TabsTrigger value="attendance">Attendance</TabsTrigger>
+          <TabsTrigger value="summary">Summary</TabsTrigger>
+        </TabsList>
+        <TabsContent value="attendance" className="space-y-6">
+          <Card>
         <CardHeader>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -968,138 +976,142 @@ export default function Attendance() {
             <div className="py-12 text-center text-muted-foreground">Please select an assigned vehicle to view the calendar</div>
           )}
         </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-1">
-            <CardTitle>Attendance Summary</CardTitle>
-            {selectedAssignment ? (
-              <p className="text-sm text-muted-foreground">
-                {selectedAssignment.vehicle.make} {selectedAssignment.vehicle.model} · {selectedAssignment.vehicle.licensePlate}
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground">Select an assignment to view the attendance summary.</p>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {selectedAssignment ? (
-            <div className="space-y-4">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs font-medium uppercase text-muted-foreground">Project</span>
-                    <Select value={summaryProjectFilter} onValueChange={setSummaryProjectFilter} disabled={!selectedVehicleId}>
-                      <SelectTrigger className="w-full sm:w-56">
-                        <SelectValue placeholder="All projects" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All projects</SelectItem>
-                        {summaryProjectOptions.map((option) => (
-                          <SelectItem
-                            key={option.id ?? UNASSIGNED_SUMMARY_KEY}
-                            value={option.id ?? UNASSIGNED_SUMMARY_KEY}
-                          >
-                            {option.name ?? "Unassigned"}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs font-medium uppercase text-muted-foreground">Start date</span>
-                    <Input
-                      type="date"
-                      value={summaryStartDate}
-                      onChange={(event) => setSummaryStartDate(event.target.value)}
-                      max={format(today, "yyyy-MM-dd")}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs font-medium uppercase text-muted-foreground">End date</span>
-                    <Input
-                      type="date"
-                      value={summaryEndDate}
-                      onChange={(event) => setSummaryEndDate(event.target.value)}
-                      min={summaryStartDate || undefined}
-                      max={format(today, "yyyy-MM-dd")}
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleResetSummaryFilters}
-                    disabled={!summaryHasFilters}
-                  >
-                    Clear filters
-                  </Button>
-                </div>
+          </Card>
+        </TabsContent>
+        <TabsContent value="summary" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col gap-1">
+                <CardTitle>Attendance Summary</CardTitle>
+                {selectedAssignment ? (
+                  <p className="text-sm text-muted-foreground">
+                    {selectedAssignment.vehicle.make} {selectedAssignment.vehicle.model} · {selectedAssignment.vehicle.licensePlate}
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Select an assignment to view the attendance summary.</p>
+                )}
               </div>
-              {summaryRangeError ? (
-                <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-                  {summaryRangeError}
-                </div>
-              ) : summaryLoading ? (
-                <div className="p-3 text-sm text-muted-foreground">Loading summary...</div>
-              ) : summaryData.length === 0 ? (
-                <div className="p-3 text-sm text-muted-foreground">No attendance records found for this selection.</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Project</TableHead>
-                        <TableHead>Date coverage</TableHead>
-                        <TableHead className="text-right">Marked days</TableHead>
-                        {summaryStatuses.map((status) => (
-                          <TableHead key={status} className="text-right">
-                            {status.charAt(0).toUpperCase() + status.slice(1)}
-                          </TableHead>
-                        ))}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {summaryData.map((item, index) => {
-                        const rowKey = item.projectId ?? `${UNASSIGNED_SUMMARY_KEY}-${index}`;
-                        return (
-                          <TableRow key={rowKey}>
-                            <TableCell className="font-medium">{item.projectName ?? "Unassigned"}</TableCell>
-                            <TableCell>{formatSummaryRange(item.firstAttendanceDate, item.lastAttendanceDate)}</TableCell>
-                            <TableCell className="text-right font-medium">{item.totalDays}</TableCell>
+            </CardHeader>
+            <CardContent>
+              {selectedAssignment ? (
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-xs font-medium uppercase text-muted-foreground">Project</span>
+                        <Select value={summaryProjectFilter} onValueChange={setSummaryProjectFilter} disabled={!selectedVehicleId}>
+                          <SelectTrigger className="w-full sm:w-56">
+                            <SelectValue placeholder="All projects" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All projects</SelectItem>
+                            {summaryProjectOptions.map((option) => (
+                              <SelectItem
+                                key={option.id ?? UNASSIGNED_SUMMARY_KEY}
+                                value={option.id ?? UNASSIGNED_SUMMARY_KEY}
+                              >
+                                {option.name ?? "Unassigned"}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-xs font-medium uppercase text-muted-foreground">Start date</span>
+                        <Input
+                          type="date"
+                          value={summaryStartDate}
+                          onChange={(event) => setSummaryStartDate(event.target.value)}
+                          max={format(today, "yyyy-MM-dd")}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-xs font-medium uppercase text-muted-foreground">End date</span>
+                        <Input
+                          type="date"
+                          value={summaryEndDate}
+                          onChange={(event) => setSummaryEndDate(event.target.value)}
+                          min={summaryStartDate || undefined}
+                          max={format(today, "yyyy-MM-dd")}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleResetSummaryFilters}
+                        disabled={!summaryHasFilters}
+                      >
+                        Clear filters
+                      </Button>
+                    </div>
+                  </div>
+                  {summaryRangeError ? (
+                    <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                      {summaryRangeError}
+                    </div>
+                  ) : summaryLoading ? (
+                    <div className="p-3 text-sm text-muted-foreground">Loading summary...</div>
+                  ) : summaryData.length === 0 ? (
+                    <div className="p-3 text-sm text-muted-foreground">No attendance records found for this selection.</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Project</TableHead>
+                            <TableHead>Date coverage</TableHead>
+                            <TableHead className="text-right">Marked days</TableHead>
                             {summaryStatuses.map((status) => (
-                              <TableCell key={`${rowKey}-${status}`} className="text-right">
-                                {item.statusCounts[status] ?? 0}
+                              <TableHead key={status} className="text-right">
+                                {status.charAt(0).toUpperCase() + status.slice(1)}
+                              </TableHead>
+                            ))}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {summaryData.map((item, index) => {
+                            const rowKey = item.projectId ?? `${UNASSIGNED_SUMMARY_KEY}-${index}`;
+                            return (
+                              <TableRow key={rowKey}>
+                                <TableCell className="font-medium">{item.projectName ?? "Unassigned"}</TableCell>
+                                <TableCell>{formatSummaryRange(item.firstAttendanceDate, item.lastAttendanceDate)}</TableCell>
+                                <TableCell className="text-right font-medium">{item.totalDays}</TableCell>
+                                {summaryStatuses.map((status) => (
+                                  <TableCell key={`${rowKey}-${status}`} className="text-right">
+                                    {item.statusCounts[status] ?? 0}
+                                  </TableCell>
+                                ))}
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                        <TableFooter>
+                          <TableRow>
+                            <TableCell className="font-semibold">Total</TableCell>
+                            <TableCell>—</TableCell>
+                            <TableCell className="text-right font-semibold">{summaryTotals.totalDays}</TableCell>
+                            {summaryStatuses.map((status) => (
+                              <TableCell key={`total-${status}`} className="text-right font-semibold">
+                                {summaryTotals.statusCounts[status] ?? 0}
                               </TableCell>
                             ))}
                           </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                    <TableFooter>
-                      <TableRow>
-                        <TableCell className="font-semibold">Total</TableCell>
-                        <TableCell>—</TableCell>
-                        <TableCell className="text-right font-semibold">{summaryTotals.totalDays}</TableCell>
-                        {summaryStatuses.map((status) => (
-                          <TableCell key={`total-${status}`} className="text-right font-semibold">
-                            {summaryTotals.statusCounts[status] ?? 0}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    </TableFooter>
-                  </Table>
+                        </TableFooter>
+                      </Table>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="py-12 text-center text-muted-foreground">
+                  Select an assignment to see a project summary for the vehicle.
                 </div>
               )}
-            </div>
-          ) : (
-            <div className="py-12 text-center text-muted-foreground">
-              Select an assignment to see a project summary for the vehicle.
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
