@@ -10,7 +10,17 @@ import { Input } from "@/components/ui/input";
 import { Select as UiSelect, SelectTrigger as UiSelectTrigger, SelectContent as UiSelectContent, SelectItem as UiSelectItem, SelectValue as UiSelectValue } from "@/components/ui/select";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, parseISO, startOfToday, isBefore } from "date-fns";
+import {
+  format,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  isSameMonth,
+  parseISO,
+  startOfToday,
+  isBefore,
+  isAfter,
+} from "date-fns";
 import type { AssignmentWithDetails, VehicleAttendanceWithVehicle } from "@shared/schema";
 
 function getDaysForMonth(date = new Date()) {
@@ -19,12 +29,14 @@ function getDaysForMonth(date = new Date()) {
   return eachDayOfInterval({ start, end });
 }
 
+type DaySelectionState = { selected: boolean; status: string; note?: string };
+
 export default function Attendance() {
   const { data: assignments = [] } = useAssignments();
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
   const days = useMemo(() => getDaysForMonth(selectedMonth), [selectedMonth]);
-  const [selectedDays, setSelectedDays] = useState<Record<string, { selected: boolean; status: string; note?: string }>>({});
+  const [selectedDays, setSelectedDays] = useState<Record<string, DaySelectionState>>({});
   const { toast } = useToast();
   const today = useMemo(() => startOfToday(), []);
 
@@ -53,6 +65,18 @@ export default function Attendance() {
     setSelectedDays({});
   }, [selectedMonth, selectedAssignmentId]);
 
+  useEffect(() => {
+    if (!selectedAssignment?.startDate) return;
+
+    const assignmentStart = startOfMonth(parseISO(selectedAssignment.startDate));
+    setSelectedMonth((current) => {
+      if (isBefore(current, assignmentStart)) {
+        return assignmentStart;
+      }
+      return current;
+    });
+  }, [selectedAssignment]);
+
   const mutation = useMutation({
     mutationFn: async (payloads: Array<{ vehicleId: string; projectId?: string | null; attendanceDate: string; status: string }>) => {
       // submit payloads in a single batch request
@@ -78,23 +102,47 @@ export default function Attendance() {
     },
   });
 
-  const handleToggleDay = (dateStr: string, defaultStatus: string, defaultNote?: string) => {
-    setSelectedDays((s) => ({
-      ...s,
-      [dateStr]: {
-        selected: !s[dateStr]?.selected,
-        status: s[dateStr]?.status || defaultStatus,
-        note: s[dateStr]?.note ?? defaultNote,
-      },
-    }));
+  const handleToggleDay = (dateStr: string, defaultState: DaySelectionState) => {
+    setSelectedDays((prev) => {
+      const current = prev[dateStr];
+      const nextSelected = !(current?.selected ?? defaultState.selected);
+      return {
+        ...prev,
+        [dateStr]: {
+          selected: nextSelected,
+          status: current?.status ?? defaultState.status,
+          note: current?.note ?? defaultState.note,
+        },
+      };
+    });
   };
 
-  const handleStatusChange = (dateStr: string, status: string) => {
-    setSelectedDays((s) => ({ ...s, [dateStr]: { selected: s[dateStr]?.selected || false, status, note: s[dateStr]?.note } }));
+  const handleStatusChange = (dateStr: string, status: string, defaultState: DaySelectionState) => {
+    setSelectedDays((prev) => {
+      const current = prev[dateStr] ?? defaultState;
+      return {
+        ...prev,
+        [dateStr]: {
+          ...current,
+          selected: current.selected ?? defaultState.selected,
+          status,
+        },
+      };
+    });
   };
 
-  const handleNoteChange = (dateStr: string, note: string) => {
-    setSelectedDays((s) => ({ ...s, [dateStr]: { selected: s[dateStr]?.selected || false, status: s[dateStr]?.status || 'present', note } }));
+  const handleNoteChange = (dateStr: string, note: string, defaultState: DaySelectionState) => {
+    setSelectedDays((prev) => {
+      const current = prev[dateStr] ?? defaultState;
+      return {
+        ...prev,
+        [dateStr]: {
+          ...current,
+          selected: current.selected ?? defaultState.selected,
+          note,
+        },
+      };
+    });
   };
 
   const handleSubmit = () => {
@@ -116,9 +164,18 @@ export default function Attendance() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Vehicle Attendance</CardTitle>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-2 w-full">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle>Vehicle Attendance</CardTitle>
+              <Button
+                className="w-full sm:w-auto"
+                onClick={handleSubmit}
+                disabled={mutation.isPending || !selectedAssignment}
+              >
+                Save Attendance
+              </Button>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="w-full sm:w-80">
                 <Select value={selectedAssignmentId ?? "none"} onValueChange={(v) => setSelectedAssignmentId(v === "none" ? null : v)}>
                   <SelectTrigger className="w-full">
@@ -136,7 +193,27 @@ export default function Attendance() {
               </div>
 
               <div className="mt-3 sm:mt-0 flex items-center space-x-2">
-                <Button size="sm" onClick={() => setSelectedMonth(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 1, 1))}>Prev</Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (!selectedAssignment?.startDate) {
+                      setSelectedMonth(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 1, 1));
+                      return;
+                    }
+
+                    const minMonth = startOfMonth(parseISO(selectedAssignment.startDate));
+                    if (isAfter(selectedMonth, minMonth)) {
+                      setSelectedMonth(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 1, 1));
+                    }
+                  }}
+                  disabled={(() => {
+                    if (!selectedAssignment?.startDate) return false;
+                    const minMonth = startOfMonth(parseISO(selectedAssignment.startDate));
+                    return !isAfter(selectedMonth, minMonth);
+                  })()}
+                >
+                  Prev
+                </Button>
                 <div className="px-3 py-2 text-sm font-medium">{format(selectedMonth, "MMMM yyyy")}</div>
                 <Button size="sm" onClick={() => setSelectedMonth(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 1))}>Next</Button>
               </div>
@@ -154,6 +231,7 @@ export default function Attendance() {
                   <TableRow>
                     <TableHead>Date</TableHead>
                     <TableHead>Day</TableHead>
+                    <TableHead>Project</TableHead>
                     <TableHead>Previous Status</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Note</TableHead>
@@ -164,17 +242,20 @@ export default function Attendance() {
                   {days.map((d) => {
                     const dateStr = format(d, "yyyy-MM-dd");
                     const existingRecord = attendanceByDate[dateStr];
-                    const defaultState = {
-                      selected: false,
+                    const defaultState: DaySelectionState = {
+                      selected: !!existingRecord,
                       status: existingRecord ? existingRecord.status : 'present',
                       note: existingRecord?.notes ?? '',
                     };
-                    const state = selectedDays[dateStr] || defaultState;
+                    const state = selectedDays[dateStr]
+                      ? { ...defaultState, ...selectedDays[dateStr] }
+                      : defaultState;
                     const isPastDate = isBefore(d, today);
                     return (
                       <TableRow key={dateStr}>
                         <TableCell>{format(d, "MMM dd, yyyy")}</TableCell>
                         <TableCell>{format(d, "EEEE")}</TableCell>
+                        <TableCell>{selectedAssignment?.project?.name ?? '-'}</TableCell>
                         <TableCell>
                           {existingRecord && isPastDate ? (
                             <div className="space-y-1">
@@ -190,7 +271,7 @@ export default function Attendance() {
                           )}
                         </TableCell>
                         <TableCell>
-                          <UiSelect value={state.status} onValueChange={(v) => handleStatusChange(dateStr, v)}>
+                          <UiSelect value={state.status} onValueChange={(v) => handleStatusChange(dateStr, v, defaultState)}>
                             <UiSelectTrigger className="w-36">
                               <UiSelectValue />
                             </UiSelectTrigger>
@@ -204,11 +285,14 @@ export default function Attendance() {
                         </TableCell>
                         <TableCell>
                           {state.status !== 'present' && (
-                            <Input value={state.note || ''} onChange={(e) => handleNoteChange(dateStr, e.target.value)} placeholder="Note (optional)" />
+                            <Input value={state.note || ''} onChange={(e) => handleNoteChange(dateStr, e.target.value, defaultState)} placeholder="Note (optional)" />
                           )}
                         </TableCell>
                         <TableCell>
-                          <Checkbox checked={!!state.selected} onCheckedChange={() => handleToggleDay(dateStr, state.status, state.note)} />
+                          <Checkbox
+                            checked={!!state.selected}
+                            onCheckedChange={() => handleToggleDay(dateStr, defaultState)}
+                          />
                         </TableCell>
                       </TableRow>
                     );
@@ -219,22 +303,6 @@ export default function Attendance() {
           ) : (
             <div className="py-12 text-center text-muted-foreground">Please select an assigned vehicle to view the calendar</div>
           )}
-
-          {/* Desktop / tablet save button */}
-          <div className="mt-4 hidden sm:flex justify-end">
-            <Button onClick={handleSubmit} disabled={mutation.isPending}>
-              Save Attendance
-            </Button>
-          </div>
-
-          {/* Fixed mobile save button */}
-          <div className="sm:hidden fixed bottom-4 left-0 right-0 px-4">
-            <div className="max-w-3xl mx-auto">
-              <Button className="w-full" onClick={handleSubmit} disabled={mutation.isPending}>
-                Save Attendance
-              </Button>
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>
