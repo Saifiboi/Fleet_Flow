@@ -67,7 +67,13 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
   });
 
   const onSubmit = (data: InsertMaintenanceRecord) => {
-    maintenanceMutation.mutate(data);
+    const formattedData: InsertMaintenanceRecord = {
+      ...data,
+      nextServiceDate: data.nextServiceDate || null,
+      mileage: data.mileage ?? undefined,
+    };
+
+    maintenanceMutation.mutate(formattedData);
   };
 
   return (
@@ -116,6 +122,7 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
                     <SelectItem value="repair">Repair</SelectItem>
                     <SelectItem value="inspection">Inspection</SelectItem>
                     <SelectItem value="service">Service</SelectItem>
+                    <SelectItem value="driver_salary">Driver Salary</SelectItem>
                   </SelectContent>
                 </Select>
                 <FormMessage />

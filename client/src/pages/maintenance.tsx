@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { useMaintenanceRecords } from "@/lib/api";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useMaintenanceRecords, useVehicles } from "@/lib/api";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -20,12 +20,17 @@ export default function Maintenance() {
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [vehicleFilter, setVehicleFilter] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [editingRecord, setEditingRecord] = useState<MaintenanceRecordWithVehicle | null>(null);
   const [viewingRecord, setViewingRecord] = useState<MaintenanceRecordWithVehicle | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const { toast } = useToast();
 
   const { data: maintenanceRecords = [], isLoading } = useMaintenanceRecords();
+  const { data: vehicles = [] } = useVehicles();
+  const selectedVehicle = vehicles.find((vehicle) => vehicle.id === vehicleFilter);
 
   const deleteRecordMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -49,8 +54,17 @@ export default function Maintenance() {
     },
   });
 
-  const filteredRecords = maintenanceRecords?.filter((record: MaintenanceRecordWithVehicle) => {
-    const matchesSearch = 
+  const recordsByVehicleAndDate = maintenanceRecords.filter((record: MaintenanceRecordWithVehicle) => {
+    const matchesVehicle = !vehicleFilter || record.vehicleId === vehicleFilter;
+    const recordDate = new Date(record.serviceDate);
+    const matchesStartDate = !startDate || recordDate >= new Date(startDate);
+    const matchesEndDate = !endDate || recordDate <= new Date(endDate);
+
+    return matchesVehicle && matchesStartDate && matchesEndDate;
+  });
+
+  const filteredRecords = recordsByVehicleAndDate.filter((record: MaintenanceRecordWithVehicle) => {
+    const matchesSearch =
       record.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
       record.vehicle.make.toLowerCase().includes(searchTerm.toLowerCase()) ||
       record.vehicle.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -63,18 +77,46 @@ export default function Maintenance() {
     return matchesSearch && matchesType && matchesStatus;
   });
 
+  const summaryRecords: MaintenanceRecordWithVehicle[] = vehicleFilter ? recordsByVehicleAndDate : [];
+  const summaryTotalCost = summaryRecords.reduce((sum, record) => sum + Number(record.cost), 0);
+  const summaryAverageCost = summaryRecords.length ? summaryTotalCost / summaryRecords.length : 0;
+  const summaryHighestCostRecord = summaryRecords.reduce<MaintenanceRecordWithVehicle | null>((highest, record) => {
+    if (!highest || Number(record.cost) > Number(highest.cost)) {
+      return record;
+    }
+    return highest;
+  }, null);
+  const summaryLastServiceDate = summaryRecords.reduce<Date | null>((latest, record) => {
+    const serviceDate = new Date(record.serviceDate);
+    if (!latest || serviceDate > latest) {
+      return serviceDate;
+    }
+    return latest;
+  }, null);
+  const summaryNextServiceDate = summaryRecords
+    .map((record) => (record.nextServiceDate ? new Date(record.nextServiceDate) : null))
+    .filter((date): date is Date => !!date)
+    .sort((a, b) => a.getTime() - b.getTime())[0] || null;
+  const summaryDateRangeLabel = startDate || endDate
+    ? `${startDate ? new Date(startDate).toLocaleDateString() : "Start"} - ${
+        endDate ? new Date(endDate).toLocaleDateString() : "End"
+      }`
+    : "All time";
+
   const getTypeBadge = (type: string) => {
     const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
       scheduled: "default",
       repair: "destructive",
       inspection: "secondary",
       service: "outline",
+      driver_salary: "secondary",
     };
     const labels: Record<string, string> = {
       scheduled: "Scheduled",
       repair: "Repair",
       inspection: "Inspection",
       service: "Service",
+      driver_salary: "Driver Salary",
     };
     return <Badge variant={variants[type] || "outline"}>{labels[type] || type}</Badge>;
   };
@@ -217,7 +259,20 @@ export default function Maintenance() {
                 />
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 md:justify-end">
+              <select
+                value={vehicleFilter}
+                onChange={(e) => setVehicleFilter(e.target.value)}
+                className="px-3 py-2 border rounded-md text-sm min-w-[180px]"
+                data-testid="filter-vehicle"
+              >
+                <option value="">All Vehicles</option>
+                {vehicles.map((vehicle) => (
+                  <option key={vehicle.id} value={vehicle.id}>
+                    {vehicle.make} {vehicle.model} - {vehicle.licensePlate}
+                  </option>
+                ))}
+              </select>
               <select
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value)}
@@ -229,6 +284,7 @@ export default function Maintenance() {
                 <option value="repair">Repair</option>
                 <option value="inspection">Inspection</option>
                 <option value="service">Service</option>
+                <option value="driver_salary">Driver Salary</option>
               </select>
               <select
                 value={statusFilter}
@@ -242,8 +298,99 @@ export default function Maintenance() {
                 <option value="completed">Completed</option>
                 <option value="cancelled">Cancelled</option>
               </select>
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-auto"
+                data-testid="filter-start-date"
+              />
+              <Input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-auto"
+                data-testid="filter-end-date"
+              />
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setVehicleFilter("");
+                  setTypeFilter("all");
+                  setStatusFilter("all");
+                  setStartDate("");
+                  setEndDate("");
+                  setSearchTerm("");
+                }}
+                data-testid="reset-maintenance-filters"
+              >
+                Reset
+              </Button>
             </div>
           </div>
+
+          {vehicleFilter && (
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle>
+                  Maintenance Summary for {selectedVehicle ? `${selectedVehicle.make} ${selectedVehicle.model}` : "Selected Vehicle"}
+                </CardTitle>
+                <CardDescription className="flex flex-wrap gap-2 text-sm text-muted-foreground">
+                  {selectedVehicle?.licensePlate && (
+                    <span className="font-medium text-foreground">{selectedVehicle.licensePlate}</span>
+                  )}
+                  <span>{summaryDateRangeLabel}</span>
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {summaryRecords.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="border rounded-lg p-4">
+                      <p className="text-sm text-muted-foreground">Total Services</p>
+                      <p className="text-2xl font-semibold">{summaryRecords.length}</p>
+                    </div>
+                    <div className="border rounded-lg p-4">
+                      <p className="text-sm text-muted-foreground">Total Cost</p>
+                      <p className="text-2xl font-semibold">${summaryTotalCost.toLocaleString()}</p>
+                    </div>
+                    <div className="border rounded-lg p-4">
+                      <p className="text-sm text-muted-foreground">Average Cost</p>
+                      <p className="text-2xl font-semibold">${summaryAverageCost.toFixed(2)}</p>
+                    </div>
+                    <div className="border rounded-lg p-4">
+                      <p className="text-sm text-muted-foreground">Highest Cost Entry</p>
+                      <p className="text-lg font-semibold">
+                        {summaryHighestCostRecord
+                          ? `$${Number(summaryHighestCostRecord.cost).toLocaleString()}`
+                          : "N/A"}
+                      </p>
+                      {summaryHighestCostRecord && (
+                        <p className="text-sm text-muted-foreground truncate" title={summaryHighestCostRecord.description}>
+                          {summaryHighestCostRecord.description}
+                        </p>
+                      )}
+                    </div>
+                    <div className="border rounded-lg p-4">
+                      <p className="text-sm text-muted-foreground">Last Service Date</p>
+                      <p className="text-lg font-semibold">
+                        {summaryLastServiceDate ? summaryLastServiceDate.toLocaleDateString() : "N/A"}
+                      </p>
+                    </div>
+                    <div className="border rounded-lg p-4">
+                      <p className="text-sm text-muted-foreground">Upcoming Next Service</p>
+                      <p className="text-lg font-semibold">
+                        {summaryNextServiceDate ? summaryNextServiceDate.toLocaleDateString() : "Not scheduled"}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No maintenance records found for the selected vehicle and date range.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Table */}
           <Table>
