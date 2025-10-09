@@ -54,6 +54,19 @@ export default function Maintenance() {
     },
   });
 
+  const handleDeleteRecord = (record: MaintenanceRecordWithVehicle) => {
+    if (record.status === "completed") {
+      toast({
+        title: "Action not allowed",
+        description: "Completed maintenance records cannot be deleted.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    deleteRecordMutation.mutate(record.id);
+  };
+
   const recordsByVehicleAndDate = maintenanceRecords.filter((record: MaintenanceRecordWithVehicle) => {
     const matchesVehicle = !vehicleFilter || record.vehicleId === vehicleFilter;
     const recordDate = new Date(record.serviceDate);
@@ -393,90 +406,101 @@ export default function Maintenance() {
           )}
 
           {/* Table */}
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Vehicle</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Cost</TableHead>
-                <TableHead>Service Date</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredRecords && filteredRecords.length > 0 ? (
-                filteredRecords.map((record) => (
-                  <TableRow key={record.id} data-testid={`maintenance-row-${record.id}`}>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">
-                          {record.vehicle.make} {record.vehicle.model}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {record.vehicle.licensePlate}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>{getTypeBadge(record.type)}</TableCell>
-                    <TableCell>
-                      <div className="max-w-xs truncate" title={record.description}>
-                        {record.description}
-                      </div>
-                    </TableCell>
-                    <TableCell>${Number(record.cost).toLocaleString()}</TableCell>
-                    <TableCell>{new Date(record.serviceDate).toLocaleDateString()}</TableCell>
-                    <TableCell>{getStatusBadge(record.status)}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleView(record)}
-                          data-testid={`view-maintenance-${record.id}`}
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEdit(record)}
-                          data-testid={`edit-maintenance-${record.id}`}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <ConfirmDialog
-                          title="Delete maintenance record"
-                          description="Are you sure you want to delete this maintenance record?"
-                          onConfirm={() => deleteRecordMutation.mutate(record.id)}
-                          trigger={
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled={deleteRecordMutation.isPending}
-                              data-testid={`delete-maintenance-${record.id}`}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          }
-                        />
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8">
-                    <div className="flex flex-col items-center space-y-2">
-                      <Wrench className="w-8 h-8 text-muted-foreground" />
-                      <p className="text-muted-foreground">No maintenance records found</p>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+          <div className="rounded-md border">
+            <div className="overflow-x-auto">
+              <div className="max-h-[60vh] overflow-y-auto">
+                <Table className="min-w-full" data-testid="maintenance-records-table">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Vehicle</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Cost</TableHead>
+                      <TableHead>Service Date</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredRecords && filteredRecords.length > 0 ? (
+                      filteredRecords.map((record) => (
+                        <TableRow key={record.id} data-testid={`maintenance-row-${record.id}`}>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">
+                                {record.vehicle.make} {record.vehicle.model}
+                              </div>
+                              <div className="text-sm text-muted-foreground">
+                                {record.vehicle.licensePlate}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>{getTypeBadge(record.type)}</TableCell>
+                          <TableCell>
+                            <div className="max-w-xs truncate" title={record.description}>
+                              {record.description}
+                            </div>
+                          </TableCell>
+                          <TableCell>${Number(record.cost).toLocaleString()}</TableCell>
+                          <TableCell>{new Date(record.serviceDate).toLocaleDateString()}</TableCell>
+                          <TableCell>{getStatusBadge(record.status)}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleView(record)}
+                                data-testid={`view-maintenance-${record.id}`}
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleEdit(record)}
+                                data-testid={`edit-maintenance-${record.id}`}
+                              >
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              <ConfirmDialog
+                                title="Delete maintenance record"
+                                description="Are you sure you want to delete this maintenance record?"
+                                onConfirm={() => handleDeleteRecord(record)}
+                                trigger={
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={deleteRecordMutation.isPending || record.status === "completed"}
+                                    data-testid={`delete-maintenance-${record.id}`}
+                                    title={
+                                      record.status === "completed"
+                                        ? "Completed maintenance records cannot be deleted."
+                                        : undefined
+                                    }
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                }
+                              />
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-8">
+                          <div className="flex flex-col items-center space-y-2">
+                            <Wrench className="w-8 h-8 text-muted-foreground" />
+                            <p className="text-muted-foreground">No maintenance records found</p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          </div>
 
           {/* Summary */}
           {filteredRecords && filteredRecords.length > 0 && (
@@ -490,7 +514,7 @@ export default function Maintenance() {
       {/* Viewing Record Dialog */}
       {viewingRecord && (
         <Dialog open={!!viewingRecord} onOpenChange={() => setViewingRecord(null)}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Maintenance Record Details</DialogTitle>
             </DialogHeader>

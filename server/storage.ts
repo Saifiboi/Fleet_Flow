@@ -717,15 +717,65 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateMaintenanceRecord(id: string, insertRecord: Partial<InsertMaintenanceRecord>): Promise<MaintenanceRecord> {
+    const existing = await this.getMaintenanceRecord(id);
+
+    if (!existing) {
+      const error: any = new Error("Maintenance record not found");
+      error.status = 404;
+      throw error;
+    }
+
+    let updates: Partial<InsertMaintenanceRecord> = { ...insertRecord };
+
+    if (existing.status === "completed") {
+      const { description, ...rest } = updates;
+      const attemptedUpdates = Object.entries(rest).filter(([, value]) => value !== undefined);
+
+      if (attemptedUpdates.length > 0) {
+        const error: any = new Error("Only the description can be updated for completed maintenance records.");
+        error.status = 400;
+        throw error;
+      }
+
+      if (description === undefined) {
+        return existing;
+      }
+
+      updates = { description };
+    }
+
+    updates = Object.fromEntries(
+      Object.entries(updates).filter(([, value]) => value !== undefined)
+    ) as Partial<InsertMaintenanceRecord>;
+
+    if (Object.keys(updates).length === 0) {
+      return existing;
+    }
+
     const [record] = await db
       .update(maintenanceRecords)
-      .set(insertRecord)
+      .set(updates)
       .where(eq(maintenanceRecords.id, id))
       .returning();
+
     return record;
   }
 
   async deleteMaintenanceRecord(id: string): Promise<void> {
+    const existing = await this.getMaintenanceRecord(id);
+
+    if (!existing) {
+      const error: any = new Error("Maintenance record not found");
+      error.status = 404;
+      throw error;
+    }
+
+    if (existing.status === "completed") {
+      const error: any = new Error("Completed maintenance records cannot be deleted.");
+      error.status = 400;
+      throw error;
+    }
+
     await db.delete(maintenanceRecords).where(eq(maintenanceRecords.id, id));
   }
 
