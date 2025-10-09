@@ -13,6 +13,7 @@ import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import VehicleForm from "@/components/forms/vehicle-form";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Car, Plus, Edit, Eye, Trash2, Search } from "lucide-react";
 import type { VehicleWithOwner } from "@shared/schema";
 
@@ -71,12 +72,6 @@ export default function Vehicles() {
       out_of_service: "Out of Service",
     };
     return <Badge variant={variants[status] || "outline"}>{labels[status] || status}</Badge>;
-  };
-
-  const handleDelete = async (id: string) => {
-    if (window.confirm("Are you sure you want to delete this vehicle?")) {
-      deleteVehicleMutation.mutate(id);
-    }
   };
 
   const handleEdit = (vehicle: VehicleWithOwner) => {
@@ -233,16 +228,22 @@ export default function Vehicles() {
                         >
                           <Eye className="w-4 h-4" />
                         </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={() => handleDelete(vehicle.id)}
-                          className="text-red-500 hover:text-red-700"
-                          disabled={deleteVehicleMutation.isPending}
-                          data-testid={`delete-vehicle-${vehicle.id}`}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        <ConfirmDialog
+                          title="Delete vehicle"
+                          description="Are you sure you want to delete this vehicle?"
+                          onConfirm={() => deleteVehicleMutation.mutate(vehicle.id)}
+                          trigger={
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-500 hover:text-red-700"
+                              disabled={deleteVehicleMutation.isPending}
+                              data-testid={`delete-vehicle-${vehicle.id}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          }
+                        />
                       </div>
                     </TableCell>
                   </TableRow>

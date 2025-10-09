@@ -13,6 +13,7 @@ import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import ProjectForm from "@/components/forms/project-form";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { FolderKanban, Plus, Edit, Eye, Trash2, Search, MapPin, Calendar } from "lucide-react";
 import { format } from "date-fns";
 import type { Project } from "@shared/schema";
@@ -69,12 +70,6 @@ export default function Projects() {
       on_hold: "On Hold",
     };
     return <Badge variant={variants[status] || "outline"}>{labels[status] || status}</Badge>;
-  };
-
-  const handleDelete = async (id: string) => {
-    if (window.confirm("Are you sure you want to delete this project? This will also delete all its assignments.")) {
-      deleteProjectMutation.mutate(id);
-    }
   };
 
   const handleEdit = (project: Project) => {
@@ -244,16 +239,22 @@ export default function Projects() {
                         >
                           <Eye className="w-4 h-4" />
                         </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={() => handleDelete(project.id)}
-                          className="text-red-500 hover:text-red-700"
-                          disabled={deleteProjectMutation.isPending}
-                          data-testid={`delete-project-${project.id}`}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        <ConfirmDialog
+                          title="Delete project"
+                          description="Are you sure you want to delete this project? This will also delete all its assignments."
+                          onConfirm={() => deleteProjectMutation.mutate(project.id)}
+                          trigger={
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-500 hover:text-red-700"
+                              disabled={deleteProjectMutation.isPending}
+                              data-testid={`delete-project-${project.id}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          }
+                        />
                       </div>
                     </TableCell>
                   </TableRow>

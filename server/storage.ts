@@ -34,7 +34,7 @@ import {
   type MaintenanceRecordWithVehicle,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, sql, isNull, gte, lte } from "drizzle-orm";
+import { eq, desc, and, sql, isNull, gte, lte, ne } from "drizzle-orm";
 
 // Helper function to retry database operations on connection failures
 async function withRetry<T>(operation: () => Promise<T>, maxRetries: number = 3): Promise<T> {
@@ -180,6 +180,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteOwner(id: string): Promise<void> {
+    const [{ value: attendanceCount }] = await db
+      .select({ value: sql<number>`count(*)` })
+      .from(vehicleAttendance)
+      .innerJoin(vehicles, eq(vehicleAttendance.vehicleId, vehicles.id))
+      .where(eq(vehicles.ownerId, id));
+
+    if (attendanceCount > 0) {
+      throw new Error("Cannot delete owner because their vehicles have attendance records.");
+    }
+
     await db.delete(owners).where(eq(owners.id, id));
   }
 
@@ -259,6 +269,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteVehicle(id: string): Promise<void> {
+    const [{ value: attendanceCount }] = await db
+      .select({ value: sql<number>`count(*)` })
+      .from(vehicleAttendance)
+      .where(eq(vehicleAttendance.vehicleId, id));
+
+    if (attendanceCount > 0) {
+      throw new Error("Cannot delete vehicle because attendance records exist for it.");
+    }
+
     await db.delete(vehicles).where(eq(vehicles.id, id));
   }
 
@@ -286,6 +305,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteProject(id: string): Promise<void> {
+    const [{ value: attendanceCount }] = await db
+      .select({ value: sql<number>`count(*)` })
+      .from(vehicleAttendance)
+      .where(eq(vehicleAttendance.projectId, id));
+
+    if (attendanceCount > 0) {
+      throw new Error("Cannot delete project because attendance records reference it.");
+    }
+
     await db.delete(projects).where(eq(projects.id, id));
   }
 
@@ -372,8 +400,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createAssignment(insertAssignment: InsertAssignment): Promise<Assignment> {
+    const targetStatus = insertAssignment.status ?? "active";
+
+    if (targetStatus === "active") {
+      const [{ value: activeCount }] = await db
+        .select({ value: sql<number>`count(*)` })
+        .from(assignments)
+        .where(and(eq(assignments.vehicleId, insertAssignment.vehicleId), eq(assignments.status, "active")));
+
+      if (activeCount > 0) {
+        throw new Error("Vehicle is already assigned to another active project.");
+      }
+    }
+
     const [assignment] = await db.insert(assignments).values(insertAssignment).returning();
-    
+
     // Update vehicle status to assigned
     await db
       .update(vehicles)
@@ -386,39 +427,116 @@ export class DatabaseStorage implements IStorage {
   async updateAssignment(id: string, insertAssignment: Partial<InsertAssignment>): Promise<Assignment> {
     // Get the existing assignment to capture original vehicleId before update
     const [existingAssignment] = await db.select().from(assignments).where(eq(assignments.id, id));
-    
+
+    if (!existingAssignment) {
+      throw new Error("Assignment not found");
+    }
+
+    const updates: Partial<InsertAssignment> = { ...insertAssignment };
+    const newVehicleId = updates.vehicleId ?? existingAssignment.vehicleId;
+    const newStatus = updates.status ?? existingAssignment.status;
+
+    if (updates.projectId !== undefined && updates.projectId !== existingAssignment.projectId) {
+      const [{ value: attendanceCount }] = await db
+        .select({ value: sql<number>`count(*)` })
+        .from(vehicleAttendance)
+        .where(
+          and(
+            eq(vehicleAttendance.vehicleId, existingAssignment.vehicleId),
+            eq(vehicleAttendance.projectId, existingAssignment.projectId)
+          )
+        );
+
+      if (attendanceCount > 0) {
+        throw new Error("Cannot change project because attendance already exists for this assignment.");
+      }
+    }
+
+    if (newStatus === "active") {
+      const [{ value: activeCount }] = await db
+        .select({ value: sql<number>`count(*)` })
+        .from(assignments)
+        .where(
+          and(
+            eq(assignments.vehicleId, newVehicleId),
+            eq(assignments.status, "active"),
+            ne(assignments.id, id)
+          )
+        );
+
+      if (activeCount > 0) {
+        throw new Error("Vehicle is already assigned to another active project.");
+      }
+    }
+
+    if (newStatus === "completed") {
+      const normalizeDate = (value: string | Date | null | undefined): string | null => {
+        if (!value) return null;
+        if (value instanceof Date) {
+          return value.toISOString().split("T")[0];
+        }
+        return value;
+      };
+
+      const today = new Date().toISOString().split("T")[0];
+      const effectiveEndDate = normalizeDate(updates.endDate ?? existingAssignment.endDate);
+
+      if (!effectiveEndDate) {
+        updates.endDate = today;
+      } else if (effectiveEndDate > today) {
+        throw new Error("Assignment end date cannot be in the future when marking as completed.");
+      } else if (updates.endDate !== undefined) {
+        updates.endDate = effectiveEndDate;
+      }
+    }
+
     const [assignment] = await db
       .update(assignments)
-      .set(insertAssignment)
+      .set(updates)
       .where(eq(assignments.id, id))
       .returning();
-    
+
     // If assignment status is changed to completed, update the ORIGINAL vehicle status to available
     // This handles the edge case where vehicleId might be changed in the same update
-    if (insertAssignment.status === "completed" && existingAssignment) {
+    if (newStatus === "completed" && existingAssignment) {
       await db
         .update(vehicles)
         .set({ status: "available" })
         .where(eq(vehicles.id, existingAssignment.vehicleId));
     }
-    
     return assignment;
   }
 
   async deleteAssignment(id: string): Promise<void> {
     // Get the assignment to find the vehicle
     const [assignment] = await db.select().from(assignments).where(eq(assignments.id, id));
-    
+
+    if (!assignment) {
+      return;
+    }
+
+    const [{ value: attendanceCount }] = await db
+      .select({ value: sql<number>`count(*)` })
+      .from(vehicleAttendance)
+      .where(
+        and(
+          eq(vehicleAttendance.vehicleId, assignment.vehicleId),
+          eq(vehicleAttendance.projectId, assignment.projectId)
+        )
+      );
+
+    if (attendanceCount > 0) {
+      throw new Error("Cannot delete assignment because attendance exists for this vehicle and project.");
+    }
+
     // Delete the assignment
     await db.delete(assignments).where(eq(assignments.id, id));
-    
+
     // Update vehicle status back to available
-    if (assignment) {
-      await db
-        .update(vehicles)
-        .set({ status: "available" })
-        .where(eq(vehicles.id, assignment.vehicleId));
-    }
+    await db
+      .update(vehicles)
+      .set({ status: "available" })
+      .where(eq(vehicles.id, assignment.vehicleId));
   }
 
   async getPayments(): Promise<PaymentWithDetails[]> {
@@ -845,39 +963,102 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createVehicleAttendance(record: InsertVehicleAttendance): Promise<VehicleAttendance> {
-    const [created] = await db.insert(vehicleAttendance).values(record).returning();
-    return created;
+    return await db.transaction(async (tx) => {
+      const existingRecords = await tx
+        .select()
+        .from(vehicleAttendance)
+        .where(
+          and(
+            eq(vehicleAttendance.vehicleId, record.vehicleId),
+            eq(vehicleAttendance.attendanceDate, record.attendanceDate)
+          )
+        );
+
+      const normalizedProjectId = record.projectId ?? null;
+      const conflicting = existingRecords.find(
+        (existing) => (existing.projectId ?? null) !== normalizedProjectId
+      );
+
+      if (conflicting) {
+        throw new Error("Vehicle already has attendance for this date on another project.");
+      }
+
+      if (existingRecords.length > 0) {
+        const target = existingRecords[0];
+        const [updated] = await tx
+          .update(vehicleAttendance)
+          .set({
+            status: record.status,
+            notes: record.notes ?? null,
+            projectId: normalizedProjectId,
+          })
+          .where(eq(vehicleAttendance.id, target.id))
+          .returning();
+
+        return updated;
+      }
+
+      const [created] = await tx
+        .insert(vehicleAttendance)
+        .values({
+          vehicleId: record.vehicleId,
+          projectId: normalizedProjectId,
+          attendanceDate: record.attendanceDate,
+          status: record.status,
+          notes: record.notes ?? null,
+        })
+        .returning();
+
+      return created;
+    });
   }
 
   async createVehicleAttendanceBatch(records: InsertVehicleAttendance[]): Promise<VehicleAttendance[]> {
     if (records.length === 0) return [];
+
+    const perVehicleDate = new Map<string, string | null>();
+    for (const record of records) {
+      const key = `${record.vehicleId}:${record.attendanceDate}`;
+      const projectId = record.projectId ?? null;
+      const existingProjectId = perVehicleDate.get(key);
+      if (existingProjectId !== undefined && existingProjectId !== projectId) {
+        throw new Error("Vehicle already has attendance for this date on another project.");
+      }
+      perVehicleDate.set(key, projectId);
+    }
 
     // Use a transaction and perform an INSERT ... ON CONFLICT DO NOTHING to avoid duplicates
     return await db.transaction(async (tx) => {
       // Perform per-record upsert within a single transaction without relying on ON CONFLICT/index
       const insertedOrUpdatedIds: string[] = [];
       for (const r of records) {
-        // Check if a record already exists for this vehicle & date
-        const projectCondition = r.projectId
-          ? eq(vehicleAttendance.projectId, r.projectId)
-          : isNull(vehicleAttendance.projectId);
+        const normalizedProjectId = r.projectId ?? null;
 
-        const [existing] = await tx
+        const existingRecords = await tx
           .select()
           .from(vehicleAttendance)
           .where(
             and(
               eq(vehicleAttendance.vehicleId, r.vehicleId),
-              eq(vehicleAttendance.attendanceDate, r.attendanceDate),
-              projectCondition
+              eq(vehicleAttendance.attendanceDate, r.attendanceDate)
             )
           );
+
+        const conflicting = existingRecords.find(
+          (existing) => (existing.projectId ?? null) !== normalizedProjectId
+        );
+
+        if (conflicting) {
+          throw new Error("Vehicle already has attendance for this date on another project.");
+        }
+
+        const existing = existingRecords[0];
 
         if (existing) {
           // Update existing record
           const [updated] = await tx
             .update(vehicleAttendance)
-            .set({ status: r.status, notes: r.notes ?? null, projectId: r.projectId ?? null })
+            .set({ status: r.status, notes: r.notes ?? null, projectId: normalizedProjectId })
             .where(eq(vehicleAttendance.id, existing.id))
             .returning();
           if (updated) insertedOrUpdatedIds.push(updated.id);
@@ -887,7 +1068,7 @@ export class DatabaseStorage implements IStorage {
             .insert(vehicleAttendance)
             .values({
               vehicleId: r.vehicleId,
-              projectId: r.projectId ?? null,
+              projectId: normalizedProjectId,
               attendanceDate: r.attendanceDate,
               status: r.status,
               notes: r.notes ?? null,
