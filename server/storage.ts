@@ -180,6 +180,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteOwner(id: string): Promise<void> {
+    const [{ value: attendanceCount }] = await db
+      .select({ value: sql<number>`count(*)` })
+      .from(vehicleAttendance)
+      .innerJoin(vehicles, eq(vehicleAttendance.vehicleId, vehicles.id))
+      .where(eq(vehicles.ownerId, id));
+
+    if (attendanceCount > 0) {
+      throw new Error("Cannot delete owner because their vehicles have attendance records.");
+    }
+
     await db.delete(owners).where(eq(owners.id, id));
   }
 
