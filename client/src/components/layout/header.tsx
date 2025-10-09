@@ -31,6 +31,14 @@ const pageLabels: Record<string, { title: string; description: string }> = {
     title: "Payments",
     description: "Track payments and outstanding invoices",
   },
+  "/attendance": {
+    title: "Attendance",
+    description: "Track and record attendance of vehicles",
+  },
+  "/maintenance": {
+    title: "Maintenance",
+    description: "Track records of vehicle maintenance and repairs",
+  },
 };
 
 export default function Header({ onMenuClick }: HeaderProps) {

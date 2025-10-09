@@ -136,7 +136,7 @@ export default function Maintenance() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Total Maintenance Cost</p>
-                <p className="text-2xl font-bold">${totalMaintenanceCost.toLocaleString()}</p>
+                <p className="text-2xl font-bold">{totalMaintenanceCost.toLocaleString()}</p>
               </div>
               <div className="bg-blue-100 p-3 rounded-full">
                 <DollarSign className="text-blue-600 w-6 h-6" />
