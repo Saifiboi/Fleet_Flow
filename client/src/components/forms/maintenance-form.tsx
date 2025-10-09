@@ -11,6 +11,7 @@ import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { insertMaintenanceRecordSchema, type MaintenanceRecordWithVehicle, type InsertMaintenanceRecord } from "@shared/schema";
+import { format } from "date-fns";
 
 interface MaintenanceFormProps {
   record?: MaintenanceRecordWithVehicle | null;
@@ -24,6 +25,8 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
 
   const { data: vehicles = [] } = useVehicles();
 
+  const today = format(new Date(), "yyyy-MM-dd");
+
   const form = useForm<InsertMaintenanceRecord>({
     resolver: zodResolver(insertMaintenanceRecordSchema),
     defaultValues: {
@@ -32,8 +35,8 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
       description: record?.description || "",
       cost: record?.cost || "",
       performedBy: record?.performedBy || "",
-      serviceDate: record?.serviceDate || "",
-      nextServiceDate: record?.nextServiceDate || "",
+      serviceDate: record?.serviceDate ?? today,
+      nextServiceDate: record ? record.nextServiceDate ?? "" : today,
       mileage: record?.mileage || 0,
       status: record?.status || "completed",
       notes: record?.notes || "",
@@ -41,7 +44,7 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
   });
 
   const maintenanceMutation = useMutation({
-    mutationFn: async (data: InsertMaintenanceRecord) => {
+    mutationFn: async (data: Partial<InsertMaintenanceRecord>) => {
       if (isEditing) {
         return await apiRequest("PUT", `/api/maintenance/${record.id}`, data);
       } else {
@@ -55,6 +58,7 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
       toast({
         title: "Success",
         description: `Maintenance record ${isEditing ? "updated" : "created"} successfully`,
+        duration: 3000,
       });
       onSuccess?.();
     },
@@ -68,6 +72,11 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
   });
 
   const onSubmit = (data: InsertMaintenanceRecord) => {
+    if (isCompletedRecord) {
+      maintenanceMutation.mutate({ description: data.description });
+      return;
+    }
+
     const formattedData: InsertMaintenanceRecord = {
       ...data,
       nextServiceDate: data.nextServiceDate || null,

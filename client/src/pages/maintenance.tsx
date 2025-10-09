@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import MaintenanceForm from "@/components/forms/maintenance-form";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { MaintenanceRecordWithVehicle } from "@shared/schema";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 export default function Maintenance() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -43,6 +44,7 @@ export default function Maintenance() {
       toast({
         title: "Success",
         description: "Maintenance record deleted successfully",
+        duration: 3000,
       });
     },
     onError: (error: any) => {
@@ -60,6 +62,7 @@ export default function Maintenance() {
         title: "Action not allowed",
         description: "Completed maintenance records cannot be deleted.",
         variant: "destructive",
+        duration: 3000,
       });
       return;
     }
@@ -408,7 +411,7 @@ export default function Maintenance() {
           {/* Table */}
           <div className="rounded-md border">
             <div className="overflow-x-auto">
-              <div className="max-h-[60vh] overflow-y-auto">
+              <ScrollArea className="h-[60vh]">
                 <Table className="min-w-full" data-testid="maintenance-records-table">
                   <TableHeader>
                     <TableRow>
@@ -498,7 +501,7 @@ export default function Maintenance() {
                     )}
                   </TableBody>
                 </Table>
-              </div>
+              </ScrollArea>
             </div>
           </div>
 
