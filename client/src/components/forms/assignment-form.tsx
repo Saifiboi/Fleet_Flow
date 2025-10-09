@@ -132,7 +132,7 @@ export default function AssignmentForm({ assignment, onSuccess }: AssignmentForm
           name="monthlyRate"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Monthly Rate ($)</FormLabel>
+              <FormLabel>Monthly Rate (PKR)</FormLabel>
               <FormControl>
                 <Input 
                   type="number"

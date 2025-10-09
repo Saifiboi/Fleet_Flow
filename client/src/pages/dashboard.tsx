@@ -96,7 +96,7 @@ export default function Dashboard() {
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Outstanding Payments</p>
                 <p className="text-2xl font-bold text-foreground">
-                  ${stats?.outstandingAmount?.toLocaleString() || 0}
+                  {stats?.outstandingAmount?.toLocaleString() || 0}
                 </p>
               </div>
               <div className="bg-orange-100 p-3 rounded-full">
@@ -115,7 +115,7 @@ export default function Dashboard() {
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Monthly Revenue</p>
                 <p className="text-2xl font-bold text-foreground">
-                  ${stats?.monthlyRevenue?.toLocaleString() || 0}
+                  {stats?.monthlyRevenue?.toLocaleString() || 0}
                 </p>
               </div>
               <div className="bg-green-100 p-3 rounded-full">

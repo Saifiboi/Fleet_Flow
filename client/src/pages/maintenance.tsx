@@ -13,6 +13,7 @@ import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import MaintenanceForm from "@/components/forms/maintenance-form";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { MaintenanceRecordWithVehicle } from "@shared/schema";
 
 export default function Maintenance() {
@@ -92,12 +93,6 @@ export default function Maintenance() {
       cancelled: "Cancelled",
     };
     return <Badge variant={variants[status] || "outline"}>{labels[status] || status}</Badge>;
-  };
-
-  const handleDelete = async (id: string) => {
-    if (window.confirm("Are you sure you want to delete this maintenance record?")) {
-      deleteRecordMutation.mutate(id);
-    }
   };
 
   const handleEdit = (record: MaintenanceRecordWithVehicle) => {
@@ -304,14 +299,21 @@ export default function Maintenance() {
                         >
                           <Edit className="w-4 h-4" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDelete(record.id)}
-                          data-testid={`delete-maintenance-${record.id}`}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        <ConfirmDialog
+                          title="Delete maintenance record"
+                          description="Are you sure you want to delete this maintenance record?"
+                          onConfirm={() => deleteRecordMutation.mutate(record.id)}
+                          trigger={
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={deleteRecordMutation.isPending}
+                              data-testid={`delete-maintenance-${record.id}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          }
+                        />
                       </div>
                     </TableCell>
                   </TableRow>

@@ -13,6 +13,7 @@ import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import PaymentForm from "@/components/forms/payment-form";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { CreditCard, Plus, Edit, Eye, Trash2, Search, Check, FileText, DollarSign, Calendar, AlertTriangle } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
 import type { PaymentWithDetails } from "@shared/schema";
@@ -106,18 +107,6 @@ export default function Payments() {
     }
     
     return <Badge variant="secondary">Pending</Badge>;
-  };
-
-  const handleDelete = async (id: string) => {
-    if (window.confirm("Are you sure you want to delete this payment record?")) {
-      deletePaymentMutation.mutate(id);
-    }
-  };
-
-  const handleMarkPaid = async (id: string) => {
-    if (window.confirm("Mark this payment as paid?")) {
-      markPaidMutation.mutate(id);
-    }
   };
 
   const handleEdit = (payment: PaymentWithDetails) => {
@@ -331,16 +320,23 @@ export default function Payments() {
                     <TableCell>
                       <div className="flex items-center space-x-2">
                         {payment.status === "pending" && (
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => handleMarkPaid(payment.id)}
-                            className="text-green-600 hover:text-green-800"
-                            disabled={markPaidMutation.isPending}
-                            data-testid={`mark-paid-${payment.id}`}
-                          >
-                            <Check className="w-4 h-4" />
-                          </Button>
+                          <ConfirmDialog
+                            title="Mark payment as paid"
+                            description="Mark this payment as paid?"
+                            confirmText="Mark Paid"
+                            onConfirm={() => markPaidMutation.mutate(payment.id)}
+                            trigger={
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-green-600 hover:text-green-800"
+                                disabled={markPaidMutation.isPending}
+                                data-testid={`mark-paid-${payment.id}`}
+                              >
+                                <Check className="w-4 h-4" />
+                              </Button>
+                            }
+                          />
                         )}
                         <Button 
                           variant="ghost" 
@@ -357,16 +353,22 @@ export default function Payments() {
                         >
                           <Eye className="w-4 h-4" />
                         </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={() => handleDelete(payment.id)}
-                          className="text-red-500 hover:text-red-700"
-                          disabled={deletePaymentMutation.isPending}
-                          data-testid={`delete-payment-${payment.id}`}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        <ConfirmDialog
+                          title="Delete payment"
+                          description="Are you sure you want to delete this payment record?"
+                          onConfirm={() => deletePaymentMutation.mutate(payment.id)}
+                          trigger={
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-500 hover:text-red-700"
+                              disabled={deletePaymentMutation.isPending}
+                              data-testid={`delete-payment-${payment.id}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          }
+                        />
                       </div>
                     </TableCell>
                   </TableRow>
