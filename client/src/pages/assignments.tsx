@@ -13,6 +13,7 @@ import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import AssignmentForm from "@/components/forms/assignment-form";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Calendar, Plus, Edit, Eye, Trash2, Search, Car, MapPin, DollarSign } from "lucide-react";
 import { format } from "date-fns";
 import type { AssignmentWithDetails } from "@shared/schema";
@@ -77,12 +78,6 @@ export default function Assignments() {
       cancelled: "Cancelled",
     };
     return <Badge variant={variants[status] || "outline"}>{labels[status] || status}</Badge>;
-  };
-
-  const handleDelete = async (id: string) => {
-    if (window.confirm("Are you sure you want to delete this assignment? This will make the vehicle available again.")) {
-      deleteAssignmentMutation.mutate(id);
-    }
   };
 
   const handleEdit = (assignment: AssignmentWithDetails) => {
@@ -275,16 +270,22 @@ export default function Assignments() {
                         >
                           <Eye className="w-4 h-4" />
                         </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={() => handleDelete(assignment.id)}
-                          className="text-red-500 hover:text-red-700"
-                          disabled={deleteAssignmentMutation.isPending}
-                          data-testid={`delete-assignment-${assignment.id}`}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        <ConfirmDialog
+                          title="Delete assignment"
+                          description="Are you sure you want to delete this assignment? This will make the vehicle available again."
+                          onConfirm={() => deleteAssignmentMutation.mutate(assignment.id)}
+                          trigger={
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-500 hover:text-red-700"
+                              disabled={deleteAssignmentMutation.isPending}
+                              data-testid={`delete-assignment-${assignment.id}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          }
+                        />
                       </div>
                     </TableCell>
                   </TableRow>

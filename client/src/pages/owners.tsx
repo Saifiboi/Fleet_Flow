@@ -11,6 +11,7 @@ import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import OwnerForm from "@/components/forms/owner-form";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Users, Plus, Edit, Eye, Trash2, Search, Mail, Phone } from "lucide-react";
 import type { Owner } from "@shared/schema";
 
@@ -47,12 +48,6 @@ export default function Owners() {
     owner.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
     owner.phone.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  const handleDelete = async (id: string) => {
-    if (window.confirm("Are you sure you want to delete this owner? This will also delete all their vehicles.")) {
-      deleteOwnerMutation.mutate(id);
-    }
-  };
 
   const handleEdit = (owner: Owner) => {
     setEditingOwner(owner);
@@ -198,16 +193,22 @@ export default function Owners() {
                         >
                           <Eye className="w-4 h-4" />
                         </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={() => handleDelete(owner.id)}
-                          className="text-red-500 hover:text-red-700"
-                          disabled={deleteOwnerMutation.isPending}
-                          data-testid={`delete-owner-${owner.id}`}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        <ConfirmDialog
+                          title="Delete owner"
+                          description="Are you sure you want to delete this owner? This will also delete all their vehicles."
+                          onConfirm={() => deleteOwnerMutation.mutate(owner.id)}
+                          trigger={
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-500 hover:text-red-700"
+                              disabled={deleteOwnerMutation.isPending}
+                              data-testid={`delete-owner-${owner.id}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          }
+                        />
                       </div>
                     </TableCell>
                   </TableRow>
