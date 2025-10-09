@@ -166,7 +166,7 @@ export default function Assignments() {
                 <TableHead>Vehicle</TableHead>
                 <TableHead>Owner</TableHead>
                 <TableHead>Project</TableHead>
-                <TableHead>Monthly Rate</TableHead>
+                <TableHead>Monthly Rate (PKR)</TableHead>
                 <TableHead>Assignment Period</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Actions</TableHead>
@@ -233,7 +233,7 @@ export default function Assignments() {
                     <TableCell>
                       <div className="flex items-center space-x-2">
                         <DollarSign className="w-3 h-3 text-muted-foreground" />
-                        <p className="text-sm font-semibold text-foreground">${assignment.monthlyRate}</p>
+                        <p className="text-sm font-semibold text-foreground">{assignment.monthlyRate}</p>
                       </div>
                     </TableCell>
                     <TableCell>
