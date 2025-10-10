@@ -62,6 +62,12 @@ export const payments = pgTable("payments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   assignmentId: varchar("assignment_id").notNull().references(() => assignments.id, { onDelete: "cascade" }),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  periodStart: date("period_start"),
+  periodEnd: date("period_end"),
+  attendanceTotal: decimal("attendance_total", { precision: 10, scale: 2 }).notNull().default("0"),
+  deductionTotal: decimal("deduction_total", { precision: 10, scale: 2 }).notNull().default("0"),
+  totalDays: integer("total_days").notNull().default(0),
+  maintenanceCount: integer("maintenance_count").notNull().default(0),
   dueDate: date("due_date").notNull(),
   paidDate: date("paid_date"),
   status: text("status").notNull().default("pending"), // pending, paid, overdue
@@ -268,6 +274,28 @@ export const insertPaymentSchema = createInsertSchema(payments).omit({
   createdAt: true,
 }).extend({
   paidDate: z.string().optional().transform(val => val === "" ? null : val), // Make paidDate truly optional
+  periodStart: z.string().min(1, "Period start is required"),
+  periodEnd: z.string().min(1, "Period end is required"),
+  attendanceTotal: z
+    .coerce
+    .number({ invalid_type_error: "Attendance total must be a valid number" })
+    .min(0, "Attendance total cannot be negative")
+    .transform((value) => value.toFixed(2)),
+  deductionTotal: z
+    .coerce
+    .number({ invalid_type_error: "Deduction total must be a valid number" })
+    .min(0, "Deduction total cannot be negative")
+    .transform((value) => value.toFixed(2)),
+  totalDays: z
+    .coerce
+    .number({ invalid_type_error: "Total days must be provided" })
+    .int("Total days must be a whole number")
+    .min(0, "Total days cannot be negative"),
+  maintenanceCount: z
+    .coerce
+    .number({ invalid_type_error: "Maintenance count must be provided" })
+    .int("Maintenance count must be a whole number")
+    .min(0, "Maintenance count cannot be negative"),
 });
 
 export const createPaymentRequestSchema = insertPaymentSchema.extend({

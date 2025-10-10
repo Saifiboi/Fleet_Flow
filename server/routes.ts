@@ -328,23 +328,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/payments/:id", async (req, res) => {
-    try {
-      const validatedData = insertPaymentSchema.partial().parse(req.body);
-      const payment = await storage.updatePayment(req.params.id, validatedData);
-      res.json(payment);
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
+  app.put("/api/payments/:id", async (_req, res) => {
+    res.status(405).json({ message: "Payments cannot be modified after they are created." });
   });
 
-  app.delete("/api/payments/:id", async (req, res) => {
-    try {
-      await storage.deletePayment(req.params.id);
-      res.status(204).send();
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
+  app.delete("/api/payments/:id", async (_req, res) => {
+    res.status(405).json({ message: "Payments cannot be deleted once created." });
   });
 
   // Maintenance Record routes

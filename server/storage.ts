@@ -117,8 +117,6 @@ export interface IStorage {
   createVehiclePaymentForPeriod(
     payload: CreateVehiclePaymentForPeriod
   ): Promise<VehiclePaymentForPeriodResult>;
-  updatePayment(id: string, payment: Partial<InsertPayment>): Promise<Payment>;
-  deletePayment(id: string): Promise<void>;
 
   // Maintenance Records
   getMaintenanceRecords(): Promise<MaintenanceRecordWithVehicle[]>;
@@ -653,11 +651,58 @@ export class DatabaseStorage implements IStorage {
     maintenanceRecordIds?: string[]
   ): Promise<Payment> {
     return await db.transaction(async (tx) => {
-      const [payment] = await tx.insert(payments).values(insertPayment).returning();
+      if (!insertPayment.periodStart || !insertPayment.periodEnd) {
+        throw new Error("Payment period start and end dates are required.");
+      }
 
-      if (attendanceDates && attendanceDates.length > 0) {
-        const uniqueAttendanceDates = Array.from(new Set(attendanceDates));
+      const uniqueAttendanceDates = attendanceDates ? Array.from(new Set(attendanceDates)) : [];
+      const uniqueMaintenanceIds = maintenanceRecordIds ? Array.from(new Set(maintenanceRecordIds)) : [];
 
+      if (uniqueAttendanceDates.length === 0 && uniqueMaintenanceIds.length === 0) {
+        throw new Error("No attendance or maintenance records were provided for this payment.");
+      }
+
+      const providedTotalDays = insertPayment.totalDays ?? 0;
+      if (providedTotalDays !== uniqueAttendanceDates.length) {
+        throw new Error(
+          "The total days value does not match the number of attendance records selected for payment."
+        );
+      }
+
+      const providedMaintenanceCount = insertPayment.maintenanceCount ?? 0;
+      if (providedMaintenanceCount !== uniqueMaintenanceIds.length) {
+        throw new Error(
+          "The maintenance count does not match the number of maintenance records selected for payment."
+        );
+      }
+
+      const amountNumber = Number(insertPayment.amount);
+      if (Number.isNaN(amountNumber)) {
+        throw new Error("Payment amount is invalid.");
+      }
+
+      const attendanceTotalNumber = Number(insertPayment.attendanceTotal ?? 0);
+      if (Number.isNaN(attendanceTotalNumber)) {
+        throw new Error("Attendance total is invalid.");
+      }
+
+      const deductionTotalNumber = Number(insertPayment.deductionTotal ?? 0);
+      if (Number.isNaN(deductionTotalNumber)) {
+        throw new Error("Deduction total is invalid.");
+      }
+
+      const paymentValues: InsertPayment = {
+        ...insertPayment,
+        amount: amountNumber.toFixed(2),
+        attendanceTotal: attendanceTotalNumber.toFixed(2),
+        deductionTotal: deductionTotalNumber.toFixed(2),
+        totalDays: uniqueAttendanceDates.length,
+        maintenanceCount: uniqueMaintenanceIds.length,
+      };
+
+      const [payment] = await tx.insert(payments).values(paymentValues).returning();
+
+      if (uniqueAttendanceDates.length > 0) {
         const [assignmentDetails] = await tx
           .select({ vehicleId: assignments.vehicleId, projectId: assignments.projectId })
           .from(assignments)
@@ -693,9 +738,7 @@ export class DatabaseStorage implements IStorage {
         }
       }
 
-      if (maintenanceRecordIds && maintenanceRecordIds.length > 0) {
-        const uniqueMaintenanceIds = Array.from(new Set(maintenanceRecordIds));
-
+      if (uniqueMaintenanceIds.length > 0) {
         const [assignmentDetails] = await tx
           .select({ vehicleId: assignments.vehicleId })
           .from(assignments)
@@ -961,19 +1004,6 @@ export class DatabaseStorage implements IStorage {
       assignment,
       calculation,
     };
-  }
-
-  async updatePayment(id: string, insertPayment: Partial<InsertPayment>): Promise<Payment> {
-    const [payment] = await db
-      .update(payments)
-      .set(insertPayment)
-      .where(eq(payments.id, id))
-      .returning();
-    return payment;
-  }
-
-  async deletePayment(id: string): Promise<void> {
-    await db.delete(payments).where(eq(payments.id, id));
   }
 
   async getMaintenanceRecords(): Promise<MaintenanceRecordWithVehicle[]> {

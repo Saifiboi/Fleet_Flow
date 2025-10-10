@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { usePayments, useAssignments } from "@/lib/api";
+import { usePayments } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -12,17 +12,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import PaymentForm from "@/components/forms/payment-form";
 import { PaymentPeriodForm } from "@/components/forms/payment-period-form";
-import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   CreditCard,
-  Plus,
-  Edit,
   Eye,
-  Trash2,
   Search,
-  Check,
   FileText,
   DollarSign,
   Calendar,
@@ -40,64 +34,17 @@ import type {
 export default function Payments() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [editingPayment, setEditingPayment] = useState<PaymentWithDetails | null>(null);
-  const [isFormOpen, setIsFormOpen] = useState(false);
   const [isCalculationOpen, setIsCalculationOpen] = useState(false);
   const [calculationResult, setCalculationResult] = useState<VehiclePaymentForPeriodResult | null>(null);
   const [calculationRequest, setCalculationRequest] =
     useState<CreateVehiclePaymentForPeriod | null>(null);
   const [monthOverrides, setMonthOverrides] = useState<Record<string, string>>({});
   const [maintenanceOverride, setMaintenanceOverride] = useState<string>("");
+  const [isViewOpen, setIsViewOpen] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState<PaymentWithDetails | null>(null);
   const { toast } = useToast();
 
   const { data: payments = [], isLoading } = usePayments();
-
-  const { data: assignments = [] } = useAssignments();
-
-  const deletePaymentMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiRequest("DELETE", `/api/payments/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      toast({
-        title: "Success",
-        description: "Payment deleted successfully",
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to delete payment",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const markPaidMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiRequest("PUT", `/api/payments/${id}`, {
-        status: "paid",
-        paidDate: new Date().toISOString().split('T')[0],
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      toast({
-        title: "Success",
-        description: "Payment marked as paid",
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update payment",
-        variant: "destructive",
-      });
-    },
-  });
 
   const createPaymentFromCalculation = useMutation({
     mutationFn: async (data: CreatePaymentRequest) => {
@@ -264,6 +211,12 @@ export default function Payments() {
       status: calculationRequest.status ?? "pending",
       paidDate: calculationRequest.paidDate ?? undefined,
       invoiceNumber: calculationRequest.invoiceNumber ?? undefined,
+      periodStart: calculationResult.calculation.periodStart,
+      periodEnd: calculationResult.calculation.periodEnd,
+      attendanceTotal: adjustedTotals.monthTotal.toFixed(2),
+      deductionTotal: adjustedTotals.maintenance.toFixed(2),
+      totalDays: calculationResult.calculation.totalPresentDays,
+      maintenanceCount: calculationResult.calculation.maintenanceRecordIds.length,
       attendanceDates: calculationResult.calculation.attendanceDates,
       maintenanceRecordIds: calculationResult.calculation.maintenanceRecordIds,
     };
@@ -293,16 +246,6 @@ export default function Payments() {
     return <Badge variant="secondary">Pending</Badge>;
   };
 
-  const handleEdit = (payment: PaymentWithDetails) => {
-    setEditingPayment(payment);
-    setIsFormOpen(true);
-  };
-
-  const handleFormClose = () => {
-    setIsFormOpen(false);
-    setEditingPayment(null);
-  };
-
   const totalOutstanding = payments?.reduce((sum: number, payment: PaymentWithDetails) => {
     return payment.status === "pending" ? sum + Number(payment.amount) : sum;
   }, 0) || 0;
@@ -314,8 +257,172 @@ export default function Payments() {
     return differenceInDays(today, due) > 0;
   }).length || 0;
 
+  const handleViewPayment = (payment: PaymentWithDetails) => {
+    setSelectedPayment(payment);
+    setIsViewOpen(true);
+  };
+
+  const handleViewClose = (open: boolean) => {
+    setIsViewOpen(open);
+    if (!open) {
+      setSelectedPayment(null);
+    }
+  };
+
+  const formatCurrency = (value: number | string | null | undefined) => {
+    const numeric = Number(value ?? 0);
+    if (Number.isNaN(numeric)) {
+      return "0.00";
+    }
+    return numeric.toFixed(2);
+  };
+
   return (
     <div className="space-y-6" data-testid="payments-page">
+      <Dialog open={isViewOpen} onOpenChange={handleViewClose}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Payment details</DialogTitle>
+          </DialogHeader>
+          {selectedPayment ? (
+            <div className="space-y-6">
+              <div className="rounded-lg border bg-muted/40 p-4">
+                <h4 className="text-sm font-semibold text-foreground">Payment summary</h4>
+                <dl className="mt-3 grid grid-cols-1 gap-y-2 text-sm md:grid-cols-2 md:gap-x-6">
+                  <div className="flex items-center justify-between">
+                    <dt className="text-muted-foreground">Period</dt>
+                    <dd className="font-medium text-foreground text-right">
+                      {selectedPayment.periodStart
+                        ? format(new Date(selectedPayment.periodStart), "MMM dd, yyyy")
+                        : "-"}
+                      {" "}–{" "}
+                      {selectedPayment.periodEnd
+                        ? format(new Date(selectedPayment.periodEnd), "MMM dd, yyyy")
+                        : "-"}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-muted-foreground">Attendance total</dt>
+                    <dd className="font-medium text-foreground text-right">
+                      ${formatCurrency(selectedPayment.attendanceTotal)}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-muted-foreground">Maintenance deductions</dt>
+                    <dd className="font-medium text-foreground text-right">
+                      ${formatCurrency(selectedPayment.deductionTotal)}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-muted-foreground">Net amount</dt>
+                    <dd className="font-semibold text-foreground text-right">
+                      ${formatCurrency(selectedPayment.amount)}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-muted-foreground">Attendance days</dt>
+                    <dd className="font-medium text-foreground text-right">
+                      {selectedPayment.totalDays ?? 0}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-muted-foreground">Maintenance records</dt>
+                    <dd className="font-medium text-foreground text-right">
+                      {selectedPayment.maintenanceCount ?? 0}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-muted-foreground">Due date</dt>
+                    <dd className="font-medium text-foreground text-right">
+                      {format(new Date(selectedPayment.dueDate), "MMM dd, yyyy")}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-muted-foreground">Paid date</dt>
+                    <dd className="font-medium text-foreground text-right">
+                      {selectedPayment.paidDate
+                        ? format(new Date(selectedPayment.paidDate), "MMM dd, yyyy")
+                        : "-"}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-muted-foreground">Status</dt>
+                    <dd className="font-medium text-foreground text-right capitalize">
+                      {selectedPayment.status}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-muted-foreground">Invoice</dt>
+                    <dd className="font-medium text-foreground text-right">
+                      {selectedPayment.invoiceNumber ?? "-"}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+
+              <div className="rounded-lg border bg-muted/40 p-4">
+                <h4 className="text-sm font-semibold text-foreground">Assignment details</h4>
+                <dl className="mt-3 grid grid-cols-1 gap-y-2 text-sm md:grid-cols-2 md:gap-x-6">
+                  <div className="flex items-center justify-between">
+                    <dt className="text-muted-foreground">Project</dt>
+                    <dd className="font-medium text-foreground text-right">
+                      {selectedPayment.assignment.project.name}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-muted-foreground">Assignment status</dt>
+                    <dd className="font-medium text-foreground text-right capitalize">
+                      {selectedPayment.assignment.status}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-muted-foreground">Vehicle</dt>
+                    <dd className="font-medium text-foreground text-right">
+                      {selectedPayment.assignment.vehicle.make} {selectedPayment.assignment.vehicle.model}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-muted-foreground">License plate</dt>
+                    <dd className="font-medium text-foreground text-right">
+                      {selectedPayment.assignment.vehicle.licensePlate}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-muted-foreground">Owner</dt>
+                    <dd className="font-medium text-foreground text-right">
+                      {selectedPayment.assignment.vehicle.owner.name}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-muted-foreground">Monthly rate</dt>
+                    <dd className="font-medium text-foreground text-right">
+                      ${formatCurrency(selectedPayment.assignment.monthlyRate)}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-muted-foreground">Assignment period</dt>
+                    <dd className="font-medium text-foreground text-right">
+                      {format(new Date(selectedPayment.assignment.startDate), "MMM dd, yyyy")} –
+                      {" "}
+                      {selectedPayment.assignment.endDate
+                        ? format(new Date(selectedPayment.assignment.endDate), "MMM dd, yyyy")
+                        : "Ongoing"}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Payments are locked once generated. To adjust a period, recalculate a new payment instead of
+                editing an existing one.
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Select a payment to view its full details.</p>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card data-testid="total-outstanding">
@@ -712,25 +819,6 @@ export default function Payments() {
                   </div>
                 </DialogContent>
               </Dialog>
-              <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                <DialogTrigger asChild>
-                  <Button data-testid="add-payment-button">
-                    <Plus className="mr-2 w-4 h-4" />
-                    Add Payment
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-2xl">
-                  <DialogHeader>
-                    <DialogTitle>
-                      {editingPayment ? "Edit Payment" : "Add New Payment"}
-                    </DialogTitle>
-                  </DialogHeader>
-                  <PaymentForm 
-                    payment={editingPayment} 
-                    onSuccess={handleFormClose}
-                  />
-                </DialogContent>
-              </Dialog>
               <Button variant="outline" data-testid="generate-invoices">
                 <FileText className="mr-2 w-4 h-4" />
                 Generate Invoices
@@ -770,11 +858,12 @@ export default function Payments() {
               <TableRow>
                 <TableHead>Project</TableHead>
                 <TableHead>Vehicle</TableHead>
-                <TableHead>Amount</TableHead>
+                <TableHead>Period</TableHead>
+                <TableHead>Amounts</TableHead>
                 <TableHead>Due Date</TableHead>
                 <TableHead>Paid Date</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead>Details</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -803,103 +892,97 @@ export default function Payments() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredPayments?.map((payment: PaymentWithDetails) => (
-                  <TableRow key={payment.id} data-testid={`payment-row-${payment.id}`}>
-                    <TableCell>
-                      <div>
-                        <p className="text-sm font-medium text-foreground">{payment.assignment.project.name}</p>
-                        {payment.invoiceNumber && (
-                          <p className="text-xs text-muted-foreground">Invoice #{payment.invoiceNumber}</p>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <p className="text-sm font-medium text-foreground">
-                          {payment.assignment.vehicle.make} {payment.assignment.vehicle.model}
-                        </p>
-                        <p className="text-xs text-muted-foreground">{payment.assignment.vehicle.licensePlate}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <DollarSign className="w-3 h-3 text-muted-foreground" />
-                        <p className="text-sm font-semibold text-foreground">${payment.amount}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-sm text-foreground">
-                        {format(new Date(payment.dueDate), "MMM dd, yyyy")}
-                      </p>
-                    </TableCell>
-                    <TableCell>
-                      {payment.paidDate ? (
+                filteredPayments?.map((payment: PaymentWithDetails) => {
+                  const attendanceTotalRaw = Number(payment.attendanceTotal ?? 0);
+                  const attendanceTotal = Number.isNaN(attendanceTotalRaw) ? 0 : attendanceTotalRaw;
+                  const deductionTotalRaw = Number(payment.deductionTotal ?? 0);
+                  const deductionTotal = Number.isNaN(deductionTotalRaw) ? 0 : deductionTotalRaw;
+                  const totalDays = payment.totalDays ?? 0;
+                  const maintenanceCount = payment.maintenanceCount ?? 0;
+                  const periodStart = payment.periodStart
+                    ? format(new Date(payment.periodStart), "MMM dd, yyyy")
+                    : "-";
+                  const periodEnd = payment.periodEnd
+                    ? format(new Date(payment.periodEnd), "MMM dd, yyyy")
+                    : "-";
+                  const netAmountRaw = Number(payment.amount ?? 0);
+                  const netAmount = Number.isNaN(netAmountRaw) ? 0 : netAmountRaw;
+
+                  return (
+                    <TableRow key={payment.id} data-testid={`payment-row-${payment.id}`}>
+                      <TableCell>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">{payment.assignment.project.name}</p>
+                          {payment.invoiceNumber && (
+                            <p className="text-xs text-muted-foreground">Invoice #{payment.invoiceNumber}</p>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">
+                            {payment.assignment.vehicle.make} {payment.assignment.vehicle.model}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{payment.assignment.vehicle.licensePlate}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-foreground">
+                            {periodStart} – {periodEnd}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {totalDays} {totalDays === 1 ? "day" : "days"} billed
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="flex items-center space-x-2">
+                            <DollarSign className="w-3 h-3 text-muted-foreground" />
+                            <p className="text-sm font-semibold text-foreground">
+                              ${formatCurrency(netAmount)}
+                            </p>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Attendance: ${formatCurrency(attendanceTotal)} · Deductions: ${formatCurrency(
+                              deductionTotal
+                            )} ·
+                            Maintenance items: {maintenanceCount}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
                         <p className="text-sm text-foreground">
-                          {format(new Date(payment.paidDate), "MMM dd, yyyy")}
+                          {format(new Date(payment.dueDate), "MMM dd, yyyy")}
                         </p>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">-</p>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {getStatusBadge(payment.status, payment.dueDate, payment.paidDate)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        {payment.status === "pending" && (
-                          <ConfirmDialog
-                            title="Mark payment as paid"
-                            description="Mark this payment as paid?"
-                            confirmText="Mark Paid"
-                            onConfirm={() => markPaidMutation.mutate(payment.id)}
-                            trigger={
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-green-600 hover:text-green-800"
-                                disabled={markPaidMutation.isPending}
-                                data-testid={`mark-paid-${payment.id}`}
-                              >
-                                <Check className="w-4 h-4" />
-                              </Button>
-                            }
-                          />
+                      </TableCell>
+                      <TableCell>
+                        {payment.paidDate ? (
+                          <p className="text-sm text-foreground">
+                            {format(new Date(payment.paidDate), "MMM dd, yyyy")}
+                          </p>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">-</p>
                         )}
-                        <Button 
-                          variant="ghost" 
+                      </TableCell>
+                      <TableCell>
+                        {getStatusBadge(payment.status, payment.dueDate, payment.paidDate)}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
                           size="sm"
-                          onClick={() => handleEdit(payment)}
-                          data-testid={`edit-payment-${payment.id}`}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
+                          onClick={() => handleViewPayment(payment)}
                           data-testid={`view-payment-${payment.id}`}
                         >
-                          <Eye className="w-4 h-4" />
+                          <Eye className="w-4 h-4 mr-1" />
+                          View
                         </Button>
-                        <ConfirmDialog
-                          title="Delete payment"
-                          description="Are you sure you want to delete this payment record?"
-                          onConfirm={() => deletePaymentMutation.mutate(payment.id)}
-                          trigger={
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-red-500 hover:text-red-700"
-                              disabled={deletePaymentMutation.isPending}
-                              data-testid={`delete-payment-${payment.id}`}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          }
-                        />
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
