@@ -165,7 +165,7 @@ export default function Payments() {
     };
   }, [calculationResult, monthOverrides, maintenanceOverride]);
 
-  const alreadyPaidPreview = useMemo(() => {
+  const alreadyPaidAttendancePreview = useMemo(() => {
     if (!calculationResult?.calculation.alreadyPaidDates.length) {
       return "";
     }
@@ -182,6 +182,28 @@ export default function Payments() {
 
     return formattedDates;
   }, [calculationResult?.calculation.alreadyPaidDates]);
+
+  const alreadyPaidMaintenancePreview = useMemo(() => {
+    if (!calculationResult?.calculation.alreadyPaidMaintenance.length) {
+      return "";
+    }
+
+    const formatted = calculationResult.calculation.alreadyPaidMaintenance
+      .slice(0, 3)
+      .map((record) => `${format(new Date(record.serviceDate), "PP")}`)
+      .join(", ");
+
+    const remaining =
+      calculationResult.calculation.alreadyPaidMaintenance.length > 3
+        ? calculationResult.calculation.alreadyPaidMaintenance.length - 3
+        : 0;
+
+    if (remaining > 0) {
+      return `${formatted}, +${remaining} more`;
+    }
+
+    return formatted;
+  }, [calculationResult?.calculation.alreadyPaidMaintenance]);
 
   const handleCalculationComplete = (
     result: VehiclePaymentForPeriodResult,
@@ -220,10 +242,14 @@ export default function Payments() {
       return;
     }
 
-    if (!calculationResult.calculation.attendanceDates.length) {
+    if (
+      !calculationResult.calculation.attendanceDates.length &&
+      !calculationResult.calculation.maintenanceRecordIds.length
+    ) {
       toast({
-        title: "No attendance to pay",
-        description: "All attendance days in this period are already marked as paid.",
+        title: "Nothing to create",
+        description:
+          "All attendance days and maintenance charges for this period are already marked as paid.",
         variant: "destructive",
       });
       return;
@@ -239,6 +265,7 @@ export default function Payments() {
       paidDate: calculationRequest.paidDate ?? undefined,
       invoiceNumber: calculationRequest.invoiceNumber ?? undefined,
       attendanceDates: calculationResult.calculation.attendanceDates,
+      maintenanceRecordIds: calculationResult.calculation.maintenanceRecordIds,
     };
 
     createPaymentFromCalculation.mutate(payload);
@@ -406,8 +433,24 @@ export default function Payments() {
                                 <p className="text-xs sm:text-sm">
                                   We excluded {calculationResult.calculation.alreadyPaidDates.length} day(s) already marked as paid
                                   from this calculation.
-                                  {alreadyPaidPreview && (
-                                    <> Last paid on: {alreadyPaidPreview}.</>
+                                  {alreadyPaidAttendancePreview && (
+                                    <> Last paid on: {alreadyPaidAttendancePreview}.</>
+                                  )}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {calculationResult.calculation.alreadyPaidMaintenance.length > 0 && (
+                            <div className="flex items-start gap-3 rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+                              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                              <div className="space-y-1">
+                                <p className="font-medium text-xs uppercase tracking-wide">Maintenance note</p>
+                                <p className="text-xs sm:text-sm">
+                                  {calculationResult.calculation.alreadyPaidMaintenance.length} maintenance record(s) were
+                                  already marked as paid and left out of this total.
+                                  {alreadyPaidMaintenancePreview && (
+                                    <> Last paid on: {alreadyPaidMaintenancePreview}.</>
                                   )}
                                 </p>
                               </div>
@@ -508,8 +551,46 @@ export default function Payments() {
                               </div>
                             ) : (
                               <p className="text-xs text-muted-foreground">
-                                No maintenance charges were recorded in this period.
+                                {calculationResult.calculation.alreadyPaidMaintenance.length > 0
+                                  ? "All maintenance records in this period were already marked as paid."
+                                  : "No maintenance charges were recorded in this period."}
                               </p>
+                            )}
+                            {calculationResult.calculation.alreadyPaidMaintenance.length > 0 && (
+                              <div className="space-y-2 rounded-md border border-dashed border-sky-200 bg-sky-50/60 p-3">
+                                <p className="text-xs font-medium text-sky-900 uppercase tracking-wide">
+                                  Excluded maintenance (already paid)
+                                </p>
+                                <div className="overflow-x-auto">
+                                  <Table>
+                                    <TableHeader>
+                                      <TableRow className="text-xs">
+                                        <TableHead>Date</TableHead>
+                                        <TableHead>Type</TableHead>
+                                        <TableHead>Description</TableHead>
+                                        <TableHead>Performed by</TableHead>
+                                        <TableHead className="text-right">Cost</TableHead>
+                                      </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                      {calculationResult.calculation.alreadyPaidMaintenance.map((record) => (
+                                        <TableRow key={`paid-${record.id}`} className="text-xs">
+                                          <TableCell className="whitespace-nowrap">{format(new Date(record.serviceDate), "PPP")}</TableCell>
+                                          <TableCell className="whitespace-nowrap capitalize">{record.type.replace("_", " ")}</TableCell>
+                                          <TableCell className="max-w-xs whitespace-normal break-words">{record.description}</TableCell>
+                                          <TableCell className="whitespace-nowrap">{record.performedBy}</TableCell>
+                                          <TableCell className="text-right">$
+                                            {record.cost.toLocaleString(undefined, {
+                                              minimumFractionDigits: 2,
+                                              maximumFractionDigits: 2,
+                                            })}
+                                          </TableCell>
+                                        </TableRow>
+                                      ))}
+                                    </TableBody>
+                                  </Table>
+                                </div>
+                              </div>
                             )}
                           </div>
 
@@ -564,6 +645,10 @@ export default function Payments() {
                               </div>
                               <p className="text-xs text-muted-foreground mt-1">
                                 Adjust after reviewing the maintenance breakdown above.
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {calculationResult.calculation.maintenanceRecordIds.length} maintenance record(s) will be marked
+                                as paid when you create this payment.
                               </p>
                             </div>
                             <div>

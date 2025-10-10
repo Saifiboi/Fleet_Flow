@@ -81,6 +81,7 @@ export const maintenanceRecords = pgTable("maintenance_records", {
   mileage: integer("mileage"),
   status: text("status").notNull().default("completed"), // scheduled, in_progress, completed, cancelled
   notes: text("notes"),
+  isPaid: boolean("is_paid").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -271,6 +272,7 @@ export const insertPaymentSchema = createInsertSchema(payments).omit({
 
 export const createPaymentRequestSchema = insertPaymentSchema.extend({
   attendanceDates: z.array(z.string()).optional(),
+  maintenanceRecordIds: z.array(z.string()).optional(),
 });
 
 export const insertMaintenanceRecordSchema = createInsertSchema(maintenanceRecords).omit({
@@ -279,6 +281,7 @@ export const insertMaintenanceRecordSchema = createInsertSchema(maintenanceRecor
 }).extend({
   nextServiceDate: z.string().optional().transform(val => val === "" ? null : val), // Make nextServiceDate truly optional
   mileage: z.number().optional(), // Make mileage truly optional
+  isPaid: z.boolean().optional().default(false),
 });
 
 export const insertOwnershipHistorySchema = createInsertSchema(ownershipHistory).omit({
@@ -473,6 +476,7 @@ export type VehiclePaymentMaintenanceBreakdown = {
   description: string;
   performedBy: string;
   cost: number;
+  isPaid: boolean;
 };
 
 export type VehiclePaymentCalculation = {
@@ -485,10 +489,12 @@ export type VehiclePaymentCalculation = {
   maintenanceCost: number;
   monthlyBreakdown: VehiclePaymentMonthlyBreakdown[];
   maintenanceBreakdown: VehiclePaymentMaintenanceBreakdown[];
+  alreadyPaidMaintenance: VehiclePaymentMaintenanceBreakdown[];
   totalPresentDays: number;
   totalAmountBeforeMaintenance: number;
   netAmount: number;
   attendanceDates: string[];
+  maintenanceRecordIds: string[];
   alreadyPaidDates: string[];
 };
 

@@ -305,8 +305,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/payments", async (req, res) => {
     try {
       const parsedData = createPaymentRequestSchema.parse(req.body);
-      const { attendanceDates, ...paymentValues } = parsedData;
-      const payment = await storage.createPayment(paymentValues, attendanceDates);
+      const { attendanceDates, maintenanceRecordIds, ...paymentValues } = parsedData;
+      const payment = await storage.createPayment(
+        paymentValues,
+        attendanceDates,
+        maintenanceRecordIds
+      );
       res.status(201).json(payment);
     } catch (error: any) {
       res.status(400).json({ message: error.message });

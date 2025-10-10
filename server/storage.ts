@@ -109,7 +109,11 @@ export interface IStorage {
   getPayment(id: string): Promise<PaymentWithDetails | undefined>;
   getPaymentsByAssignment(assignmentId: string): Promise<PaymentWithDetails[]>;
   getOutstandingPayments(): Promise<PaymentWithDetails[]>;
-  createPayment(payment: InsertPayment, attendanceDates?: string[]): Promise<Payment>;
+  createPayment(
+    payment: InsertPayment,
+    attendanceDates?: string[],
+    maintenanceRecordIds?: string[]
+  ): Promise<Payment>;
   createVehiclePaymentForPeriod(
     payload: CreateVehiclePaymentForPeriod
   ): Promise<VehiclePaymentForPeriodResult>;
@@ -643,7 +647,11 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async createPayment(insertPayment: InsertPayment, attendanceDates?: string[]): Promise<Payment> {
+  async createPayment(
+    insertPayment: InsertPayment,
+    attendanceDates?: string[],
+    maintenanceRecordIds?: string[]
+  ): Promise<Payment> {
     return await db.transaction(async (tx) => {
       const [payment] = await tx.insert(payments).values(insertPayment).returning();
 
@@ -685,6 +693,38 @@ export class DatabaseStorage implements IStorage {
         }
       }
 
+      if (maintenanceRecordIds && maintenanceRecordIds.length > 0) {
+        const uniqueMaintenanceIds = Array.from(new Set(maintenanceRecordIds));
+
+        const [assignmentDetails] = await tx
+          .select({ vehicleId: assignments.vehicleId })
+          .from(assignments)
+          .where(eq(assignments.id, insertPayment.assignmentId))
+          .limit(1);
+
+        if (!assignmentDetails) {
+          throw new Error("Assignment not found for payment maintenance update");
+        }
+
+        const updatedMaintenance = await tx
+          .update(maintenanceRecords)
+          .set({ isPaid: true })
+          .where(
+            and(
+              eq(maintenanceRecords.vehicleId, assignmentDetails.vehicleId),
+              eq(maintenanceRecords.isPaid, false),
+              inArray(maintenanceRecords.id, uniqueMaintenanceIds)
+            )
+          )
+          .returning({ id: maintenanceRecords.id });
+
+        if (updatedMaintenance.length !== uniqueMaintenanceIds.length) {
+          throw new Error(
+            "Some maintenance entries have already been marked as paid. Recalculate the payment before creating it."
+          );
+        }
+      }
+
       return payment;
     });
   }
@@ -715,12 +755,43 @@ export class DatabaseStorage implements IStorage {
       throw error;
     }
 
+    const normalizeToUtcDate = (value: Date) =>
+      new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+
+    const parseDateOnly = (value: string | Date) => {
+      if (value instanceof Date) {
+        return normalizeToUtcDate(value);
+      }
+
+      const [datePart] = value.split("T");
+      const [year, month, day] = datePart.split("-").map(Number);
+
+      if ([year, month, day].some((component) => Number.isNaN(component))) {
+        throw new Error(`Invalid date value encountered: ${value}`);
+      }
+
+      return new Date(Date.UTC(year, month - 1, day));
+    };
+
+    const startDateUtc = normalizeToUtcDate(start);
+    const endDateUtc = normalizeToUtcDate(end);
+
     const monthlyRateNumber = Number(assignment.monthlyRate);
     if (Number.isNaN(monthlyRateNumber)) {
       const error: any = new Error("Assignment monthly rate is invalid");
       error.status = 400;
       throw error;
     }
+
+    const formatDate = (value: Date) => {
+      const year = value.getUTCFullYear();
+      const month = String(value.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(value.getUTCDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    };
+
+    const startDateString = formatDate(startDateUtc);
+    const endDateString = formatDate(endDateUtc);
 
     const attendanceRecords = await db
       .select({
@@ -735,8 +806,8 @@ export class DatabaseStorage implements IStorage {
             ? eq(vehicleAttendance.projectId, assignment.projectId)
             : isNull(vehicleAttendance.projectId),
           eq(vehicleAttendance.status, "present"),
-          gte(vehicleAttendance.attendanceDate, payload.startDate),
-          lte(vehicleAttendance.attendanceDate, payload.endDate)
+          gte(vehicleAttendance.attendanceDate, startDateString),
+          lte(vehicleAttendance.attendanceDate, endDateString)
         )
       );
 
@@ -748,27 +819,21 @@ export class DatabaseStorage implements IStorage {
         description: maintenanceRecords.description,
         performedBy: maintenanceRecords.performedBy,
         cost: maintenanceRecords.cost,
+        isPaid: maintenanceRecords.isPaid,
       })
       .from(maintenanceRecords)
       .where(
         and(
           eq(maintenanceRecords.vehicleId, assignment.vehicleId),
-          gte(maintenanceRecords.serviceDate, payload.startDate),
-          lte(maintenanceRecords.serviceDate, payload.endDate)
+          gte(maintenanceRecords.serviceDate, startDateString),
+          lte(maintenanceRecords.serviceDate, endDateString)
         )
       )
       .orderBy(asc(maintenanceRecords.serviceDate));
 
-    const formatDate = (value: Date) => {
-      const year = value.getFullYear();
-      const month = String(value.getMonth() + 1).padStart(2, "0");
-      const day = String(value.getDate()).padStart(2, "0");
-      return `${year}-${month}-${day}`;
-    };
-
     const attendanceBuckets = attendanceRecords.reduce(
       (acc, record) => {
-        const formattedDate = formatDate(new Date(record.attendanceDate));
+        const formattedDate = formatDate(parseDateOnly(record.attendanceDate));
         if (record.isPaid) {
           if (!acc.unpaid.has(formattedDate)) {
             acc.paid.add(formattedDate);
@@ -785,11 +850,15 @@ export class DatabaseStorage implements IStorage {
     const attendanceDateStrings = Array.from(attendanceBuckets.unpaid).sort();
     const alreadyPaidDateStrings = Array.from(attendanceBuckets.paid).sort();
     const attendanceDates = attendanceDateStrings
-      .map((value) => new Date(value))
+      .map((value) => parseDateOnly(value))
       .sort((a, b) => a.getTime() - b.getTime());
 
-    const maintenanceBreakdown = maintenanceRows.map((row) => {
-      const serviceDate = new Date(row.serviceDate);
+    const maintenanceRecordIds: string[] = [];
+    const maintenanceBreakdown: VehiclePaymentCalculation["maintenanceBreakdown"] = [];
+    const alreadyPaidMaintenance: VehiclePaymentCalculation["alreadyPaidMaintenance"] = [];
+
+    maintenanceRows.forEach((row) => {
+      const serviceDate = parseDateOnly(row.serviceDate);
       const monthLabel = new Intl.DateTimeFormat("en-US", {
         month: "long",
         year: "numeric",
@@ -797,37 +866,48 @@ export class DatabaseStorage implements IStorage {
       const rawCost = Number(row.cost ?? 0);
       const normalizedCost = Number.isNaN(rawCost) ? 0 : Number(rawCost.toFixed(2));
 
-      return {
+      const breakdownItem = {
         id: row.id,
-        year: serviceDate.getFullYear(),
-        month: serviceDate.getMonth() + 1,
+        year: serviceDate.getUTCFullYear(),
+        month: serviceDate.getUTCMonth() + 1,
         monthLabel,
         serviceDate: formatDate(serviceDate),
         type: row.type,
         description: row.description,
         performedBy: row.performedBy,
         cost: normalizedCost,
+        isPaid: row.isPaid ?? false,
       };
+      if (row.isPaid) {
+        alreadyPaidMaintenance.push(breakdownItem);
+      } else {
+        maintenanceBreakdown.push(breakdownItem);
+        maintenanceRecordIds.push(row.id);
+      }
     });
 
     const maintenanceCostNumber = maintenanceBreakdown.reduce((sum, item) => sum + item.cost, 0);
 
     const months: VehiclePaymentCalculation["monthlyBreakdown"] = [];
 
-    const startOfFirstMonth = new Date(start.getFullYear(), start.getMonth(), 1);
-    const startOfLastMonth = new Date(end.getFullYear(), end.getMonth(), 1);
+    const startOfFirstMonth = new Date(
+      Date.UTC(startDateUtc.getUTCFullYear(), startDateUtc.getUTCMonth(), 1)
+    );
+    const startOfLastMonth = new Date(
+      Date.UTC(endDateUtc.getUTCFullYear(), endDateUtc.getUTCMonth(), 1)
+    );
 
     for (
       let cursor = new Date(startOfFirstMonth.getTime());
-      cursor <= startOfLastMonth;
-      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1)
+      cursor.getTime() <= startOfLastMonth.getTime();
+      cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1))
     ) {
-      const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
-      const monthEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
-      const effectiveStart = start > monthStart ? start : monthStart;
-      const effectiveEnd = end < monthEnd ? end : monthEnd;
+      const monthStart = new Date(cursor.getTime());
+      const monthEnd = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 0));
+      const effectiveStart = startDateUtc > monthStart ? startDateUtc : monthStart;
+      const effectiveEnd = endDateUtc < monthEnd ? endDateUtc : monthEnd;
 
-      const totalDaysInMonth = monthEnd.getDate();
+      const totalDaysInMonth = monthEnd.getUTCDate();
       const dailyRate = monthlyRateNumber / totalDaysInMonth;
 
       const presentDaysForMonth = attendanceDates.filter((date) => {
@@ -842,8 +922,8 @@ export class DatabaseStorage implements IStorage {
       }).format(monthStart);
 
       months.push({
-        year: cursor.getFullYear(),
-        month: cursor.getMonth() + 1,
+        year: cursor.getUTCFullYear(),
+        month: cursor.getUTCMonth() + 1,
         monthLabel,
         periodStart: formatDate(effectiveStart),
         periodEnd: formatDate(effectiveEnd),
@@ -868,10 +948,12 @@ export class DatabaseStorage implements IStorage {
       maintenanceCost: Number(maintenanceCostNumber.toFixed(2)),
       monthlyBreakdown: months,
       maintenanceBreakdown,
+      alreadyPaidMaintenance,
       totalPresentDays,
       totalAmountBeforeMaintenance: Number(totalAttendanceAmount.toFixed(2)),
       netAmount: Number(netAmount.toFixed(2)),
       attendanceDates: attendanceDateStrings,
+      maintenanceRecordIds,
       alreadyPaidDates: alreadyPaidDateStrings,
     };
 
