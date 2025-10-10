@@ -13,7 +13,9 @@ import type {
   MaintenanceRecordWithVehicle,
   DashboardStats,
   VehicleAttendanceWithVehicle,
-  VehicleAttendanceSummary
+  VehicleAttendanceSummary,
+  CreateVehiclePaymentForPeriod,
+  VehiclePaymentForPeriodResult
 } from "@shared/schema";
 
 // Typed query hooks to fix TypeScript issues
@@ -124,3 +126,10 @@ export const useVehicleAttendanceSummary = (params: {
       return (await res.json()) as VehicleAttendanceSummary[];
     },
   });
+
+export const createVehiclePaymentForPeriod = async (
+  payload: CreateVehiclePaymentForPeriod
+): Promise<VehiclePaymentForPeriodResult> => {
+  const res = await apiRequest("POST", "/api/payments/calculate", payload);
+  return (await res.json()) as VehiclePaymentForPeriodResult;
+};

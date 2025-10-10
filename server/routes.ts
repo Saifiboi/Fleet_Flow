@@ -9,6 +9,7 @@ import {
   insertProjectSchema,
   insertAssignmentSchema,
   insertPaymentSchema,
+  createVehiclePaymentForPeriodSchema,
   insertMaintenanceRecordSchema,
   insertOwnershipHistorySchema,
   updateOwnerSchema,
@@ -307,6 +308,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(payment);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/payments/calculate", async (req, res) => {
+    try {
+      const payload = createVehiclePaymentForPeriodSchema.parse(req.body);
+      const result = await storage.createVehiclePaymentForPeriod(payload);
+      res.status(201).json(result);
+    } catch (error: any) {
+      const status = error.status ?? 400;
+      res.status(status).json({ message: error.message });
     }
   });
 

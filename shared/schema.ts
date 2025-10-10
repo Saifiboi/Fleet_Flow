@@ -303,6 +303,19 @@ export const deleteVehicleAttendanceSchema = z.object({
   projectId: z.string().nullable().optional(),
 });
 
+export const createVehiclePaymentForPeriodSchema = z.object({
+  assignmentId: z.string(),
+  startDate: z.string(),
+  endDate: z.string(),
+  dueDate: z.string(),
+  status: z.enum(["pending", "paid", "overdue"]).default("pending").optional(),
+  paidDate: z
+    .string()
+    .optional()
+    .transform((val) => (val === "" || val === undefined ? null : val)),
+  invoiceNumber: z.string().optional().transform((val) => (val === "" ? undefined : val)),
+});
+
 // Update schemas
 export const updateOwnerSchema = z.object({
   ownerType: z.enum(["individual", "corporate"]).optional(),
@@ -357,6 +370,7 @@ export type InsertMaintenanceRecord = z.infer<typeof insertMaintenanceRecordSche
 export type VehicleAttendance = typeof vehicleAttendance.$inferSelect;
 export type InsertVehicleAttendance = z.infer<typeof insertVehicleAttendanceSchema>;
 export type DeleteVehicleAttendance = z.infer<typeof deleteVehicleAttendanceSchema>;
+export type CreateVehiclePaymentForPeriod = z.infer<typeof createVehiclePaymentForPeriodSchema>;
 
 // Extended types for frontend use
 export type VehicleWithOwner = Vehicle & {
@@ -370,6 +384,26 @@ export type AssignmentWithDetails = Assignment & {
 
 export type PaymentWithDetails = Payment & {
   assignment: AssignmentWithDetails;
+};
+
+export type VehiclePaymentCalculation = {
+  assignmentId: string;
+  vehicleId: string;
+  projectId: string;
+  periodStart: string;
+  periodEnd: string;
+  totalDays: number;
+  presentDays: number;
+  monthlyRate: number;
+  dailyRate: number;
+  baseAmount: number;
+  maintenanceCost: number;
+  netAmount: number;
+};
+
+export type VehiclePaymentForPeriodResult = {
+  payment: PaymentWithDetails;
+  calculation: VehiclePaymentCalculation;
 };
 
 export type MaintenanceRecordWithVehicle = MaintenanceRecord & {

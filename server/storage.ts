@@ -32,6 +32,9 @@ import {
   type AssignmentWithDetails,
   type PaymentWithDetails,
   type MaintenanceRecordWithVehicle,
+  type CreateVehiclePaymentForPeriod,
+  type VehiclePaymentCalculation,
+  type VehiclePaymentForPeriodResult,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql, isNull, gte, lte, ne } from "drizzle-orm";
@@ -107,6 +110,9 @@ export interface IStorage {
   getPaymentsByAssignment(assignmentId: string): Promise<PaymentWithDetails[]>;
   getOutstandingPayments(): Promise<PaymentWithDetails[]>;
   createPayment(payment: InsertPayment): Promise<Payment>;
+  createVehiclePaymentForPeriod(
+    payload: CreateVehiclePaymentForPeriod
+  ): Promise<VehiclePaymentForPeriodResult>;
   updatePayment(id: string, payment: Partial<InsertPayment>): Promise<Payment>;
   deletePayment(id: string): Promise<void>;
 
@@ -640,6 +646,126 @@ export class DatabaseStorage implements IStorage {
   async createPayment(insertPayment: InsertPayment): Promise<Payment> {
     const [payment] = await db.insert(payments).values(insertPayment).returning();
     return payment;
+  }
+
+  async createVehiclePaymentForPeriod(
+    payload: CreateVehiclePaymentForPeriod
+  ): Promise<VehiclePaymentForPeriodResult> {
+    const assignment = await this.getAssignment(payload.assignmentId);
+
+    if (!assignment) {
+      const error: any = new Error("Assignment not found");
+      error.status = 404;
+      throw error;
+    }
+
+    const start = new Date(payload.startDate);
+    const end = new Date(payload.endDate);
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      const error: any = new Error("Invalid start or end date provided");
+      error.status = 400;
+      throw error;
+    }
+
+    if (end < start) {
+      const error: any = new Error("End date must be on or after the start date");
+      error.status = 400;
+      throw error;
+    }
+
+    const millisecondsPerDay = 24 * 60 * 60 * 1000;
+    const totalDays = Math.floor((end.getTime() - start.getTime()) / millisecondsPerDay) + 1;
+
+    if (totalDays <= 0) {
+      const error: any = new Error("The selected period must include at least one day");
+      error.status = 400;
+      throw error;
+    }
+
+    const monthlyRateNumber = Number(assignment.monthlyRate);
+    if (Number.isNaN(monthlyRateNumber)) {
+      const error: any = new Error("Assignment monthly rate is invalid");
+      error.status = 400;
+      throw error;
+    }
+
+    const [{ presentDays }] = await db
+      .select({ presentDays: sql<number>`count(*)` })
+      .from(vehicleAttendance)
+      .where(
+        and(
+          eq(vehicleAttendance.vehicleId, assignment.vehicleId),
+          assignment.projectId
+            ? eq(vehicleAttendance.projectId, assignment.projectId)
+            : isNull(vehicleAttendance.projectId),
+          eq(vehicleAttendance.status, "present"),
+          gte(vehicleAttendance.attendanceDate, payload.startDate),
+          lte(vehicleAttendance.attendanceDate, payload.endDate)
+        )
+      );
+
+    const [{ totalMaintenanceCost }] = await db
+      .select({ totalMaintenanceCost: sql<string>`coalesce(sum(${maintenanceRecords.cost}), 0)` })
+      .from(maintenanceRecords)
+      .where(
+        and(
+          eq(maintenanceRecords.vehicleId, assignment.vehicleId),
+          gte(maintenanceRecords.serviceDate, payload.startDate),
+          lte(maintenanceRecords.serviceDate, payload.endDate)
+        )
+      );
+
+    const presentDaysCount = Number(presentDays ?? 0);
+    const maintenanceCostNumber = Number(totalMaintenanceCost ?? "0");
+
+    if (Number.isNaN(maintenanceCostNumber)) {
+      const error: any = new Error("Maintenance cost total is invalid");
+      error.status = 500;
+      throw error;
+    }
+
+    const dailyRate = monthlyRateNumber / totalDays;
+    const attendanceAmount = dailyRate * presentDaysCount;
+    const netAmount = attendanceAmount - maintenanceCostNumber;
+
+    const calculation: VehiclePaymentCalculation = {
+      assignmentId: assignment.id,
+      vehicleId: assignment.vehicleId,
+      projectId: assignment.projectId,
+      periodStart: payload.startDate,
+      periodEnd: payload.endDate,
+      totalDays,
+      presentDays: presentDaysCount,
+      monthlyRate: Number(monthlyRateNumber.toFixed(2)),
+      dailyRate: Number(dailyRate.toFixed(2)),
+      baseAmount: Number(attendanceAmount.toFixed(2)),
+      maintenanceCost: Number(maintenanceCostNumber.toFixed(2)),
+      netAmount: Number(netAmount.toFixed(2)),
+    };
+
+    const paymentPayload: InsertPayment = {
+      assignmentId: payload.assignmentId,
+      amount: calculation.netAmount.toFixed(2),
+      dueDate: payload.dueDate,
+      status: payload.status ?? "pending",
+      paidDate: payload.paidDate ?? null,
+      invoiceNumber: payload.invoiceNumber ?? null,
+    };
+
+    const payment = await this.createPayment(paymentPayload);
+    const paymentWithDetails = await this.getPayment(payment.id);
+
+    if (!paymentWithDetails) {
+      const error: any = new Error("Failed to load created payment");
+      error.status = 500;
+      throw error;
+    }
+
+    return {
+      payment: paymentWithDetails,
+      calculation,
+    };
   }
 
   async updatePayment(id: string, insertPayment: Partial<InsertPayment>): Promise<Payment> {
