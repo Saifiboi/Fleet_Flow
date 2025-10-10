@@ -366,18 +366,18 @@ export default function Maintenance() {
                       <p className="text-2xl font-semibold">{summaryRecords.length}</p>
                     </div>
                     <div className="border rounded-lg p-4">
-                      <p className="text-sm text-muted-foreground">Total Cost</p>
-                      <p className="text-2xl font-semibold">${summaryTotalCost.toLocaleString()}</p>
+                      <p className="text-sm text-muted-foreground">Total Cost (PKR)</p>
+                      <p className="text-2xl font-semibold">{summaryTotalCost.toLocaleString()}</p>
                     </div>
                     <div className="border rounded-lg p-4">
-                      <p className="text-sm text-muted-foreground">Average Cost</p>
-                      <p className="text-2xl font-semibold">${summaryAverageCost.toFixed(2)}</p>
+                      <p className="text-sm text-muted-foreground">Average Cost (PKR)</p>
+                      <p className="text-2xl font-semibold">{summaryAverageCost.toFixed(2)}</p>
                     </div>
                     <div className="border rounded-lg p-4">
                       <p className="text-sm text-muted-foreground">Highest Cost Entry</p>
                       <p className="text-lg font-semibold">
                         {summaryHighestCostRecord
-                          ? `$${Number(summaryHighestCostRecord.cost).toLocaleString()}`
+                          ? `${Number(summaryHighestCostRecord.cost).toLocaleString()}`
                           : "N/A"}
                       </p>
                       {summaryHighestCostRecord && (
@@ -418,7 +418,7 @@ export default function Maintenance() {
                       <TableHead>Vehicle</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Description</TableHead>
-                      <TableHead>Cost</TableHead>
+                      <TableHead>Cost (PKR)</TableHead>
                       <TableHead>Service Date</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Actions</TableHead>
@@ -444,7 +444,7 @@ export default function Maintenance() {
                               {record.description}
                             </div>
                           </TableCell>
-                          <TableCell>${Number(record.cost).toLocaleString()}</TableCell>
+                          <TableCell>{Number(record.cost).toLocaleString()} </TableCell>
                           <TableCell>{new Date(record.serviceDate).toLocaleDateString()}</TableCell>
                           <TableCell>{getStatusBadge(record.status)}</TableCell>
                           <TableCell>
@@ -538,8 +538,8 @@ export default function Maintenance() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm font-medium">Cost</label>
-                  <p className="text-sm">${Number(viewingRecord.cost).toLocaleString()}</p>
+                  <label className="text-sm font-medium">Cost (PKR) </label>
+                  <p className="text-sm">{Number(viewingRecord.cost).toLocaleString()}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Performed By</label>
