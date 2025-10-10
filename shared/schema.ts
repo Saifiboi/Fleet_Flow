@@ -61,6 +61,7 @@ export const assignments = pgTable("assignments", {
 export const payments = pgTable("payments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   assignmentId: varchar("assignment_id").notNull().references(() => assignments.id, { onDelete: "cascade" }),
+  ownerId: varchar("owner_id").notNull().references(() => owners.id),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   periodStart: date("period_start"),
   periodEnd: date("period_end"),
@@ -72,6 +73,18 @@ export const payments = pgTable("payments", {
   paidDate: date("paid_date"),
   status: text("status").notNull().default("pending"), // pending, paid, overdue
   invoiceNumber: text("invoice_number"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const paymentTransactions = pgTable("payment_transactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  paymentId: varchar("payment_id").notNull().references(() => payments.id, { onDelete: "cascade" }),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  method: text("method").notNull().default("cash"),
+  referenceNumber: text("reference_number"),
+  notes: text("notes"),
+  recordedBy: text("recorded_by"),
+  transactionDate: date("transaction_date").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -148,10 +161,22 @@ export const assignmentsRelations = relations(assignments, ({ one, many }) => ({
   payments: many(payments),
 }));
 
-export const paymentsRelations = relations(payments, ({ one }) => ({
+export const paymentsRelations = relations(payments, ({ one, many }) => ({
   assignment: one(assignments, {
     fields: [payments.assignmentId],
     references: [assignments.id],
+  }),
+  paymentOwner: one(owners, {
+    fields: [payments.ownerId],
+    references: [owners.id],
+  }),
+  transactions: many(paymentTransactions),
+}));
+
+export const paymentTransactionsRelations = relations(paymentTransactions, ({ one }) => ({
+  payment: one(payments, {
+    fields: [paymentTransactions.paymentId],
+    references: [payments.id],
   }),
 }));
 
@@ -273,6 +298,7 @@ export const insertPaymentSchema = createInsertSchema(payments).omit({
   id: true,
   createdAt: true,
 }).extend({
+  ownerId: z.string().optional(),
   paidDate: z.string().optional().transform(val => val === "" ? null : val), // Make paidDate truly optional
   periodStart: z.string().min(1, "Period start is required"),
   periodEnd: z.string().min(1, "Period end is required"),
@@ -302,6 +328,37 @@ export const createPaymentRequestSchema = insertPaymentSchema.extend({
   attendanceDates: z.array(z.string()).optional(),
   maintenanceRecordIds: z.array(z.string()).optional(),
 });
+
+export const insertPaymentTransactionSchema = createInsertSchema(paymentTransactions).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  paymentId: z.string().min(1, "Payment is required"),
+  amount: z
+    .coerce
+    .number({ invalid_type_error: "Amount must be a valid number" })
+    .gt(0, "Amount must be greater than zero")
+    .transform((value) => value.toFixed(2)),
+  method: z.enum(["cash", "bank_transfer", "cheque", "mobile_wallet", "other"]).default("cash"),
+  transactionDate: z
+    .string()
+    .min(1, "Transaction date is required")
+    .transform((value) => value),
+  referenceNumber: z
+    .string()
+    .optional()
+    .transform((value) => (value === "" ? undefined : value)),
+  notes: z
+    .string()
+    .optional()
+    .transform((value) => (value === "" ? undefined : value)),
+  recordedBy: z
+    .string()
+    .optional()
+    .transform((value) => (value === "" ? undefined : value)),
+});
+
+export const createPaymentTransactionSchema = insertPaymentTransactionSchema.omit({ paymentId: true });
 
 export const insertMaintenanceRecordSchema = createInsertSchema(maintenanceRecords).omit({
   id: true,
@@ -478,8 +535,16 @@ export type AssignmentWithDetails = Assignment & {
   project: Project;
 };
 
+export type PaymentTransaction = typeof paymentTransactions.$inferSelect;
+export type InsertPaymentTransaction = z.infer<typeof insertPaymentTransactionSchema>;
+export type CreatePaymentTransaction = z.infer<typeof createPaymentTransactionSchema>;
+
 export type PaymentWithDetails = Payment & {
   assignment: AssignmentWithDetails;
+  paymentOwner: Owner | null;
+  transactions: PaymentTransaction[];
+  totalPaid: number;
+  outstandingAmount: number;
 };
 
 export type VehiclePaymentMonthlyBreakdown = {

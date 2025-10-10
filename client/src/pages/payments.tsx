@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useForm } from "react-hook-form";
 import { useMutation } from "@tanstack/react-query";
 import { usePayments } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +10,15 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -29,7 +39,9 @@ import type {
   VehiclePaymentForPeriodResult,
   CreateVehiclePaymentForPeriod,
   CreatePaymentRequest,
+  CreatePaymentTransaction,
 } from "@shared/schema";
+import { Textarea } from "@/components/ui/textarea";
 
 export default function Payments() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -43,6 +55,17 @@ export default function Payments() {
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PaymentWithDetails | null>(null);
   const { toast } = useToast();
+
+  const transactionForm = useForm<CreatePaymentTransaction>({
+    defaultValues: {
+      amount: "",
+      method: "cash",
+      transactionDate: format(new Date(), "yyyy-MM-dd"),
+      referenceNumber: "",
+      notes: "",
+      recordedBy: "",
+    },
+  });
 
   const { data: payments = [], isLoading } = usePayments();
 
@@ -72,15 +95,78 @@ export default function Payments() {
     },
   });
 
-  const filteredPayments = payments?.filter((payment: PaymentWithDetails) => {
-    const matchesSearch =
-      payment.assignment.project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.assignment.vehicle.make.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.assignment.vehicle.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.assignment.vehicle.licensePlate.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (payment.invoiceNumber && payment.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()));
+  const createTransaction = useMutation({
+    mutationFn: async ({
+      paymentId,
+      values,
+    }: {
+      paymentId: string;
+      values: CreatePaymentTransaction;
+    }) => {
+      const res = await apiRequest("POST", `/api/payments/${paymentId}/transactions`, values);
+      return (await res.json()) as { transaction: unknown; payment?: PaymentWithDetails };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/payments/outstanding"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      if (data?.payment) {
+        setSelectedPayment(data.payment);
+      }
+      toast({
+        title: "Transaction recorded",
+        description: "Payment balance has been updated.",
+      });
+      transactionForm.reset({
+        amount: "",
+        method: "cash",
+        transactionDate: format(new Date(), "yyyy-MM-dd"),
+        referenceNumber: "",
+        notes: "",
+        recordedBy: "",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to record transaction",
+        variant: "destructive",
+      });
+    },
+  });
 
-    const matchesStatus = statusFilter === "all" || payment.status === statusFilter;
+  useEffect(() => {
+    if (isViewOpen) {
+      transactionForm.reset({
+        amount: "",
+        method: "cash",
+        transactionDate: format(new Date(), "yyyy-MM-dd"),
+        referenceNumber: "",
+        notes: "",
+        recordedBy: "",
+      });
+    }
+  }, [isViewOpen, transactionForm]);
+
+  const filteredPayments = payments?.filter((payment: PaymentWithDetails) => {
+    const lowerSearch = searchTerm.toLowerCase();
+    const matchesSearch =
+      payment.assignment.project.name.toLowerCase().includes(lowerSearch) ||
+      payment.assignment.vehicle.make.toLowerCase().includes(lowerSearch) ||
+      payment.assignment.vehicle.model.toLowerCase().includes(lowerSearch) ||
+      payment.assignment.vehicle.licensePlate.toLowerCase().includes(lowerSearch) ||
+      (payment.invoiceNumber && payment.invoiceNumber.toLowerCase().includes(lowerSearch)) ||
+      (payment.paymentOwner?.name && payment.paymentOwner.name.toLowerCase().includes(lowerSearch));
+
+    const today = new Date();
+    const due = new Date(payment.dueDate);
+    const isOverdue = payment.outstandingAmount > 0 && differenceInDays(today, due) > 0;
+    const normalizedStatus = payment.status.toLowerCase();
+
+    const matchesStatus =
+      statusFilter === "all" ||
+      normalizedStatus === statusFilter ||
+      (statusFilter === "overdue" && isOverdue);
 
     return matchesSearch && matchesStatus;
   });
@@ -224,38 +310,62 @@ export default function Payments() {
     createPaymentFromCalculation.mutate(payload);
   };
 
-  const getStatusBadge = (status: string, dueDate: string, paidDate?: string | null) => {
-    if (status === "paid") {
+  const getStatusBadge = (
+    status: string,
+    dueDate: string,
+    outstandingAmount: number,
+    paidDate?: string | null
+  ) => {
+    const remaining = Math.max(outstandingAmount ?? 0, 0);
+
+    if (remaining <= 0 || status === "paid") {
       return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Paid</Badge>;
     }
 
     const today = new Date();
     const due = new Date(dueDate);
     const daysOverdue = differenceInDays(today, due);
-    
+
     if (daysOverdue > 0) {
-      return <Badge variant="destructive">{daysOverdue} days overdue</Badge>;
+      const label = status === "partial" ? `Partial • ${daysOverdue} days overdue` : `${daysOverdue} days overdue`;
+      return <Badge variant="destructive">{label}</Badge>;
     }
+
     if (daysOverdue === 0) {
-      return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100">Due Today</Badge>;
+      return (
+        <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100">
+          {status === "partial" ? "Partial • Due Today" : "Due Today"}
+        </Badge>
+      );
     }
+
     if (daysOverdue >= -3) {
-      return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">Due Soon</Badge>;
+      return (
+        <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
+          {status === "partial" ? "Partial • Due Soon" : "Due Soon"}
+        </Badge>
+      );
     }
-    
+
+    if (status === "partial") {
+      return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">Partial</Badge>;
+    }
+
     return <Badge variant="secondary">Pending</Badge>;
   };
 
-  const totalOutstanding = payments?.reduce((sum: number, payment: PaymentWithDetails) => {
-    return payment.status === "pending" ? sum + Number(payment.amount) : sum;
-  }, 0) || 0;
+  const totalOutstanding =
+    payments?.reduce((sum: number, payment: PaymentWithDetails) => {
+      const outstanding = Math.max(payment.outstandingAmount ?? 0, 0);
+      return sum + outstanding;
+    }, 0) || 0;
 
-  const overdueCount = payments?.filter((payment: PaymentWithDetails) => {
-    if (payment.status !== "pending") return false;
-    const today = new Date();
-    const due = new Date(payment.dueDate);
-    return differenceInDays(today, due) > 0;
-  }).length || 0;
+  const overdueCount =
+    payments?.filter((payment: PaymentWithDetails) => {
+      const today = new Date();
+      const due = new Date(payment.dueDate);
+      return payment.outstandingAmount > 0 && differenceInDays(today, due) > 0;
+    }).length || 0;
 
   const handleViewPayment = (payment: PaymentWithDetails) => {
     setSelectedPayment(payment);
@@ -276,6 +386,14 @@ export default function Payments() {
     }
     return numeric.toFixed(2);
   };
+
+  const handleTransactionSubmit = transactionForm.handleSubmit((values) => {
+    if (!selectedPayment) return;
+    createTransaction.mutate({ paymentId: selectedPayment.id, values });
+  });
+
+  const selectedOutstanding = selectedPayment?.outstandingAmount ?? 0;
+  const canRecordTransaction = selectedOutstanding > 0;
 
   return (
     <div className="space-y-6" data-testid="payments-page">
@@ -320,6 +438,22 @@ export default function Payments() {
                     </dd>
                   </div>
                   <div className="flex items-center justify-between">
+                    <dt className="text-muted-foreground">Total received</dt>
+                    <dd className="font-medium text-foreground text-right">
+                      ${formatCurrency(selectedPayment.totalPaid)}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-muted-foreground">Outstanding balance</dt>
+                    <dd
+                      className={`font-semibold text-right ${
+                        selectedPayment.outstandingAmount > 0 ? "text-destructive" : "text-foreground"
+                      }`}
+                    >
+                      ${formatCurrency(selectedPayment.outstandingAmount)}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between">
                     <dt className="text-muted-foreground">Attendance days</dt>
                     <dd className="font-medium text-foreground text-right">
                       {selectedPayment.totalDays ?? 0}
@@ -357,6 +491,18 @@ export default function Payments() {
                       {selectedPayment.invoiceNumber ?? "-"}
                     </dd>
                   </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-muted-foreground">Owner at payment</dt>
+                    <dd className="font-medium text-foreground text-right">
+                      {selectedPayment.paymentOwner?.name ?? "Unknown"}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-muted-foreground">Transactions recorded</dt>
+                    <dd className="font-medium text-foreground text-right">
+                      {selectedPayment.transactions.length}
+                    </dd>
+                  </div>
                 </dl>
               </div>
 
@@ -388,7 +534,7 @@ export default function Payments() {
                     </dd>
                   </div>
                   <div className="flex items-center justify-between">
-                    <dt className="text-muted-foreground">Owner</dt>
+                    <dt className="text-muted-foreground">Current owner</dt>
                     <dd className="font-medium text-foreground text-right">
                       {selectedPayment.assignment.vehicle.owner.name}
                     </dd>
@@ -410,6 +556,202 @@ export default function Payments() {
                     </dd>
                   </div>
                 </dl>
+              </div>
+
+              <div className="rounded-lg border bg-muted/40 p-4 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="text-sm font-semibold text-foreground">Payment transactions</h4>
+                  <Badge
+                    variant="outline"
+                    className={
+                      selectedOutstanding > 0
+                        ? "border-destructive text-destructive"
+                        : "border-green-200 text-green-700"
+                    }
+                  >
+                    Outstanding: ${formatCurrency(selectedOutstanding)}
+                  </Badge>
+                </div>
+
+                {selectedPayment.transactions.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Method</TableHead>
+                          <TableHead className="text-right">Amount</TableHead>
+                          <TableHead>Reference</TableHead>
+                          <TableHead>Notes</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedPayment.transactions.map((transaction) => (
+                          <TableRow key={transaction.id}>
+                            <TableCell>{format(new Date(transaction.transactionDate), "MMM dd, yyyy")}</TableCell>
+                            <TableCell className="capitalize">{transaction.method.replace(/_/g, " ")}</TableCell>
+                            <TableCell className="text-right font-medium text-foreground">
+                              ${formatCurrency(transaction.amount)}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {transaction.referenceNumber ?? "-"}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {transaction.notes ?? "-"}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No payment transactions recorded yet.
+                  </p>
+                )}
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h5 className="text-sm font-semibold text-foreground">Add transaction</h5>
+                    {!canRecordTransaction && (
+                      <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-200">
+                        Fully paid
+                      </Badge>
+                    )}
+                  </div>
+                  <Form {...transactionForm}>
+                    <form onSubmit={handleTransactionSubmit} className="grid gap-4 md:grid-cols-2">
+                      <FormField
+                        control={transactionForm.control}
+                        name="amount"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Amount received</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0.01"
+                                placeholder="0.00"
+                                disabled={!canRecordTransaction || createTransaction.isPending}
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              Remaining balance: ${formatCurrency(selectedOutstanding)}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={transactionForm.control}
+                        name="method"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Payment method</FormLabel>
+                            <Select
+                              onValueChange={field.onChange}
+                              value={field.value}
+                              disabled={!canRecordTransaction || createTransaction.isPending}
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select method" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="cash">Cash</SelectItem>
+                                <SelectItem value="bank_transfer">Bank transfer</SelectItem>
+                                <SelectItem value="cheque">Cheque</SelectItem>
+                                <SelectItem value="mobile_wallet">Mobile wallet</SelectItem>
+                                <SelectItem value="other">Other</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={transactionForm.control}
+                        name="transactionDate"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Transaction date</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="date"
+                                disabled={!canRecordTransaction || createTransaction.isPending}
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={transactionForm.control}
+                        name="referenceNumber"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Reference</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="e.g. Receipt number"
+                                disabled={!canRecordTransaction || createTransaction.isPending}
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={transactionForm.control}
+                        name="recordedBy"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Recorded by</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Staff name"
+                                disabled={!canRecordTransaction || createTransaction.isPending}
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={transactionForm.control}
+                        name="notes"
+                        render={({ field }) => (
+                          <FormItem className="md:col-span-2">
+                            <FormLabel>Notes</FormLabel>
+                            <FormControl>
+                              <Textarea
+                                placeholder="Optional details"
+                                className="min-h-[80px]"
+                                disabled={!canRecordTransaction || createTransaction.isPending}
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <div className="md:col-span-2 flex justify-end">
+                        <Button
+                          type="submit"
+                          disabled={!canRecordTransaction || createTransaction.isPending}
+                        >
+                          {createTransaction.isPending ? "Recording..." : "Record transaction"}
+                        </Button>
+                      </div>
+                    </form>
+                  </Form>
+                </div>
               </div>
 
               <p className="text-xs text-muted-foreground">
@@ -846,6 +1188,7 @@ export default function Payments() {
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="partial">Partial</SelectItem>
                 <SelectItem value="paid">Paid</SelectItem>
                 <SelectItem value="overdue">Overdue</SelectItem>
               </SelectContent>
@@ -945,6 +1288,18 @@ export default function Payments() {
                             </p>
                           </div>
                           <p className="text-xs text-muted-foreground">
+                            Received: ${formatCurrency(payment.totalPaid)} ·
+                            <span
+                              className={
+                                payment.outstandingAmount > 0
+                                  ? "text-destructive font-semibold"
+                                  : "text-muted-foreground"
+                              }
+                            >
+                              {" "}Outstanding: ${formatCurrency(payment.outstandingAmount)}
+                            </span>
+                          </p>
+                          <p className="text-xs text-muted-foreground">
                             Attendance: ${formatCurrency(attendanceTotal)} · Deductions: ${formatCurrency(
                               deductionTotal
                             )} ·
@@ -967,7 +1322,12 @@ export default function Payments() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {getStatusBadge(payment.status, payment.dueDate, payment.paidDate)}
+                        {getStatusBadge(
+                          payment.status,
+                          payment.dueDate,
+                          payment.outstandingAmount,
+                          payment.paidDate
+                        )}
                       </TableCell>
                       <TableCell>
                         <Button

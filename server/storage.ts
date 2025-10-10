@@ -4,6 +4,7 @@ import {
   projects,
   assignments,
   payments,
+  paymentTransactions,
   maintenanceRecords,
   ownershipHistory,
   vehicleAttendance,
@@ -18,6 +19,9 @@ import {
   type InsertAssignment,
   type Payment,
   type InsertPayment,
+  type PaymentTransaction,
+  type InsertPaymentTransaction,
+  type CreatePaymentTransaction,
   type MaintenanceRecord,
   type InsertMaintenanceRecord,
   type OwnershipHistory,
@@ -72,6 +76,14 @@ async function withRetry<T>(operation: () => Promise<T>, maxRetries: number = 3)
   throw lastError;
 }
 
+type PaymentJoinRow = {
+  payments: Payment;
+  assignments: Assignment | null;
+  vehicles: Vehicle | null;
+  owners: Owner | null;
+  projects: Project | null;
+};
+
 export interface IStorage {
   // Owners
   getOwners(): Promise<Owner[]>;
@@ -114,6 +126,11 @@ export interface IStorage {
     attendanceDates?: string[],
     maintenanceRecordIds?: string[]
   ): Promise<Payment>;
+  getPaymentTransactions(paymentId: string): Promise<PaymentTransaction[]>;
+  createPaymentTransaction(
+    paymentId: string,
+    transaction: CreatePaymentTransaction
+  ): Promise<PaymentTransaction>;
   createVehiclePaymentForPeriod(
     payload: CreateVehiclePaymentForPeriod
   ): Promise<VehiclePaymentForPeriodResult>;
@@ -164,6 +181,73 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  private async hydratePayments(rows: PaymentJoinRow[]): Promise<PaymentWithDetails[]> {
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const paymentIds = rows.map((row) => row.payments.id);
+    const ownerIds = Array.from(
+      new Set(rows.map((row) => row.payments.ownerId).filter((id): id is string => Boolean(id)))
+    );
+
+    const transactionsByPayment = new Map<string, PaymentTransaction[]>();
+    if (paymentIds.length > 0) {
+      const transactionRows = await db
+        .select({ transaction: paymentTransactions })
+        .from(paymentTransactions)
+        .where(inArray(paymentTransactions.paymentId, paymentIds))
+        .orderBy(asc(paymentTransactions.transactionDate), asc(paymentTransactions.createdAt));
+
+      for (const { transaction } of transactionRows) {
+        const current = transactionsByPayment.get(transaction.paymentId) ?? [];
+        current.push(transaction);
+        transactionsByPayment.set(transaction.paymentId, current);
+      }
+    }
+
+    let paymentOwnerMap = new Map<string, Owner>();
+    if (ownerIds.length > 0) {
+      const ownerRows = await db
+        .select({ owner: owners })
+        .from(owners)
+        .where(inArray(owners.id, ownerIds));
+
+      paymentOwnerMap = new Map(ownerRows.map(({ owner }) => [owner.id, owner]));
+    }
+
+    return rows.map((row) => {
+      const assignment = row.assignments;
+      const vehicle = row.vehicles;
+      const project = row.projects;
+      const assignmentOwner = row.owners;
+
+      if (!assignment || !vehicle || !project || !assignmentOwner) {
+        throw new Error("Payment is missing assignment details");
+      }
+
+      const transactions = transactionsByPayment.get(row.payments.id) ?? [];
+      const totalPaid = transactions.reduce((sum, transaction) => sum + Number(transaction.amount ?? 0), 0);
+      const outstandingAmount = Math.max(Number(row.payments.amount ?? 0) - totalPaid, 0);
+
+      return {
+        ...row.payments,
+        assignment: {
+          ...assignment,
+          vehicle: {
+            ...vehicle,
+            owner: assignmentOwner,
+          },
+          project,
+        },
+        paymentOwner: paymentOwnerMap.get(row.payments.ownerId) ?? null,
+        transactions,
+        totalPaid,
+        outstandingAmount,
+      };
+    });
+  }
+
   async getOwners(): Promise<Owner[]> {
     return await withRetry(() => db.select().from(owners).orderBy(desc(owners.createdAt)));
   }
@@ -557,21 +641,11 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(projects, eq(assignments.projectId, projects.id))
       .orderBy(desc(payments.createdAt));
 
-    return results.map((row) => ({
-      ...row.payments,
-      assignment: {
-        ...row.assignments!,
-        vehicle: {
-          ...row.vehicles!,
-          owner: row.owners!,
-        },
-        project: row.projects!,
-      },
-    }));
+    return this.hydratePayments(results as PaymentJoinRow[]);
   }
 
   async getPayment(id: string): Promise<PaymentWithDetails | undefined> {
-    const [result] = await db
+    const results = await db
       .select()
       .from(payments)
       .leftJoin(assignments, eq(payments.assignmentId, assignments.id))
@@ -580,19 +654,10 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(projects, eq(assignments.projectId, projects.id))
       .where(eq(payments.id, id));
 
-    if (!result) return undefined;
+    if (results.length === 0) return undefined;
 
-    return {
-      ...result.payments,
-      assignment: {
-        ...result.assignments!,
-        vehicle: {
-          ...result.vehicles!,
-          owner: result.owners!,
-        },
-        project: result.projects!,
-      },
-    };
+    const [payment] = await this.hydratePayments(results as PaymentJoinRow[]);
+    return payment;
   }
 
   async getPaymentsByAssignment(assignmentId: string): Promise<PaymentWithDetails[]> {
@@ -606,17 +671,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(payments.assignmentId, assignmentId))
       .orderBy(desc(payments.createdAt));
 
-    return results.map((row) => ({
-      ...row.payments,
-      assignment: {
-        ...row.assignments!,
-        vehicle: {
-          ...row.vehicles!,
-          owner: row.owners!,
-        },
-        project: row.projects!,
-      },
-    }));
+    return this.hydratePayments(results as PaymentJoinRow[]);
   }
 
   async getOutstandingPayments(): Promise<PaymentWithDetails[]> {
@@ -628,21 +683,16 @@ export class DatabaseStorage implements IStorage {
         .leftJoin(vehicles, eq(assignments.vehicleId, vehicles.id))
         .leftJoin(owners, eq(vehicles.ownerId, owners.id))
         .leftJoin(projects, eq(assignments.projectId, projects.id))
-        .where(and(eq(payments.status, "pending"), sql`${payments.dueDate} <= CURRENT_DATE`))
+        .where(
+          and(
+            inArray(payments.status, ["pending", "partial"]),
+            sql`${payments.dueDate} <= CURRENT_DATE`
+          )
+        )
         .orderBy(payments.dueDate)
     );
 
-    return results.map((row) => ({
-      ...row.payments,
-      assignment: {
-        ...row.assignments!,
-        vehicle: {
-          ...row.vehicles!,
-          owner: row.owners!,
-        },
-        project: row.projects!,
-      },
-    }));
+    return this.hydratePayments(results as PaymentJoinRow[]);
   }
 
   async createPayment(
@@ -657,6 +707,23 @@ export class DatabaseStorage implements IStorage {
 
       const uniqueAttendanceDates = attendanceDates ? Array.from(new Set(attendanceDates)) : [];
       const uniqueMaintenanceIds = maintenanceRecordIds ? Array.from(new Set(maintenanceRecordIds)) : [];
+
+      const [assignmentContext] = await tx
+        .select({
+          assignment: assignments,
+          vehicle: vehicles,
+        })
+        .from(assignments)
+        .leftJoin(vehicles, eq(assignments.vehicleId, vehicles.id))
+        .where(eq(assignments.id, insertPayment.assignmentId))
+        .limit(1);
+
+      if (!assignmentContext?.assignment || !assignmentContext.vehicle) {
+        throw new Error("Assignment not found for payment creation");
+      }
+
+      const assignmentRecord = assignmentContext.assignment;
+      const vehicleRecord = assignmentContext.vehicle;
 
       if (uniqueAttendanceDates.length === 0 && uniqueMaintenanceIds.length === 0) {
         throw new Error("No attendance or maintenance records were provided for this payment.");
@@ -691,30 +758,21 @@ export class DatabaseStorage implements IStorage {
         throw new Error("Deduction total is invalid.");
       }
 
-      const paymentValues: InsertPayment = {
+      const paymentValues: InsertPayment & { ownerId: string } = {
         ...insertPayment,
         amount: amountNumber.toFixed(2),
         attendanceTotal: attendanceTotalNumber.toFixed(2),
         deductionTotal: deductionTotalNumber.toFixed(2),
         totalDays: uniqueAttendanceDates.length,
         maintenanceCount: uniqueMaintenanceIds.length,
+        ownerId: vehicleRecord.ownerId,
       };
 
       const [payment] = await tx.insert(payments).values(paymentValues).returning();
 
       if (uniqueAttendanceDates.length > 0) {
-        const [assignmentDetails] = await tx
-          .select({ vehicleId: assignments.vehicleId, projectId: assignments.projectId })
-          .from(assignments)
-          .where(eq(assignments.id, insertPayment.assignmentId))
-          .limit(1);
-
-        if (!assignmentDetails) {
-          throw new Error("Assignment not found for payment attendance update");
-        }
-
-        const projectCondition = assignmentDetails.projectId
-          ? eq(vehicleAttendance.projectId, assignmentDetails.projectId)
+        const projectCondition = assignmentRecord.projectId
+          ? eq(vehicleAttendance.projectId, assignmentRecord.projectId)
           : isNull(vehicleAttendance.projectId);
 
         const updatedAttendance = await tx
@@ -722,7 +780,7 @@ export class DatabaseStorage implements IStorage {
           .set({ isPaid: true })
           .where(
             and(
-              eq(vehicleAttendance.vehicleId, assignmentDetails.vehicleId),
+              eq(vehicleAttendance.vehicleId, assignmentRecord.vehicleId),
               projectCondition,
               eq(vehicleAttendance.status, "present"),
               eq(vehicleAttendance.isPaid, false),
@@ -739,22 +797,12 @@ export class DatabaseStorage implements IStorage {
       }
 
       if (uniqueMaintenanceIds.length > 0) {
-        const [assignmentDetails] = await tx
-          .select({ vehicleId: assignments.vehicleId })
-          .from(assignments)
-          .where(eq(assignments.id, insertPayment.assignmentId))
-          .limit(1);
-
-        if (!assignmentDetails) {
-          throw new Error("Assignment not found for payment maintenance update");
-        }
-
         const updatedMaintenance = await tx
           .update(maintenanceRecords)
           .set({ isPaid: true })
           .where(
             and(
-              eq(maintenanceRecords.vehicleId, assignmentDetails.vehicleId),
+              eq(maintenanceRecords.vehicleId, assignmentRecord.vehicleId),
               eq(maintenanceRecords.isPaid, false),
               inArray(maintenanceRecords.id, uniqueMaintenanceIds)
             )
@@ -769,6 +817,75 @@ export class DatabaseStorage implements IStorage {
       }
 
       return payment;
+    });
+  }
+
+  async getPaymentTransactions(paymentId: string): Promise<PaymentTransaction[]> {
+    const rows = await db
+      .select({ transaction: paymentTransactions })
+      .from(paymentTransactions)
+      .where(eq(paymentTransactions.paymentId, paymentId))
+      .orderBy(asc(paymentTransactions.transactionDate), asc(paymentTransactions.createdAt));
+
+    return rows.map((row) => row.transaction);
+  }
+
+  async createPaymentTransaction(
+    paymentId: string,
+    transaction: CreatePaymentTransaction
+  ): Promise<PaymentTransaction> {
+    return await db.transaction(async (tx) => {
+      const [existingPayment] = await tx
+        .select()
+        .from(payments)
+        .where(eq(payments.id, paymentId))
+        .limit(1);
+
+      if (!existingPayment) {
+        throw new Error("Payment not found");
+      }
+
+      const amountNumber = Number(transaction.amount);
+      if (Number.isNaN(amountNumber) || amountNumber <= 0) {
+        throw new Error("Transaction amount must be greater than zero");
+      }
+
+      const transactionValues: InsertPaymentTransaction = {
+        ...transaction,
+        paymentId,
+        amount: amountNumber.toFixed(2),
+      };
+
+      const [createdTransaction] = await tx
+        .insert(paymentTransactions)
+        .values(transactionValues)
+        .returning();
+
+      const [{ totalPaid }] = await tx
+        .select({ totalPaid: sql<string>`coalesce(sum(${paymentTransactions.amount}), '0')` })
+        .from(paymentTransactions)
+        .where(eq(paymentTransactions.paymentId, paymentId));
+
+      const totalPaidNumber = Number(totalPaid);
+      const paymentAmountNumber = Number(existingPayment.amount);
+
+      if (!Number.isNaN(paymentAmountNumber)) {
+        let statusUpdate: Partial<Payment> | null = null;
+
+        if (totalPaidNumber >= paymentAmountNumber) {
+          statusUpdate = { status: "paid", paidDate: createdTransaction.transactionDate };
+        } else if (totalPaidNumber > 0) {
+          statusUpdate = { status: "partial", paidDate: null };
+        } else {
+          statusUpdate = { status: "pending", paidDate: null };
+        }
+
+        if (statusUpdate) {
+          await tx.update(payments).set(statusUpdate).where(eq(payments.id, paymentId));
+        }
+      }
+
+      return createdTransaction;
     });
   }
 
@@ -1134,7 +1251,7 @@ export class DatabaseStorage implements IStorage {
     const [
       totalVehiclesResult,
       activeProjectsResult,
-      outstandingAmountResult,
+      pendingPayments,
       monthlyRevenueResult,
       vehicleStatusResult,
     ] = await withRetry(() => Promise.all([
@@ -1144,13 +1261,15 @@ export class DatabaseStorage implements IStorage {
         .from(projects)
         .where(eq(projects.status, "active")),
       db
-        .select({ total: sql<number>`coalesce(sum(${payments.amount}), 0)` })
+        .select({ id: payments.id, amount: payments.amount })
         .from(payments)
-        .where(eq(payments.status, "pending")),
+        .where(inArray(payments.status, ["pending", "partial"])),
       db
-        .select({ total: sql<number>`coalesce(sum(${payments.amount}), 0)` })
-        .from(payments)
-        .where(and(eq(payments.status, "paid"), sql`extract(month from ${payments.paidDate}) = extract(month from current_date)`)),
+        .select({ total: sql<number>`coalesce(sum(${paymentTransactions.amount}), 0)` })
+        .from(paymentTransactions)
+        .where(
+          sql`date_trunc('month', ${paymentTransactions.transactionDate}) = date_trunc('month', CURRENT_DATE)`
+        ),
       db
         .select({
           status: vehicles.status,
@@ -1159,6 +1278,30 @@ export class DatabaseStorage implements IStorage {
         .from(vehicles)
         .groupBy(vehicles.status),
     ]));
+
+    let outstandingAmount = 0;
+    if (pendingPayments.length > 0) {
+      const paymentIds = pendingPayments.map((row) => row.id);
+      const transactionTotals = await withRetry(() =>
+        db
+          .select({
+            paymentId: paymentTransactions.paymentId,
+            totalPaid: sql<string>`coalesce(sum(${paymentTransactions.amount}), '0')`,
+          })
+          .from(paymentTransactions)
+          .where(inArray(paymentTransactions.paymentId, paymentIds))
+          .groupBy(paymentTransactions.paymentId)
+      );
+
+      const paidMap = new Map(transactionTotals.map((row) => [row.paymentId, Number(row.totalPaid)]));
+
+      outstandingAmount = pendingPayments.reduce((sum, payment) => {
+        const paymentAmount = Number(payment.amount ?? 0);
+        const paidAmount = paidMap.get(payment.id) ?? 0;
+        const remaining = Math.max(paymentAmount - paidAmount, 0);
+        return sum + remaining;
+      }, 0);
+    }
 
     const vehicleStatusCounts = {
       available: 0,
@@ -1177,7 +1320,7 @@ export class DatabaseStorage implements IStorage {
     return {
       totalVehicles: totalVehiclesResult[0]?.count || 0,
       activeProjects: activeProjectsResult[0]?.count || 0,
-      outstandingAmount: Number(outstandingAmountResult[0]?.total || 0),
+      outstandingAmount,
       monthlyRevenue: Number(monthlyRevenueResult[0]?.total || 0),
       vehicleStatusCounts,
     };

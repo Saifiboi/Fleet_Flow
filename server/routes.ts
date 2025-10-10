@@ -10,6 +10,7 @@ import {
   insertAssignmentSchema,
   insertPaymentSchema,
   createPaymentRequestSchema,
+  createPaymentTransactionSchema,
   createVehiclePaymentForPeriodSchema,
   insertMaintenanceRecordSchema,
   insertOwnershipHistorySchema,
@@ -314,6 +315,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(payment);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/payments/:id/transactions", async (req, res) => {
+    try {
+      const validatedData = createPaymentTransactionSchema.parse(req.body);
+      const transaction = await storage.createPaymentTransaction(req.params.id, validatedData);
+      const payment = await storage.getPayment(req.params.id);
+      res.status(201).json({ transaction, payment });
+    } catch (error: any) {
+      const status = error.status ?? (error instanceof Error && error.message.includes("not found") ? 404 : 400);
+      res.status(status).json({ message: error.message });
     }
   });
 
