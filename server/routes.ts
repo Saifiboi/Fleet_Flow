@@ -9,6 +9,7 @@ import {
   insertProjectSchema,
   insertAssignmentSchema,
   insertPaymentSchema,
+  createPaymentRequestSchema,
   createVehiclePaymentForPeriodSchema,
   insertMaintenanceRecordSchema,
   insertOwnershipHistorySchema,
@@ -303,8 +304,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/payments", async (req, res) => {
     try {
-      const validatedData = insertPaymentSchema.parse(req.body);
-      const payment = await storage.createPayment(validatedData);
+      const parsedData = createPaymentRequestSchema.parse(req.body);
+      const { attendanceDates, ...paymentValues } = parsedData;
+      const payment = await storage.createPayment(paymentValues, attendanceDates);
       res.status(201).json(payment);
     } catch (error: any) {
       res.status(400).json({ message: error.message });

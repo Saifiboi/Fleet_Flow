@@ -91,6 +91,7 @@ export const vehicleAttendance = pgTable("vehicle_attendance", {
   attendanceDate: date("attendance_date").notNull(),
   status: text("status").notNull().default("present"), // present, off, standby, maintenance
   notes: text("notes"),
+  isPaid: boolean("is_paid").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -268,6 +269,10 @@ export const insertPaymentSchema = createInsertSchema(payments).omit({
   paidDate: z.string().optional().transform(val => val === "" ? null : val), // Make paidDate truly optional
 });
 
+export const createPaymentRequestSchema = insertPaymentSchema.extend({
+  attendanceDates: z.array(z.string()).optional(),
+});
+
 export const insertMaintenanceRecordSchema = createInsertSchema(maintenanceRecords).omit({
   id: true,
   createdAt: true,
@@ -295,6 +300,7 @@ export const insertVehicleAttendanceSchema = createInsertSchema(vehicleAttendanc
   status: z.enum(["present", "off", "standby", "maintenance"]).default("present"),
   notes: z.string().optional(),
   projectId: z.string().optional().transform(val => val === "" ? null : val),
+  isPaid: z.boolean().optional().default(false),
 });
 
 export const deleteVehicleAttendanceSchema = z.object({
@@ -421,6 +427,7 @@ export type InsertAssignment = z.infer<typeof insertAssignmentSchema>;
 
 export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;
+export type CreatePaymentRequest = z.infer<typeof createPaymentRequestSchema>;
 
 export type MaintenanceRecord = typeof maintenanceRecords.$inferSelect;
 export type InsertMaintenanceRecord = z.infer<typeof insertMaintenanceRecordSchema>;
@@ -481,6 +488,8 @@ export type VehiclePaymentCalculation = {
   totalPresentDays: number;
   totalAmountBeforeMaintenance: number;
   netAmount: number;
+  attendanceDates: string[];
+  alreadyPaidDates: string[];
 };
 
 export type VehiclePaymentForPeriodResult = {

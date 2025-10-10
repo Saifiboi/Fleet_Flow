@@ -37,7 +37,7 @@ import {
   type VehiclePaymentForPeriodResult,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, asc, and, sql, isNull, gte, lte, ne } from "drizzle-orm";
+import { eq, desc, asc, and, sql, isNull, gte, lte, ne, inArray } from "drizzle-orm";
 
 // Helper function to retry database operations on connection failures
 async function withRetry<T>(operation: () => Promise<T>, maxRetries: number = 3): Promise<T> {
@@ -109,7 +109,7 @@ export interface IStorage {
   getPayment(id: string): Promise<PaymentWithDetails | undefined>;
   getPaymentsByAssignment(assignmentId: string): Promise<PaymentWithDetails[]>;
   getOutstandingPayments(): Promise<PaymentWithDetails[]>;
-  createPayment(payment: InsertPayment): Promise<Payment>;
+  createPayment(payment: InsertPayment, attendanceDates?: string[]): Promise<Payment>;
   createVehiclePaymentForPeriod(
     payload: CreateVehiclePaymentForPeriod
   ): Promise<VehiclePaymentForPeriodResult>;
@@ -643,9 +643,50 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async createPayment(insertPayment: InsertPayment): Promise<Payment> {
-    const [payment] = await db.insert(payments).values(insertPayment).returning();
-    return payment;
+  async createPayment(insertPayment: InsertPayment, attendanceDates?: string[]): Promise<Payment> {
+    return await db.transaction(async (tx) => {
+      const [payment] = await tx.insert(payments).values(insertPayment).returning();
+
+      if (attendanceDates && attendanceDates.length > 0) {
+        const uniqueAttendanceDates = Array.from(new Set(attendanceDates));
+
+        const [assignmentDetails] = await tx
+          .select({ vehicleId: assignments.vehicleId, projectId: assignments.projectId })
+          .from(assignments)
+          .where(eq(assignments.id, insertPayment.assignmentId))
+          .limit(1);
+
+        if (!assignmentDetails) {
+          throw new Error("Assignment not found for payment attendance update");
+        }
+
+        const projectCondition = assignmentDetails.projectId
+          ? eq(vehicleAttendance.projectId, assignmentDetails.projectId)
+          : isNull(vehicleAttendance.projectId);
+
+        const updatedAttendance = await tx
+          .update(vehicleAttendance)
+          .set({ isPaid: true })
+          .where(
+            and(
+              eq(vehicleAttendance.vehicleId, assignmentDetails.vehicleId),
+              projectCondition,
+              eq(vehicleAttendance.status, "present"),
+              eq(vehicleAttendance.isPaid, false),
+              inArray(vehicleAttendance.attendanceDate, uniqueAttendanceDates)
+            )
+          )
+          .returning({ attendanceDate: vehicleAttendance.attendanceDate });
+
+        if (updatedAttendance.length !== uniqueAttendanceDates.length) {
+          throw new Error(
+            "Some attendance days have already been marked as paid. Recalculate the payment before creating it."
+          );
+        }
+      }
+
+      return payment;
+    });
   }
 
   async createVehiclePaymentForPeriod(
@@ -682,7 +723,10 @@ export class DatabaseStorage implements IStorage {
     }
 
     const attendanceRecords = await db
-      .select({ attendanceDate: vehicleAttendance.attendanceDate })
+      .select({
+        attendanceDate: vehicleAttendance.attendanceDate,
+        isPaid: vehicleAttendance.isPaid,
+      })
       .from(vehicleAttendance)
       .where(
         and(
@@ -722,11 +766,25 @@ export class DatabaseStorage implements IStorage {
       return `${year}-${month}-${day}`;
     };
 
-    const attendanceDateSet = new Set(
-      attendanceRecords.map((record) => formatDate(new Date(record.attendanceDate)))
+    const attendanceBuckets = attendanceRecords.reduce(
+      (acc, record) => {
+        const formattedDate = formatDate(new Date(record.attendanceDate));
+        if (record.isPaid) {
+          if (!acc.unpaid.has(formattedDate)) {
+            acc.paid.add(formattedDate);
+          }
+        } else {
+          acc.unpaid.add(formattedDate);
+          acc.paid.delete(formattedDate);
+        }
+        return acc;
+      },
+      { unpaid: new Set<string>(), paid: new Set<string>() }
     );
 
-    const attendanceDates = Array.from(attendanceDateSet)
+    const attendanceDateStrings = Array.from(attendanceBuckets.unpaid).sort();
+    const alreadyPaidDateStrings = Array.from(attendanceBuckets.paid).sort();
+    const attendanceDates = attendanceDateStrings
       .map((value) => new Date(value))
       .sort((a, b) => a.getTime() - b.getTime());
 
@@ -813,6 +871,8 @@ export class DatabaseStorage implements IStorage {
       totalPresentDays,
       totalAmountBeforeMaintenance: Number(totalAttendanceAmount.toFixed(2)),
       netAmount: Number(netAmount.toFixed(2)),
+      attendanceDates: attendanceDateStrings,
+      alreadyPaidDates: alreadyPaidDateStrings,
     };
 
     return {

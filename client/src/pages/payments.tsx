@@ -34,7 +34,7 @@ import type {
   PaymentWithDetails,
   VehiclePaymentForPeriodResult,
   CreateVehiclePaymentForPeriod,
-  InsertPayment,
+  CreatePaymentRequest,
 } from "@shared/schema";
 
 export default function Payments() {
@@ -100,7 +100,7 @@ export default function Payments() {
   });
 
   const createPaymentFromCalculation = useMutation({
-    mutationFn: async (data: InsertPayment) => {
+    mutationFn: async (data: CreatePaymentRequest) => {
       await apiRequest("POST", "/api/payments", data);
     },
     onSuccess: () => {
@@ -165,6 +165,24 @@ export default function Payments() {
     };
   }, [calculationResult, monthOverrides, maintenanceOverride]);
 
+  const alreadyPaidPreview = useMemo(() => {
+    if (!calculationResult?.calculation.alreadyPaidDates.length) {
+      return "";
+    }
+
+    const formattedDates = calculationResult.calculation.alreadyPaidDates
+      .slice(0, 3)
+      .map((date) => format(new Date(date), "PP"))
+      .join(", ");
+    const remaining = calculationResult.calculation.alreadyPaidDates.length - 3;
+
+    if (remaining > 0) {
+      return `${formattedDates}, +${remaining} more`;
+    }
+
+    return formattedDates;
+  }, [calculationResult?.calculation.alreadyPaidDates]);
+
   const handleCalculationComplete = (
     result: VehiclePaymentForPeriodResult,
     request: CreateVehiclePaymentForPeriod
@@ -202,15 +220,25 @@ export default function Payments() {
       return;
     }
 
+    if (!calculationResult.calculation.attendanceDates.length) {
+      toast({
+        title: "No attendance to pay",
+        description: "All attendance days in this period are already marked as paid.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const amount = adjustedTotals.net.toFixed(2);
 
-    const payload: InsertPayment = {
+    const payload: CreatePaymentRequest = {
       assignmentId: calculationRequest.assignmentId,
       amount,
       dueDate: calculationRequest.dueDate,
       status: calculationRequest.status ?? "pending",
       paidDate: calculationRequest.paidDate ?? undefined,
       invoiceNumber: calculationRequest.invoiceNumber ?? undefined,
+      attendanceDates: calculationResult.calculation.attendanceDates,
     };
 
     createPaymentFromCalculation.mutate(payload);
@@ -369,6 +397,22 @@ export default function Payments() {
                               </p>
                             </div>
                           </div>
+
+                          {calculationResult.calculation.alreadyPaidDates.length > 0 && (
+                            <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                              <div className="space-y-1">
+                                <p className="font-medium text-xs uppercase tracking-wide">Attention</p>
+                                <p className="text-xs sm:text-sm">
+                                  We excluded {calculationResult.calculation.alreadyPaidDates.length} day(s) already marked as paid
+                                  from this calculation.
+                                  {alreadyPaidPreview && (
+                                    <> Last paid on: {alreadyPaidPreview}.</>
+                                  )}
+                                </p>
+                              </div>
+                            </div>
+                          )}
 
                           <div className="space-y-3">
                             <p className="text-muted-foreground mb-2">Month-by-month breakdown</p>
