@@ -456,6 +456,18 @@ export type VehiclePaymentMonthlyBreakdown = {
   amount: number;
 };
 
+export type VehiclePaymentMaintenanceBreakdown = {
+  id: string;
+  year: number;
+  month: number;
+  monthLabel: string;
+  serviceDate: string;
+  type: string;
+  description: string;
+  performedBy: string;
+  cost: number;
+};
+
 export type VehiclePaymentCalculation = {
   assignmentId: string;
   vehicleId: string;
@@ -465,6 +477,7 @@ export type VehiclePaymentCalculation = {
   monthlyRate: number;
   maintenanceCost: number;
   monthlyBreakdown: VehiclePaymentMonthlyBreakdown[];
+  maintenanceBreakdown: VehiclePaymentMaintenanceBreakdown[];
   totalPresentDays: number;
   totalAmountBeforeMaintenance: number;
   netAmount: number;

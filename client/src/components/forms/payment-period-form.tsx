@@ -36,10 +36,16 @@ export function PaymentPeriodForm({ onCalculated }: PaymentPeriodFormProps) {
   const { data: assignments = [] } = useAssignments();
   const lastSubmittedValuesRef = useRef<CreateVehiclePaymentForPeriod | null>(null);
 
-  const activeAssignments = useMemo(
-    () => assignments.filter((assignment: AssignmentWithDetails) => assignment.status === "active"),
-    [assignments]
-  );
+  const selectableAssignments = useMemo(() => {
+    return assignments
+      .filter((assignment: AssignmentWithDetails) => assignment.status === "active" || assignment.status === "completed")
+      .sort((a, b) => {
+        if (a.status === b.status) {
+          return a.project.name.localeCompare(b.project.name);
+        }
+        return a.status === "active" ? -1 : 1;
+      });
+  }, [assignments]);
 
   const form = useForm<CreateVehiclePaymentForPeriod>({
     resolver: zodResolver(createVehiclePaymentForPeriodSchema),
@@ -74,9 +80,18 @@ export function PaymentPeriodForm({ onCalculated }: PaymentPeriodFormProps) {
     },
   });
 
-  const selectedAssignment = activeAssignments.find(
+  const selectedAssignment = selectableAssignments.find(
     (assignment: AssignmentWithDetails) => assignment.id === form.watch("assignmentId")
   );
+
+  const formatDisplayDate = (value?: string | null) => {
+    if (!value) return "—";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+    return parsed.toLocaleDateString();
+  };
 
   const onSubmit = (values: CreateVehiclePaymentForPeriod) => {
     lastSubmittedValuesRef.current = values;
@@ -105,11 +120,15 @@ export function PaymentPeriodForm({ onCalculated }: PaymentPeriodFormProps) {
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {activeAssignments.map((assignment: AssignmentWithDetails) => (
+                  {selectableAssignments.map((assignment: AssignmentWithDetails) => (
                     <SelectItem key={assignment.id} value={assignment.id}>
-                      {assignment.project.name} – {assignment.vehicle.make} {assignment.vehicle.model} ({
-                        assignment.vehicle.licensePlate
-                      })
+                      <div className="flex flex-col text-left">
+                        <span className="font-medium">{assignment.project.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {assignment.vehicle.make} {assignment.vehicle.model} ({assignment.vehicle.licensePlate}) · {" "}
+                          {assignment.status === "completed" ? "Completed" : "Active"}
+                        </span>
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -122,12 +141,12 @@ export function PaymentPeriodForm({ onCalculated }: PaymentPeriodFormProps) {
         {selectedAssignment && (
           <div className="rounded-md border p-4 text-sm">
             <p className="font-medium">Assignment details</p>
-            <div className="mt-2 grid gap-2 md:grid-cols-2">
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
               <div>
                 <span className="text-muted-foreground">Project:</span> {selectedAssignment.project.name}
               </div>
               <div>
-                <span className="text-muted-foreground">Vehicle:</span> {selectedAssignment.vehicle.make} {" "}
+                <span className="text-muted-foreground">Vehicle:</span> {selectedAssignment.vehicle.make}{" "}
                 {selectedAssignment.vehicle.model}
               </div>
               <div>
@@ -136,6 +155,15 @@ export function PaymentPeriodForm({ onCalculated }: PaymentPeriodFormProps) {
               <div>
                 <span className="text-muted-foreground">Monthly rate:</span> ${" "}
                 {Number(selectedAssignment.monthlyRate).toLocaleString()}
+              </div>
+              <div>
+                <span className="text-muted-foreground">Status:</span> {" "}
+                <span className="capitalize">{selectedAssignment.status.replace("_", " ")}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Assignment dates:</span> {" "}
+                {formatDisplayDate(selectedAssignment.startDate)} – {" "}
+                {selectedAssignment.endDate ? formatDisplayDate(selectedAssignment.endDate) : "Ongoing"}
               </div>
             </div>
           </div>

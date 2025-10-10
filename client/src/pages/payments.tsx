@@ -332,7 +332,7 @@ export default function Payments() {
                     Calculate Payment
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-3xl">
+                <DialogContent className="sm:max-w-4xl w-[min(95vw,64rem)] max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>Calculate payment for a period</DialogTitle>
                   </DialogHeader>
@@ -370,7 +370,7 @@ export default function Payments() {
                             </div>
                           </div>
 
-                          <div>
+                          <div className="space-y-3">
                             <p className="text-muted-foreground mb-2">Month-by-month breakdown</p>
                             <div className="overflow-x-auto rounded-md border bg-background">
                               <Table>
@@ -430,6 +430,45 @@ export default function Payments() {
                             </p>
                           </div>
 
+                          <div className="space-y-3">
+                            <p className="text-muted-foreground">Maintenance breakdown</p>
+                            {calculationResult.calculation.maintenanceBreakdown.length > 0 ? (
+                              <div className="overflow-x-auto rounded-md border bg-background">
+                                <Table>
+                                  <TableHeader>
+                                    <TableRow>
+                                      <TableHead>Date</TableHead>
+                                      <TableHead>Type</TableHead>
+                                      <TableHead>Description</TableHead>
+                                      <TableHead>Performed by</TableHead>
+                                      <TableHead className="text-right">Cost</TableHead>
+                                    </TableRow>
+                                  </TableHeader>
+                                  <TableBody>
+                                    {calculationResult.calculation.maintenanceBreakdown.map((record) => (
+                                      <TableRow key={record.id}>
+                                        <TableCell className="whitespace-nowrap">{format(new Date(record.serviceDate), "PPP")}</TableCell>
+                                        <TableCell className="whitespace-nowrap capitalize">{record.type.replace("_", " ")}</TableCell>
+                                        <TableCell className="max-w-xs whitespace-normal break-words">{record.description}</TableCell>
+                                        <TableCell className="whitespace-nowrap">{record.performedBy}</TableCell>
+                                        <TableCell className="text-right">$
+                                          {record.cost.toLocaleString(undefined, {
+                                            minimumFractionDigits: 2,
+                                            maximumFractionDigits: 2,
+                                          })}
+                                        </TableCell>
+                                      </TableRow>
+                                    ))}
+                                  </TableBody>
+                                </Table>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-muted-foreground">
+                                No maintenance charges were recorded in this period.
+                              </p>
+                            )}
+                          </div>
+
                           <div className="grid gap-4 md:grid-cols-3">
                             <div>
                               <p className="text-muted-foreground">Monthly rate</p>
@@ -480,7 +519,7 @@ export default function Payments() {
                                 </span>
                               </div>
                               <p className="text-xs text-muted-foreground mt-1">
-                                Update if some maintenance should be excluded or added.
+                                Adjust after reviewing the maintenance breakdown above.
                               </p>
                             </div>
                             <div>

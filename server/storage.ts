@@ -37,7 +37,7 @@ import {
   type VehiclePaymentForPeriodResult,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, sql, isNull, gte, lte, ne } from "drizzle-orm";
+import { eq, desc, asc, and, sql, isNull, gte, lte, ne } from "drizzle-orm";
 
 // Helper function to retry database operations on connection failures
 async function withRetry<T>(operation: () => Promise<T>, maxRetries: number = 3): Promise<T> {
@@ -696,8 +696,15 @@ export class DatabaseStorage implements IStorage {
         )
       );
 
-    const [{ totalMaintenanceCost }] = await db
-      .select({ totalMaintenanceCost: sql<string>`coalesce(sum(${maintenanceRecords.cost}), 0)` })
+    const maintenanceRows = await db
+      .select({
+        id: maintenanceRecords.id,
+        serviceDate: maintenanceRecords.serviceDate,
+        type: maintenanceRecords.type,
+        description: maintenanceRecords.description,
+        performedBy: maintenanceRecords.performedBy,
+        cost: maintenanceRecords.cost,
+      })
       .from(maintenanceRecords)
       .where(
         and(
@@ -705,24 +712,49 @@ export class DatabaseStorage implements IStorage {
           gte(maintenanceRecords.serviceDate, payload.startDate),
           lte(maintenanceRecords.serviceDate, payload.endDate)
         )
-      );
+      )
+      .orderBy(asc(maintenanceRecords.serviceDate));
 
-    const maintenanceCostNumber = Number(totalMaintenanceCost ?? "0");
-
-    if (Number.isNaN(maintenanceCostNumber)) {
-      const error: any = new Error("Maintenance cost total is invalid");
-      error.status = 500;
-      throw error;
-    }
-
-    const months: VehiclePaymentCalculation["monthlyBreakdown"] = [];
-    const attendanceDates = attendanceRecords.map((record) => new Date(record.attendanceDate));
     const formatDate = (value: Date) => {
       const year = value.getFullYear();
       const month = String(value.getMonth() + 1).padStart(2, "0");
       const day = String(value.getDate()).padStart(2, "0");
       return `${year}-${month}-${day}`;
     };
+
+    const attendanceDateSet = new Set(
+      attendanceRecords.map((record) => formatDate(new Date(record.attendanceDate)))
+    );
+
+    const attendanceDates = Array.from(attendanceDateSet)
+      .map((value) => new Date(value))
+      .sort((a, b) => a.getTime() - b.getTime());
+
+    const maintenanceBreakdown = maintenanceRows.map((row) => {
+      const serviceDate = new Date(row.serviceDate);
+      const monthLabel = new Intl.DateTimeFormat("en-US", {
+        month: "long",
+        year: "numeric",
+      }).format(serviceDate);
+      const rawCost = Number(row.cost ?? 0);
+      const normalizedCost = Number.isNaN(rawCost) ? 0 : Number(rawCost.toFixed(2));
+
+      return {
+        id: row.id,
+        year: serviceDate.getFullYear(),
+        month: serviceDate.getMonth() + 1,
+        monthLabel,
+        serviceDate: formatDate(serviceDate),
+        type: row.type,
+        description: row.description,
+        performedBy: row.performedBy,
+        cost: normalizedCost,
+      };
+    });
+
+    const maintenanceCostNumber = maintenanceBreakdown.reduce((sum, item) => sum + item.cost, 0);
+
+    const months: VehiclePaymentCalculation["monthlyBreakdown"] = [];
 
     const startOfFirstMonth = new Date(start.getFullYear(), start.getMonth(), 1);
     const startOfLastMonth = new Date(end.getFullYear(), end.getMonth(), 1);
@@ -777,6 +809,7 @@ export class DatabaseStorage implements IStorage {
       monthlyRate: Number(monthlyRateNumber.toFixed(2)),
       maintenanceCost: Number(maintenanceCostNumber.toFixed(2)),
       monthlyBreakdown: months,
+      maintenanceBreakdown,
       totalPresentDays,
       totalAmountBeforeMaintenance: Number(totalAttendanceAmount.toFixed(2)),
       netAmount: Number(netAmount.toFixed(2)),
