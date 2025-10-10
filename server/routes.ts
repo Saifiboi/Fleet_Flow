@@ -315,7 +315,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const payload = createVehiclePaymentForPeriodSchema.parse(req.body);
       const result = await storage.createVehiclePaymentForPeriod(payload);
-      res.status(201).json(result);
+      res.status(200).json(result);
     } catch (error: any) {
       const status = error.status ?? 400;
       res.status(status).json({ message: error.message });

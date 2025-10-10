@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
@@ -16,7 +16,6 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAssignments } from "@/lib/api";
 import { createVehiclePaymentForPeriod } from "@/lib/api";
-import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   createVehiclePaymentForPeriodSchema,
@@ -26,12 +25,16 @@ import {
 } from "@shared/schema";
 
 interface PaymentPeriodFormProps {
-  onSuccess?: (result: VehiclePaymentForPeriodResult) => void;
+  onCalculated?: (
+    result: VehiclePaymentForPeriodResult,
+    request: CreateVehiclePaymentForPeriod
+  ) => void;
 }
 
-export function PaymentPeriodForm({ onSuccess }: PaymentPeriodFormProps) {
+export function PaymentPeriodForm({ onCalculated }: PaymentPeriodFormProps) {
   const { toast } = useToast();
   const { data: assignments = [] } = useAssignments();
+  const lastSubmittedValuesRef = useRef<CreateVehiclePaymentForPeriod | null>(null);
 
   const activeAssignments = useMemo(
     () => assignments.filter((assignment: AssignmentWithDetails) => assignment.status === "active"),
@@ -54,22 +57,13 @@ export function PaymentPeriodForm({ onSuccess }: PaymentPeriodFormProps) {
   const mutation = useMutation({
     mutationFn: createVehiclePaymentForPeriod,
     onSuccess: (result: VehiclePaymentForPeriodResult) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       toast({
-        title: "Payment calculated",
-        description: "The payment has been created using attendance and maintenance data.",
+        title: "Calculation ready",
+        description: "Review the breakdown below before creating the payment.",
       });
-      form.reset({
-        assignmentId: "",
-        startDate: "",
-        endDate: "",
-        dueDate: "",
-        status: "pending",
-        paidDate: null,
-        invoiceNumber: "",
-      });
-      onSuccess?.(result);
+      if (lastSubmittedValuesRef.current) {
+        onCalculated?.(result, lastSubmittedValuesRef.current);
+      }
     },
     onError: (error: any) => {
       toast({
@@ -85,6 +79,7 @@ export function PaymentPeriodForm({ onSuccess }: PaymentPeriodFormProps) {
   );
 
   const onSubmit = (values: CreateVehiclePaymentForPeriod) => {
+    lastSubmittedValuesRef.current = values;
     mutation.mutate(values);
   };
 

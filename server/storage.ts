@@ -674,15 +674,6 @@ export class DatabaseStorage implements IStorage {
       throw error;
     }
 
-    const millisecondsPerDay = 24 * 60 * 60 * 1000;
-    const totalDays = Math.floor((end.getTime() - start.getTime()) / millisecondsPerDay) + 1;
-
-    if (totalDays <= 0) {
-      const error: any = new Error("The selected period must include at least one day");
-      error.status = 400;
-      throw error;
-    }
-
     const monthlyRateNumber = Number(assignment.monthlyRate);
     if (Number.isNaN(monthlyRateNumber)) {
       const error: any = new Error("Assignment monthly rate is invalid");
@@ -690,8 +681,8 @@ export class DatabaseStorage implements IStorage {
       throw error;
     }
 
-    const [{ presentDays }] = await db
-      .select({ presentDays: sql<number>`count(*)` })
+    const attendanceRecords = await db
+      .select({ attendanceDate: vehicleAttendance.attendanceDate })
       .from(vehicleAttendance)
       .where(
         and(
@@ -716,7 +707,6 @@ export class DatabaseStorage implements IStorage {
         )
       );
 
-    const presentDaysCount = Number(presentDays ?? 0);
     const maintenanceCostNumber = Number(totalMaintenanceCost ?? "0");
 
     if (Number.isNaN(maintenanceCostNumber)) {
@@ -725,9 +715,58 @@ export class DatabaseStorage implements IStorage {
       throw error;
     }
 
-    const dailyRate = monthlyRateNumber / totalDays;
-    const attendanceAmount = dailyRate * presentDaysCount;
-    const netAmount = attendanceAmount - maintenanceCostNumber;
+    const months: VehiclePaymentCalculation["monthlyBreakdown"] = [];
+    const attendanceDates = attendanceRecords.map((record) => new Date(record.attendanceDate));
+    const formatDate = (value: Date) => {
+      const year = value.getFullYear();
+      const month = String(value.getMonth() + 1).padStart(2, "0");
+      const day = String(value.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    };
+
+    const startOfFirstMonth = new Date(start.getFullYear(), start.getMonth(), 1);
+    const startOfLastMonth = new Date(end.getFullYear(), end.getMonth(), 1);
+
+    for (
+      let cursor = new Date(startOfFirstMonth.getTime());
+      cursor <= startOfLastMonth;
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1)
+    ) {
+      const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+      const monthEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
+      const effectiveStart = start > monthStart ? start : monthStart;
+      const effectiveEnd = end < monthEnd ? end : monthEnd;
+
+      const totalDaysInMonth = monthEnd.getDate();
+      const dailyRate = monthlyRateNumber / totalDaysInMonth;
+
+      const presentDaysForMonth = attendanceDates.filter((date) => {
+        return date >= effectiveStart && date <= effectiveEnd;
+      }).length;
+
+      const monthAmount = presentDaysForMonth * dailyRate;
+
+      const monthLabel = new Intl.DateTimeFormat("en-US", {
+        month: "long",
+        year: "numeric",
+      }).format(monthStart);
+
+      months.push({
+        year: cursor.getFullYear(),
+        month: cursor.getMonth() + 1,
+        monthLabel,
+        periodStart: formatDate(effectiveStart),
+        periodEnd: formatDate(effectiveEnd),
+        totalDaysInMonth,
+        presentDays: presentDaysForMonth,
+        dailyRate: Number(dailyRate.toFixed(2)),
+        amount: Number(monthAmount.toFixed(2)),
+      });
+    }
+
+    const totalAttendanceAmount = months.reduce((sum, current) => sum + current.amount, 0);
+    const totalPresentDays = months.reduce((sum, current) => sum + current.presentDays, 0);
+    const netAmount = totalAttendanceAmount - maintenanceCostNumber;
 
     const calculation: VehiclePaymentCalculation = {
       assignmentId: assignment.id,
@@ -735,35 +774,16 @@ export class DatabaseStorage implements IStorage {
       projectId: assignment.projectId,
       periodStart: payload.startDate,
       periodEnd: payload.endDate,
-      totalDays,
-      presentDays: presentDaysCount,
       monthlyRate: Number(monthlyRateNumber.toFixed(2)),
-      dailyRate: Number(dailyRate.toFixed(2)),
-      baseAmount: Number(attendanceAmount.toFixed(2)),
       maintenanceCost: Number(maintenanceCostNumber.toFixed(2)),
+      monthlyBreakdown: months,
+      totalPresentDays,
+      totalAmountBeforeMaintenance: Number(totalAttendanceAmount.toFixed(2)),
       netAmount: Number(netAmount.toFixed(2)),
     };
 
-    const paymentPayload: InsertPayment = {
-      assignmentId: payload.assignmentId,
-      amount: calculation.netAmount.toFixed(2),
-      dueDate: payload.dueDate,
-      status: payload.status ?? "pending",
-      paidDate: payload.paidDate ?? null,
-      invoiceNumber: payload.invoiceNumber ?? null,
-    };
-
-    const payment = await this.createPayment(paymentPayload);
-    const paymentWithDetails = await this.getPayment(payment.id);
-
-    if (!paymentWithDetails) {
-      const error: any = new Error("Failed to load created payment");
-      error.status = 500;
-      throw error;
-    }
-
     return {
-      payment: paymentWithDetails,
+      assignment,
       calculation,
     };
   }

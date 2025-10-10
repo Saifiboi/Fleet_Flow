@@ -444,23 +444,34 @@ export type PaymentWithDetails = Payment & {
   assignment: AssignmentWithDetails;
 };
 
+export type VehiclePaymentMonthlyBreakdown = {
+  year: number;
+  month: number;
+  monthLabel: string;
+  periodStart: string;
+  periodEnd: string;
+  totalDaysInMonth: number;
+  presentDays: number;
+  dailyRate: number;
+  amount: number;
+};
+
 export type VehiclePaymentCalculation = {
   assignmentId: string;
   vehicleId: string;
   projectId: string;
   periodStart: string;
   periodEnd: string;
-  totalDays: number;
-  presentDays: number;
   monthlyRate: number;
-  dailyRate: number;
-  baseAmount: number;
   maintenanceCost: number;
+  monthlyBreakdown: VehiclePaymentMonthlyBreakdown[];
+  totalPresentDays: number;
+  totalAmountBeforeMaintenance: number;
   netAmount: number;
 };
 
 export type VehiclePaymentForPeriodResult = {
-  payment: PaymentWithDetails;
+  assignment: AssignmentWithDetails;
   calculation: VehiclePaymentCalculation;
 };
 

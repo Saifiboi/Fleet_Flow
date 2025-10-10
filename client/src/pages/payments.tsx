@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { usePayments, useAssignments } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,7 +30,12 @@ import {
   Calculator,
 } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
-import type { PaymentWithDetails, VehiclePaymentForPeriodResult } from "@shared/schema";
+import type {
+  PaymentWithDetails,
+  VehiclePaymentForPeriodResult,
+  CreateVehiclePaymentForPeriod,
+  InsertPayment,
+} from "@shared/schema";
 
 export default function Payments() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -39,6 +44,10 @@ export default function Payments() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isCalculationOpen, setIsCalculationOpen] = useState(false);
   const [calculationResult, setCalculationResult] = useState<VehiclePaymentForPeriodResult | null>(null);
+  const [calculationRequest, setCalculationRequest] =
+    useState<CreateVehiclePaymentForPeriod | null>(null);
+  const [monthOverrides, setMonthOverrides] = useState<Record<string, string>>({});
+  const [maintenanceOverride, setMaintenanceOverride] = useState<string>("");
   const { toast } = useToast();
 
   const { data: payments = [], isLoading } = usePayments();
@@ -90,18 +99,122 @@ export default function Payments() {
     },
   });
 
+  const createPaymentFromCalculation = useMutation({
+    mutationFn: async (data: InsertPayment) => {
+      await apiRequest("POST", "/api/payments", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      toast({
+        title: "Success",
+        description: "Payment created from calculation",
+      });
+      setIsCalculationOpen(false);
+      setCalculationResult(null);
+      setCalculationRequest(null);
+      setMonthOverrides({});
+      setMaintenanceOverride("");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create payment",
+        variant: "destructive",
+      });
+    },
+  });
+
   const filteredPayments = payments?.filter((payment: PaymentWithDetails) => {
-    const matchesSearch = 
+    const matchesSearch =
       payment.assignment.project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       payment.assignment.vehicle.make.toLowerCase().includes(searchTerm.toLowerCase()) ||
       payment.assignment.vehicle.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
       payment.assignment.vehicle.licensePlate.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (payment.invoiceNumber && payment.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()));
-    
+
     const matchesStatus = statusFilter === "all" || payment.status === statusFilter;
-    
+
     return matchesSearch && matchesStatus;
   });
+
+  const adjustedTotals = useMemo(() => {
+    if (!calculationResult) {
+      return {
+        monthTotal: 0,
+        maintenance: 0,
+        net: 0,
+      };
+    }
+
+    const monthTotal = calculationResult.calculation.monthlyBreakdown.reduce((sum, month) => {
+      const key = `${month.year}-${month.month}`;
+      const value = parseFloat(monthOverrides[key] ?? month.amount.toFixed(2));
+      if (Number.isNaN(value)) {
+        return sum;
+      }
+      return sum + value;
+    }, 0);
+
+    const maintenance = parseFloat(maintenanceOverride || "0");
+
+    return {
+      monthTotal,
+      maintenance: Number.isNaN(maintenance) ? 0 : maintenance,
+      net: monthTotal - (Number.isNaN(maintenance) ? 0 : maintenance),
+    };
+  }, [calculationResult, monthOverrides, maintenanceOverride]);
+
+  const handleCalculationComplete = (
+    result: VehiclePaymentForPeriodResult,
+    request: CreateVehiclePaymentForPeriod
+  ) => {
+    setCalculationResult(result);
+    setCalculationRequest(request);
+    const initialOverrides = Object.fromEntries(
+      result.calculation.monthlyBreakdown.map((month) => {
+        const key = `${month.year}-${month.month}`;
+        return [key, month.amount.toFixed(2)];
+      })
+    );
+    setMonthOverrides(initialOverrides);
+    setMaintenanceOverride(result.calculation.maintenanceCost.toFixed(2));
+  };
+
+  const handleMonthOverrideChange = (key: string, value: string) => {
+    setMonthOverrides((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  };
+
+  const handleCreatePaymentFromCalculation = () => {
+    if (!calculationResult || !calculationRequest) {
+      return;
+    }
+
+    if (!calculationRequest.dueDate) {
+      toast({
+        title: "Due date required",
+        description: "Please provide a due date before creating the payment.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const amount = adjustedTotals.net.toFixed(2);
+
+    const payload: InsertPayment = {
+      assignmentId: calculationRequest.assignmentId,
+      amount,
+      dueDate: calculationRequest.dueDate,
+      status: calculationRequest.status ?? "pending",
+      paidDate: calculationRequest.paidDate ?? undefined,
+      invoiceNumber: calculationRequest.invoiceNumber ?? undefined,
+    };
+
+    createPaymentFromCalculation.mutate(payload);
+  };
 
   const getStatusBadge = (status: string, dueDate: string, paidDate?: string | null) => {
     if (status === "paid") {
@@ -207,6 +320,9 @@ export default function Payments() {
                   setIsCalculationOpen(open);
                   if (!open) {
                     setCalculationResult(null);
+                    setCalculationRequest(null);
+                    setMonthOverrides({});
+                    setMaintenanceOverride("");
                   }
                 }}
               >
@@ -221,27 +337,23 @@ export default function Payments() {
                     <DialogTitle>Calculate payment for a period</DialogTitle>
                   </DialogHeader>
                   <div className="space-y-6 py-2">
-                    <PaymentPeriodForm
-                      onSuccess={(result) => {
-                        setCalculationResult(result);
-                      }}
-                    />
+                    <PaymentPeriodForm onCalculated={handleCalculationComplete} />
                     {calculationResult && (
                       <Card className="border-primary/30 bg-primary/5">
                         <CardHeader>
                           <CardTitle className="text-lg">Calculation summary</CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-4 text-sm">
+                        <CardContent className="space-y-6 text-sm">
                           <div className="grid gap-4 md:grid-cols-2">
                             <div>
                               <p className="text-muted-foreground">Assignment</p>
                               <p className="font-medium">
-                                {calculationResult.payment.assignment.project.name}
+                                {calculationResult.assignment.project.name}
                               </p>
                               <p>
-                                {calculationResult.payment.assignment.vehicle.make}{" "}
-                                {calculationResult.payment.assignment.vehicle.model} (
-                                {calculationResult.payment.assignment.vehicle.licensePlate})
+                                {calculationResult.assignment.vehicle.make}{" "}
+                                {calculationResult.assignment.vehicle.model} (
+                                {calculationResult.assignment.vehicle.licensePlate})
                               </p>
                             </div>
                             <div>
@@ -252,65 +364,179 @@ export default function Payments() {
                                 {format(new Date(calculationResult.calculation.periodEnd), "PPP")}
                               </p>
                               <p>
-                                {calculationResult.calculation.presentDays} of {" "}
-                                {calculationResult.calculation.totalDays} days present
+                                {calculationResult.calculation.totalPresentDays} present day(s) across {" "}
+                                {calculationResult.calculation.monthlyBreakdown.length} month(s)
                               </p>
                             </div>
                           </div>
+
+                          <div>
+                            <p className="text-muted-foreground mb-2">Month-by-month breakdown</p>
+                            <div className="overflow-x-auto rounded-md border bg-background">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>Month</TableHead>
+                                    <TableHead>Attendance (present / total)</TableHead>
+                                    <TableHead className="text-right">Daily rate</TableHead>
+                                    <TableHead className="text-right">Calculated</TableHead>
+                                    <TableHead className="text-right">Adjusted amount</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {calculationResult.calculation.monthlyBreakdown.map((month) => {
+                                    const key = `${month.year}-${month.month}`;
+                                    const overrideValue = monthOverrides[key] ?? month.amount.toFixed(2);
+                                    return (
+                                      <TableRow key={key}>
+                                        <TableCell className="whitespace-nowrap">{month.monthLabel}</TableCell>
+                                        <TableCell>
+                                          {month.presentDays} / {month.totalDaysInMonth}
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                          $
+                                          {month.dailyRate.toLocaleString(undefined, {
+                                            minimumFractionDigits: 2,
+                                            maximumFractionDigits: 2,
+                                          })}
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                          $
+                                          {month.amount.toLocaleString(undefined, {
+                                            minimumFractionDigits: 2,
+                                            maximumFractionDigits: 2,
+                                          })}
+                                        </TableCell>
+                                        <TableCell className="w-40 text-right">
+                                          <Input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            value={overrideValue}
+                                            onChange={(event) =>
+                                              handleMonthOverrideChange(key, event.target.value)
+                                            }
+                                            disabled={createPaymentFromCalculation.isPending}
+                                          />
+                                        </TableCell>
+                                      </TableRow>
+                                    );
+                                  })}
+                                </TableBody>
+                              </Table>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-2">
+                              Adjust any month if attendance data needs correction. Totals update automatically.
+                            </p>
+                          </div>
+
                           <div className="grid gap-4 md:grid-cols-3">
                             <div>
                               <p className="text-muted-foreground">Monthly rate</p>
                               <p className="font-semibold">
-                                ${calculationResult.calculation.monthlyRate.toLocaleString(undefined, {
+                                $
+                                {calculationResult.calculation.monthlyRate.toLocaleString(undefined, {
                                   minimumFractionDigits: 2,
                                   maximumFractionDigits: 2,
                                 })}
                               </p>
                             </div>
                             <div>
-                              <p className="text-muted-foreground">Daily rate</p>
+                              <p className="text-muted-foreground">Total present days</p>
                               <p className="font-semibold">
-                                ${calculationResult.calculation.dailyRate.toLocaleString(undefined, {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}
+                                {calculationResult.calculation.totalPresentDays}
                               </p>
                             </div>
                             <div>
-                              <p className="text-muted-foreground">Maintenance costs</p>
+                              <p className="text-muted-foreground">Adjusted attendance total</p>
                               <p className="font-semibold">
-                                ${calculationResult.calculation.maintenanceCost.toLocaleString(undefined, {
+                                $
+                                {adjustedTotals.monthTotal.toLocaleString(undefined, {
                                   minimumFractionDigits: 2,
                                   maximumFractionDigits: 2,
                                 })}
                               </p>
                             </div>
                           </div>
-                          <div className="grid gap-4 md:grid-cols-3">
+
+                          <div className="grid gap-4 md:grid-cols-[2fr_1fr] md:items-end">
                             <div>
-                              <p className="text-muted-foreground">Base amount</p>
-                              <p className="font-semibold">
-                                ${calculationResult.calculation.baseAmount.toLocaleString(undefined, {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}
+                              <p className="text-muted-foreground">Maintenance deduction</p>
+                              <div className="flex items-center gap-3">
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={maintenanceOverride}
+                                  onChange={(event) => setMaintenanceOverride(event.target.value)}
+                                  disabled={createPaymentFromCalculation.isPending}
+                                />
+                                <span className="text-xs text-muted-foreground">
+                                  Calculated: $
+                                  {calculationResult.calculation.maintenanceCost.toLocaleString(undefined, {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}
+                                </span>
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Update if some maintenance should be excluded or added.
                               </p>
                             </div>
                             <div>
-                              <p className="text-muted-foreground">Net amount</p>
+                              <p className="text-muted-foreground">Net payable</p>
                               <p className="text-lg font-bold text-primary">
-                                ${calculationResult.calculation.netAmount.toLocaleString(undefined, {
+                                $
+                                {adjustedTotals.net.toLocaleString(undefined, {
                                   minimumFractionDigits: 2,
                                   maximumFractionDigits: 2,
                                 })}
                               </p>
                             </div>
+                          </div>
+
+                          <div className="grid gap-4 md:grid-cols-2">
                             <div>
                               <p className="text-muted-foreground">Due date</p>
                               <p className="font-semibold">
-                                {format(new Date(calculationResult.payment.dueDate), "PPP")}
+                                {calculationRequest?.dueDate
+                                  ? format(new Date(calculationRequest.dueDate), "PPP")
+                                  : "Not set"}
                               </p>
                             </div>
+                            <div>
+                              <p className="text-muted-foreground">Status & invoice</p>
+                              <p className="font-semibold capitalize">
+                                {(calculationRequest?.status ?? "pending").replace("_", " ")}
+                              </p>
+                              {calculationRequest?.invoiceNumber && (
+                                <p className="text-xs text-muted-foreground">
+                                  Invoice: {calculationRequest.invoiceNumber}
+                                </p>
+                              )}
+                              {calculationRequest?.paidDate && (
+                                <p className="text-xs text-muted-foreground">
+                                  Paid date: {format(new Date(calculationRequest.paidDate), "PPP")}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <p className="text-xs text-muted-foreground">
+                              Confirm the amounts above, then create the payment record.
+                            </p>
+                            <Button
+                              onClick={handleCreatePaymentFromCalculation}
+                              disabled={
+                                !calculationResult ||
+                                !calculationRequest ||
+                                !calculationRequest.dueDate ||
+                                createPaymentFromCalculation.isPending
+                              }
+                            >
+                              {createPaymentFromCalculation.isPending ? "Creating..." : "Create payment"}
+                            </Button>
                           </div>
                         </CardContent>
                       </Card>
