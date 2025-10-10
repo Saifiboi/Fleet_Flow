@@ -303,18 +303,76 @@ export const deleteVehicleAttendanceSchema = z.object({
   projectId: z.string().nullable().optional(),
 });
 
-export const createVehiclePaymentForPeriodSchema = z.object({
-  assignmentId: z.string(),
-  startDate: z.string(),
-  endDate: z.string(),
-  dueDate: z.string(),
-  status: z.enum(["pending", "paid", "overdue"]).default("pending").optional(),
-  paidDate: z
-    .string()
-    .optional()
-    .transform((val) => (val === "" || val === undefined ? null : val)),
-  invoiceNumber: z.string().optional().transform((val) => (val === "" ? undefined : val)),
-});
+export const createVehiclePaymentForPeriodSchema = z
+  .object({
+    assignmentId: z.string().min(1, "Assignment is required"),
+    startDate: z
+      .string()
+      .min(1, "Start date is required"),
+    endDate: z
+      .string()
+      .min(1, "End date is required"),
+    dueDate: z
+      .string()
+      .min(1, "Due date is required"),
+    status: z.enum(["pending", "paid", "overdue"]).default("pending").optional(),
+    paidDate: z
+      .string()
+      .optional()
+      .transform((val) => (val === "" || val === undefined ? null : val)),
+    invoiceNumber: z
+      .string()
+      .optional()
+      .transform((val) => (val === "" ? undefined : val)),
+  })
+  .superRefine((data, ctx) => {
+    const parseDate = (value: string, field: keyof typeof data) => {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field],
+          message: "Please provide a valid date",
+        });
+      }
+      return date;
+    };
+
+    const start = parseDate(data.startDate, "startDate");
+    const end = parseDate(data.endDate, "endDate");
+    const due = parseDate(data.dueDate, "dueDate");
+
+    if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && start > end) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endDate"],
+        message: "End date must be on or after the start date",
+      });
+    }
+
+    if (!Number.isNaN(end.getTime()) && !Number.isNaN(due.getTime()) && due < end) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["dueDate"],
+        message: "Due date must be on or after the end date",
+      });
+    }
+
+    if (data.paidDate) {
+      const paid = parseDate(data.paidDate, "paidDate");
+      if (
+        !Number.isNaN(start.getTime()) &&
+        !Number.isNaN(paid.getTime()) &&
+        paid < start
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["paidDate"],
+          message: "Paid date cannot be before the start date",
+        });
+      }
+    }
+  });
 
 // Update schemas
 export const updateOwnerSchema = z.object({

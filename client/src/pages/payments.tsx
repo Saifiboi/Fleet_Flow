@@ -13,16 +13,32 @@ import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import PaymentForm from "@/components/forms/payment-form";
+import { PaymentPeriodForm } from "@/components/forms/payment-period-form";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { CreditCard, Plus, Edit, Eye, Trash2, Search, Check, FileText, DollarSign, Calendar, AlertTriangle } from "lucide-react";
+import {
+  CreditCard,
+  Plus,
+  Edit,
+  Eye,
+  Trash2,
+  Search,
+  Check,
+  FileText,
+  DollarSign,
+  Calendar,
+  AlertTriangle,
+  Calculator,
+} from "lucide-react";
 import { format, differenceInDays } from "date-fns";
-import type { PaymentWithDetails } from "@shared/schema";
+import type { PaymentWithDetails, VehiclePaymentForPeriodResult } from "@shared/schema";
 
 export default function Payments() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [editingPayment, setEditingPayment] = useState<PaymentWithDetails | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isCalculationOpen, setIsCalculationOpen] = useState(false);
+  const [calculationResult, setCalculationResult] = useState<VehiclePaymentForPeriodResult | null>(null);
   const { toast } = useToast();
 
   const { data: payments = [], isLoading } = usePayments();
@@ -184,7 +200,124 @@ export default function Payments() {
               <CreditCard className="w-5 h-5" />
               <span>Payments</span>
             </CardTitle>
-            <div className="flex items-center space-x-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <Dialog
+                open={isCalculationOpen}
+                onOpenChange={(open) => {
+                  setIsCalculationOpen(open);
+                  if (!open) {
+                    setCalculationResult(null);
+                  }
+                }}
+              >
+                <DialogTrigger asChild>
+                  <Button variant="outline" data-testid="calculate-payment-button">
+                    <Calculator className="mr-2 h-4 w-4" />
+                    Calculate Payment
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-3xl">
+                  <DialogHeader>
+                    <DialogTitle>Calculate payment for a period</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-6 py-2">
+                    <PaymentPeriodForm
+                      onSuccess={(result) => {
+                        setCalculationResult(result);
+                      }}
+                    />
+                    {calculationResult && (
+                      <Card className="border-primary/30 bg-primary/5">
+                        <CardHeader>
+                          <CardTitle className="text-lg">Calculation summary</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4 text-sm">
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <div>
+                              <p className="text-muted-foreground">Assignment</p>
+                              <p className="font-medium">
+                                {calculationResult.payment.assignment.project.name}
+                              </p>
+                              <p>
+                                {calculationResult.payment.assignment.vehicle.make}{" "}
+                                {calculationResult.payment.assignment.vehicle.model} (
+                                {calculationResult.payment.assignment.vehicle.licensePlate})
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Period</p>
+                              <p className="font-medium">
+                                {format(new Date(calculationResult.calculation.periodStart), "PPP")} –
+                                {" "}
+                                {format(new Date(calculationResult.calculation.periodEnd), "PPP")}
+                              </p>
+                              <p>
+                                {calculationResult.calculation.presentDays} of {" "}
+                                {calculationResult.calculation.totalDays} days present
+                              </p>
+                            </div>
+                          </div>
+                          <div className="grid gap-4 md:grid-cols-3">
+                            <div>
+                              <p className="text-muted-foreground">Monthly rate</p>
+                              <p className="font-semibold">
+                                ${calculationResult.calculation.monthlyRate.toLocaleString(undefined, {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Daily rate</p>
+                              <p className="font-semibold">
+                                ${calculationResult.calculation.dailyRate.toLocaleString(undefined, {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Maintenance costs</p>
+                              <p className="font-semibold">
+                                ${calculationResult.calculation.maintenanceCost.toLocaleString(undefined, {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="grid gap-4 md:grid-cols-3">
+                            <div>
+                              <p className="text-muted-foreground">Base amount</p>
+                              <p className="font-semibold">
+                                ${calculationResult.calculation.baseAmount.toLocaleString(undefined, {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Net amount</p>
+                              <p className="text-lg font-bold text-primary">
+                                ${calculationResult.calculation.netAmount.toLocaleString(undefined, {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Due date</p>
+                              <p className="font-semibold">
+                                {format(new Date(calculationResult.payment.dueDate), "PPP")}
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
               <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
                 <DialogTrigger asChild>
                   <Button data-testid="add-payment-button">
