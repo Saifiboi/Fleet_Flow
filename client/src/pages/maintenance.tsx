@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { useMaintenanceRecords } from "@/lib/api";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useMaintenanceRecords, useVehicles } from "@/lib/api";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -15,17 +15,23 @@ import { useToast } from "@/hooks/use-toast";
 import MaintenanceForm from "@/components/forms/maintenance-form";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { MaintenanceRecordWithVehicle } from "@shared/schema";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 export default function Maintenance() {
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [vehicleFilter, setVehicleFilter] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [editingRecord, setEditingRecord] = useState<MaintenanceRecordWithVehicle | null>(null);
   const [viewingRecord, setViewingRecord] = useState<MaintenanceRecordWithVehicle | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const { toast } = useToast();
 
   const { data: maintenanceRecords = [], isLoading } = useMaintenanceRecords();
+  const { data: vehicles = [] } = useVehicles();
+  const selectedVehicle = vehicles.find((vehicle) => vehicle.id === vehicleFilter);
 
   const deleteRecordMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -38,6 +44,7 @@ export default function Maintenance() {
       toast({
         title: "Success",
         description: "Maintenance record deleted successfully",
+        duration: 3000,
       });
     },
     onError: (error: any) => {
@@ -49,8 +56,31 @@ export default function Maintenance() {
     },
   });
 
-  const filteredRecords = maintenanceRecords?.filter((record: MaintenanceRecordWithVehicle) => {
-    const matchesSearch = 
+  const handleDeleteRecord = (record: MaintenanceRecordWithVehicle) => {
+    if (record.status === "completed") {
+      toast({
+        title: "Action not allowed",
+        description: "Completed maintenance records cannot be deleted.",
+        variant: "destructive",
+        duration: 3000,
+      });
+      return;
+    }
+
+    deleteRecordMutation.mutate(record.id);
+  };
+
+  const recordsByVehicleAndDate = maintenanceRecords.filter((record: MaintenanceRecordWithVehicle) => {
+    const matchesVehicle = !vehicleFilter || record.vehicleId === vehicleFilter;
+    const recordDate = new Date(record.serviceDate);
+    const matchesStartDate = !startDate || recordDate >= new Date(startDate);
+    const matchesEndDate = !endDate || recordDate <= new Date(endDate);
+
+    return matchesVehicle && matchesStartDate && matchesEndDate;
+  });
+
+  const filteredRecords = recordsByVehicleAndDate.filter((record: MaintenanceRecordWithVehicle) => {
+    const matchesSearch =
       record.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
       record.vehicle.make.toLowerCase().includes(searchTerm.toLowerCase()) ||
       record.vehicle.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -63,18 +93,46 @@ export default function Maintenance() {
     return matchesSearch && matchesType && matchesStatus;
   });
 
+  const summaryRecords: MaintenanceRecordWithVehicle[] = vehicleFilter ? recordsByVehicleAndDate : [];
+  const summaryTotalCost = summaryRecords.reduce((sum, record) => sum + Number(record.cost), 0);
+  const summaryAverageCost = summaryRecords.length ? summaryTotalCost / summaryRecords.length : 0;
+  const summaryHighestCostRecord = summaryRecords.reduce<MaintenanceRecordWithVehicle | null>((highest, record) => {
+    if (!highest || Number(record.cost) > Number(highest.cost)) {
+      return record;
+    }
+    return highest;
+  }, null);
+  const summaryLastServiceDate = summaryRecords.reduce<Date | null>((latest, record) => {
+    const serviceDate = new Date(record.serviceDate);
+    if (!latest || serviceDate > latest) {
+      return serviceDate;
+    }
+    return latest;
+  }, null);
+  const summaryNextServiceDate = summaryRecords
+    .map((record) => (record.nextServiceDate ? new Date(record.nextServiceDate) : null))
+    .filter((date): date is Date => !!date)
+    .sort((a, b) => a.getTime() - b.getTime())[0] || null;
+  const summaryDateRangeLabel = startDate || endDate
+    ? `${startDate ? new Date(startDate).toLocaleDateString() : "Start"} - ${
+        endDate ? new Date(endDate).toLocaleDateString() : "End"
+      }`
+    : "All time";
+
   const getTypeBadge = (type: string) => {
     const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
       scheduled: "default",
       repair: "destructive",
       inspection: "secondary",
       service: "outline",
+      driver_salary: "secondary",
     };
     const labels: Record<string, string> = {
       scheduled: "Scheduled",
       repair: "Repair",
       inspection: "Inspection",
       service: "Service",
+      driver_salary: "Driver Salary",
     };
     return <Badge variant={variants[type] || "outline"}>{labels[type] || type}</Badge>;
   };
@@ -217,7 +275,20 @@ export default function Maintenance() {
                 />
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 md:justify-end">
+              <select
+                value={vehicleFilter}
+                onChange={(e) => setVehicleFilter(e.target.value)}
+                className="px-3 py-2 border rounded-md text-sm min-w-[180px]"
+                data-testid="filter-vehicle"
+              >
+                <option value="">All Vehicles</option>
+                {vehicles.map((vehicle) => (
+                  <option key={vehicle.id} value={vehicle.id}>
+                    {vehicle.make} {vehicle.model} - {vehicle.licensePlate}
+                  </option>
+                ))}
+              </select>
               <select
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value)}
@@ -229,6 +300,7 @@ export default function Maintenance() {
                 <option value="repair">Repair</option>
                 <option value="inspection">Inspection</option>
                 <option value="service">Service</option>
+                <option value="driver_salary">Driver Salary</option>
               </select>
               <select
                 value={statusFilter}
@@ -242,94 +314,196 @@ export default function Maintenance() {
                 <option value="completed">Completed</option>
                 <option value="cancelled">Cancelled</option>
               </select>
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-auto"
+                data-testid="filter-start-date"
+              />
+              <Input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-auto"
+                data-testid="filter-end-date"
+              />
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setVehicleFilter("");
+                  setTypeFilter("all");
+                  setStatusFilter("all");
+                  setStartDate("");
+                  setEndDate("");
+                  setSearchTerm("");
+                }}
+                data-testid="reset-maintenance-filters"
+              >
+                Reset
+              </Button>
             </div>
           </div>
 
-          {/* Table */}
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Vehicle</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Cost</TableHead>
-                <TableHead>Service Date</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredRecords && filteredRecords.length > 0 ? (
-                filteredRecords.map((record) => (
-                  <TableRow key={record.id} data-testid={`maintenance-row-${record.id}`}>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">
-                          {record.vehicle.make} {record.vehicle.model}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {record.vehicle.licensePlate}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>{getTypeBadge(record.type)}</TableCell>
-                    <TableCell>
-                      <div className="max-w-xs truncate" title={record.description}>
-                        {record.description}
-                      </div>
-                    </TableCell>
-                    <TableCell>${Number(record.cost).toLocaleString()}</TableCell>
-                    <TableCell>{new Date(record.serviceDate).toLocaleDateString()}</TableCell>
-                    <TableCell>{getStatusBadge(record.status)}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleView(record)}
-                          data-testid={`view-maintenance-${record.id}`}
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEdit(record)}
-                          data-testid={`edit-maintenance-${record.id}`}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <ConfirmDialog
-                          title="Delete maintenance record"
-                          description="Are you sure you want to delete this maintenance record?"
-                          onConfirm={() => deleteRecordMutation.mutate(record.id)}
-                          trigger={
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled={deleteRecordMutation.isPending}
-                              data-testid={`delete-maintenance-${record.id}`}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          }
-                        />
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8">
-                    <div className="flex flex-col items-center space-y-2">
-                      <Wrench className="w-8 h-8 text-muted-foreground" />
-                      <p className="text-muted-foreground">No maintenance records found</p>
+          {vehicleFilter && (
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle>
+                  Maintenance Summary for {selectedVehicle ? `${selectedVehicle.make} ${selectedVehicle.model}` : "Selected Vehicle"}
+                </CardTitle>
+                <CardDescription className="flex flex-wrap gap-2 text-sm text-muted-foreground">
+                  {selectedVehicle?.licensePlate && (
+                    <span className="font-medium text-foreground">{selectedVehicle.licensePlate}</span>
+                  )}
+                  <span>{summaryDateRangeLabel}</span>
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {summaryRecords.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="border rounded-lg p-4">
+                      <p className="text-sm text-muted-foreground">Total Services</p>
+                      <p className="text-2xl font-semibold">{summaryRecords.length}</p>
                     </div>
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+                    <div className="border rounded-lg p-4">
+                      <p className="text-sm text-muted-foreground">Total Cost (PKR)</p>
+                      <p className="text-2xl font-semibold">{summaryTotalCost.toLocaleString()}</p>
+                    </div>
+                    <div className="border rounded-lg p-4">
+                      <p className="text-sm text-muted-foreground">Average Cost (PKR)</p>
+                      <p className="text-2xl font-semibold">{summaryAverageCost.toFixed(2)}</p>
+                    </div>
+                    <div className="border rounded-lg p-4">
+                      <p className="text-sm text-muted-foreground">Highest Cost Entry</p>
+                      <p className="text-lg font-semibold">
+                        {summaryHighestCostRecord
+                          ? `${Number(summaryHighestCostRecord.cost).toLocaleString()}`
+                          : "N/A"}
+                      </p>
+                      {summaryHighestCostRecord && (
+                        <p className="text-sm text-muted-foreground truncate" title={summaryHighestCostRecord.description}>
+                          {summaryHighestCostRecord.description}
+                        </p>
+                      )}
+                    </div>
+                    <div className="border rounded-lg p-4">
+                      <p className="text-sm text-muted-foreground">Last Service Date</p>
+                      <p className="text-lg font-semibold">
+                        {summaryLastServiceDate ? summaryLastServiceDate.toLocaleDateString() : "N/A"}
+                      </p>
+                    </div>
+                    <div className="border rounded-lg p-4">
+                      <p className="text-sm text-muted-foreground">Upcoming Next Service</p>
+                      <p className="text-lg font-semibold">
+                        {summaryNextServiceDate ? summaryNextServiceDate.toLocaleDateString() : "Not scheduled"}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No maintenance records found for the selected vehicle and date range.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Table */}
+          <div className="rounded-md border">
+            <div className="overflow-x-auto">
+              <ScrollArea className="h-[60vh]">
+                <Table className="min-w-full" data-testid="maintenance-records-table">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Vehicle</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Cost (PKR)</TableHead>
+                      <TableHead>Service Date</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredRecords && filteredRecords.length > 0 ? (
+                      filteredRecords.map((record) => (
+                        <TableRow key={record.id} data-testid={`maintenance-row-${record.id}`}>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">
+                                {record.vehicle.make} {record.vehicle.model}
+                              </div>
+                              <div className="text-sm text-muted-foreground">
+                                {record.vehicle.licensePlate}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>{getTypeBadge(record.type)}</TableCell>
+                          <TableCell>
+                            <div className="max-w-xs truncate" title={record.description}>
+                              {record.description}
+                            </div>
+                          </TableCell>
+                          <TableCell>{Number(record.cost).toLocaleString()} </TableCell>
+                          <TableCell>{new Date(record.serviceDate).toLocaleDateString()}</TableCell>
+                          <TableCell>{getStatusBadge(record.status)}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleView(record)}
+                                data-testid={`view-maintenance-${record.id}`}
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleEdit(record)}
+                                data-testid={`edit-maintenance-${record.id}`}
+                              >
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              <ConfirmDialog
+                                title="Delete maintenance record"
+                                description="Are you sure you want to delete this maintenance record?"
+                                onConfirm={() => handleDeleteRecord(record)}
+                                trigger={
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={deleteRecordMutation.isPending || record.status === "completed"}
+                                    data-testid={`delete-maintenance-${record.id}`}
+                                    title={
+                                      record.status === "completed"
+                                        ? "Completed maintenance records cannot be deleted."
+                                        : undefined
+                                    }
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                }
+                              />
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-8">
+                          <div className="flex flex-col items-center space-y-2">
+                            <Wrench className="w-8 h-8 text-muted-foreground" />
+                            <p className="text-muted-foreground">No maintenance records found</p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </ScrollArea>
+            </div>
+          </div>
 
           {/* Summary */}
           {filteredRecords && filteredRecords.length > 0 && (
@@ -343,7 +517,7 @@ export default function Maintenance() {
       {/* Viewing Record Dialog */}
       {viewingRecord && (
         <Dialog open={!!viewingRecord} onOpenChange={() => setViewingRecord(null)}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Maintenance Record Details</DialogTitle>
             </DialogHeader>
@@ -364,8 +538,8 @@ export default function Maintenance() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm font-medium">Cost</label>
-                  <p className="text-sm">${Number(viewingRecord.cost).toLocaleString()}</p>
+                  <label className="text-sm font-medium">Cost (PKR) </label>
+                  <p className="text-sm">{Number(viewingRecord.cost).toLocaleString()}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Performed By</label>

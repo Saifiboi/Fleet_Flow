@@ -376,7 +376,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const record = await storage.updateMaintenanceRecord(req.params.id, validatedData);
       res.json(record);
     } catch (error: any) {
-      res.status(400).json({ message: error.message });
+      res.status(error.status ?? 400).json({ message: error.message });
     }
   });
 
@@ -385,7 +385,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.deleteMaintenanceRecord(req.params.id);
       res.status(204).send();
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      res.status(error.status ?? 500).json({ message: error.message });
     }
   });
 

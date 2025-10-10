@@ -11,6 +11,7 @@ import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { insertMaintenanceRecordSchema, type MaintenanceRecordWithVehicle, type InsertMaintenanceRecord } from "@shared/schema";
+import { format } from "date-fns";
 
 interface MaintenanceFormProps {
   record?: MaintenanceRecordWithVehicle | null;
@@ -20,8 +21,11 @@ interface MaintenanceFormProps {
 export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormProps) {
   const { toast } = useToast();
   const isEditing = !!record;
+  const isCompletedRecord = isEditing && record?.status === "completed";
 
   const { data: vehicles = [] } = useVehicles();
+
+  const today = format(new Date(), "yyyy-MM-dd");
 
   const form = useForm<InsertMaintenanceRecord>({
     resolver: zodResolver(insertMaintenanceRecordSchema),
@@ -31,8 +35,8 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
       description: record?.description || "",
       cost: record?.cost || "",
       performedBy: record?.performedBy || "",
-      serviceDate: record?.serviceDate || "",
-      nextServiceDate: record?.nextServiceDate || "",
+      serviceDate: record?.serviceDate ?? today,
+      nextServiceDate: record ? record.nextServiceDate ?? "" : today,
       mileage: record?.mileage || 0,
       status: record?.status || "completed",
       notes: record?.notes || "",
@@ -40,7 +44,7 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
   });
 
   const maintenanceMutation = useMutation({
-    mutationFn: async (data: InsertMaintenanceRecord) => {
+    mutationFn: async (data: Partial<InsertMaintenanceRecord>) => {
       if (isEditing) {
         return await apiRequest("PUT", `/api/maintenance/${record.id}`, data);
       } else {
@@ -54,6 +58,7 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
       toast({
         title: "Success",
         description: `Maintenance record ${isEditing ? "updated" : "created"} successfully`,
+        duration: 3000,
       });
       onSuccess?.();
     },
@@ -67,12 +72,29 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
   });
 
   const onSubmit = (data: InsertMaintenanceRecord) => {
-    maintenanceMutation.mutate(data);
+    if (isCompletedRecord) {
+      maintenanceMutation.mutate({ description: data.description });
+      return;
+    }
+
+    const formattedData: InsertMaintenanceRecord = {
+      ...data,
+      nextServiceDate: data.nextServiceDate || null,
+      mileage: data.mileage ?? undefined,
+    };
+
+    maintenanceMutation.mutate(formattedData);
   };
 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" data-testid="maintenance-form">
+        {isCompletedRecord && (
+          <p className="text-sm text-muted-foreground" data-testid="completed-record-note">
+            This maintenance record is completed. Only the description can be updated.
+          </p>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormField
             control={form.control}
@@ -80,9 +102,18 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Vehicle</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value} data-testid="select-vehicle">
+                <Select
+                  onValueChange={(value) => {
+                    if (!isCompletedRecord) {
+                      field.onChange(value);
+                    }
+                  }}
+                  defaultValue={field.value}
+                  data-testid="select-vehicle"
+                  disabled={isCompletedRecord}
+                >
                   <FormControl>
-                    <SelectTrigger>
+                    <SelectTrigger disabled={isCompletedRecord}>
                       <SelectValue placeholder="Select a vehicle" />
                     </SelectTrigger>
                   </FormControl>
@@ -105,9 +136,18 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Type</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value} data-testid="select-type">
+                <Select
+                  onValueChange={(value) => {
+                    if (!isCompletedRecord) {
+                      field.onChange(value);
+                    }
+                  }}
+                  defaultValue={field.value}
+                  data-testid="select-type"
+                  disabled={isCompletedRecord}
+                >
                   <FormControl>
-                    <SelectTrigger>
+                    <SelectTrigger disabled={isCompletedRecord}>
                       <SelectValue placeholder="Select maintenance type" />
                     </SelectTrigger>
                   </FormControl>
@@ -116,6 +156,7 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
                     <SelectItem value="repair">Repair</SelectItem>
                     <SelectItem value="inspection">Inspection</SelectItem>
                     <SelectItem value="service">Service</SelectItem>
+                    <SelectItem value="driver_salary">Driver Salary</SelectItem>
                   </SelectContent>
                 </Select>
                 <FormMessage />
@@ -128,18 +169,19 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
           control={form.control}
           name="description"
           render={({ field }) => (
-            <FormItem>
-              <FormLabel>Description</FormLabel>
-              <FormControl>
-                <Textarea
-                  placeholder="Describe the maintenance work performed"
-                  {...field}
-                  data-testid="input-description"
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
+              <FormItem>
+                <FormLabel>Description</FormLabel>
+                <FormControl>
+                  <Textarea
+                    placeholder="Describe the maintenance work performed"
+                    {...field}
+                    data-testid="input-description"
+                    disabled={maintenanceMutation.isPending}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
         />
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -156,6 +198,7 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
                     placeholder="0.00"
                     {...field}
                     data-testid="input-cost"
+                    disabled={isCompletedRecord || maintenanceMutation.isPending}
                   />
                 </FormControl>
                 <FormMessage />
@@ -174,6 +217,7 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
                     placeholder="Service provider or mechanic name"
                     {...field}
                     data-testid="input-performed-by"
+                    disabled={isCompletedRecord || maintenanceMutation.isPending}
                   />
                 </FormControl>
                 <FormMessage />
@@ -194,6 +238,7 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
                     type="date"
                     {...field}
                     data-testid="input-service-date"
+                    disabled={isCompletedRecord || maintenanceMutation.isPending}
                   />
                 </FormControl>
                 <FormMessage />
@@ -213,6 +258,7 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
                     {...field}
                     value={field.value || ""}
                     data-testid="input-next-service-date"
+                    disabled={isCompletedRecord || maintenanceMutation.isPending}
                   />
                 </FormControl>
                 <FormMessage />
@@ -236,6 +282,7 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
                     value={field.value || ""}
                     onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
                     data-testid="input-mileage"
+                    disabled={isCompletedRecord || maintenanceMutation.isPending}
                   />
                 </FormControl>
                 <FormMessage />
@@ -249,9 +296,18 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Status</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value} data-testid="select-status">
+                <Select
+                  onValueChange={(value) => {
+                    if (!isCompletedRecord) {
+                      field.onChange(value);
+                    }
+                  }}
+                  defaultValue={field.value}
+                  data-testid="select-status"
+                  disabled={isCompletedRecord}
+                >
                   <FormControl>
-                    <SelectTrigger>
+                    <SelectTrigger disabled={isCompletedRecord}>
                       <SelectValue placeholder="Select status" />
                     </SelectTrigger>
                   </FormControl>
@@ -272,19 +328,20 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
           control={form.control}
           name="notes"
           render={({ field }) => (
-            <FormItem>
-              <FormLabel>Notes (Optional)</FormLabel>
-              <FormControl>
-                <Textarea
-                  placeholder="Additional notes about the maintenance"
-                  {...field}
-                  value={field.value || ""}
-                  data-testid="input-notes"
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
+              <FormItem>
+                <FormLabel>Notes (Optional)</FormLabel>
+                <FormControl>
+                  <Textarea
+                    placeholder="Additional notes about the maintenance"
+                    {...field}
+                    value={field.value || ""}
+                    data-testid="input-notes"
+                    disabled={isCompletedRecord || maintenanceMutation.isPending}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
         />
 
         <div className="flex gap-2">
