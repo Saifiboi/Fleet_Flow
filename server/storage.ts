@@ -4,6 +4,7 @@ import {
   projects,
   assignments,
   payments,
+  paymentTransactions,
   maintenanceRecords,
   ownershipHistory,
   vehicleAttendance,
@@ -18,6 +19,9 @@ import {
   type InsertAssignment,
   type Payment,
   type InsertPayment,
+  type PaymentTransaction,
+  type InsertPaymentTransaction,
+  type CreatePaymentTransaction,
   type MaintenanceRecord,
   type InsertMaintenanceRecord,
   type OwnershipHistory,
@@ -32,9 +36,12 @@ import {
   type AssignmentWithDetails,
   type PaymentWithDetails,
   type MaintenanceRecordWithVehicle,
+  type CreateVehiclePaymentForPeriod,
+  type VehiclePaymentCalculation,
+  type VehiclePaymentForPeriodResult,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, sql, isNull, gte, lte, ne } from "drizzle-orm";
+import { eq, desc, asc, and, sql, isNull, gte, lte, ne, inArray } from "drizzle-orm";
 
 // Helper function to retry database operations on connection failures
 async function withRetry<T>(operation: () => Promise<T>, maxRetries: number = 3): Promise<T> {
@@ -68,6 +75,14 @@ async function withRetry<T>(operation: () => Promise<T>, maxRetries: number = 3)
   
   throw lastError;
 }
+
+type PaymentJoinRow = {
+  payments: Payment;
+  assignments: Assignment | null;
+  vehicles: Vehicle | null;
+  owners: Owner | null;
+  projects: Project | null;
+};
 
 export interface IStorage {
   // Owners
@@ -106,9 +121,19 @@ export interface IStorage {
   getPayment(id: string): Promise<PaymentWithDetails | undefined>;
   getPaymentsByAssignment(assignmentId: string): Promise<PaymentWithDetails[]>;
   getOutstandingPayments(): Promise<PaymentWithDetails[]>;
-  createPayment(payment: InsertPayment): Promise<Payment>;
-  updatePayment(id: string, payment: Partial<InsertPayment>): Promise<Payment>;
-  deletePayment(id: string): Promise<void>;
+  createPayment(
+    payment: InsertPayment,
+    attendanceDates?: string[],
+    maintenanceRecordIds?: string[]
+  ): Promise<Payment>;
+  getPaymentTransactions(paymentId: string): Promise<PaymentTransaction[]>;
+  createPaymentTransaction(
+    paymentId: string,
+    transaction: CreatePaymentTransaction
+  ): Promise<PaymentTransaction>;
+  createVehiclePaymentForPeriod(
+    payload: CreateVehiclePaymentForPeriod
+  ): Promise<VehiclePaymentForPeriodResult>;
 
   // Maintenance Records
   getMaintenanceRecords(): Promise<MaintenanceRecordWithVehicle[]>;
@@ -156,6 +181,73 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  private async hydratePayments(rows: PaymentJoinRow[]): Promise<PaymentWithDetails[]> {
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const paymentIds = rows.map((row) => row.payments.id);
+    const ownerIds = Array.from(
+      new Set(rows.map((row) => row.payments.ownerId).filter((id): id is string => Boolean(id)))
+    );
+
+    const transactionsByPayment = new Map<string, PaymentTransaction[]>();
+    if (paymentIds.length > 0) {
+      const transactionRows = await db
+        .select({ transaction: paymentTransactions })
+        .from(paymentTransactions)
+        .where(inArray(paymentTransactions.paymentId, paymentIds))
+        .orderBy(asc(paymentTransactions.transactionDate), asc(paymentTransactions.createdAt));
+
+      for (const { transaction } of transactionRows) {
+        const current = transactionsByPayment.get(transaction.paymentId) ?? [];
+        current.push(transaction);
+        transactionsByPayment.set(transaction.paymentId, current);
+      }
+    }
+
+    let paymentOwnerMap = new Map<string, Owner>();
+    if (ownerIds.length > 0) {
+      const ownerRows = await db
+        .select({ owner: owners })
+        .from(owners)
+        .where(inArray(owners.id, ownerIds));
+
+      paymentOwnerMap = new Map(ownerRows.map(({ owner }) => [owner.id, owner]));
+    }
+
+    return rows.map((row) => {
+      const assignment = row.assignments;
+      const vehicle = row.vehicles;
+      const project = row.projects;
+      const assignmentOwner = row.owners;
+
+      if (!assignment || !vehicle || !project || !assignmentOwner) {
+        throw new Error("Payment is missing assignment details");
+      }
+
+      const transactions = transactionsByPayment.get(row.payments.id) ?? [];
+      const totalPaid = transactions.reduce((sum, transaction) => sum + Number(transaction.amount ?? 0), 0);
+      const outstandingAmount = Math.max(Number(row.payments.amount ?? 0) - totalPaid, 0);
+
+      return {
+        ...row.payments,
+        assignment: {
+          ...assignment,
+          vehicle: {
+            ...vehicle,
+            owner: assignmentOwner,
+          },
+          project,
+        },
+        paymentOwner: paymentOwnerMap.get(row.payments.ownerId) ?? null,
+        transactions,
+        totalPaid,
+        outstandingAmount,
+      };
+    });
+  }
+
   async getOwners(): Promise<Owner[]> {
     return await withRetry(() => db.select().from(owners).orderBy(desc(owners.createdAt)));
   }
@@ -549,21 +641,11 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(projects, eq(assignments.projectId, projects.id))
       .orderBy(desc(payments.createdAt));
 
-    return results.map((row) => ({
-      ...row.payments,
-      assignment: {
-        ...row.assignments!,
-        vehicle: {
-          ...row.vehicles!,
-          owner: row.owners!,
-        },
-        project: row.projects!,
-      },
-    }));
+    return this.hydratePayments(results as PaymentJoinRow[]);
   }
 
   async getPayment(id: string): Promise<PaymentWithDetails | undefined> {
-    const [result] = await db
+    const results = await db
       .select()
       .from(payments)
       .leftJoin(assignments, eq(payments.assignmentId, assignments.id))
@@ -572,19 +654,10 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(projects, eq(assignments.projectId, projects.id))
       .where(eq(payments.id, id));
 
-    if (!result) return undefined;
+    if (results.length === 0) return undefined;
 
-    return {
-      ...result.payments,
-      assignment: {
-        ...result.assignments!,
-        vehicle: {
-          ...result.vehicles!,
-          owner: result.owners!,
-        },
-        project: result.projects!,
-      },
-    };
+    const [payment] = await this.hydratePayments(results as PaymentJoinRow[]);
+    return payment;
   }
 
   async getPaymentsByAssignment(assignmentId: string): Promise<PaymentWithDetails[]> {
@@ -598,17 +671,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(payments.assignmentId, assignmentId))
       .orderBy(desc(payments.createdAt));
 
-    return results.map((row) => ({
-      ...row.payments,
-      assignment: {
-        ...row.assignments!,
-        vehicle: {
-          ...row.vehicles!,
-          owner: row.owners!,
-        },
-        project: row.projects!,
-      },
-    }));
+    return this.hydratePayments(results as PaymentJoinRow[]);
   }
 
   async getOutstandingPayments(): Promise<PaymentWithDetails[]> {
@@ -620,39 +683,460 @@ export class DatabaseStorage implements IStorage {
         .leftJoin(vehicles, eq(assignments.vehicleId, vehicles.id))
         .leftJoin(owners, eq(vehicles.ownerId, owners.id))
         .leftJoin(projects, eq(assignments.projectId, projects.id))
-        .where(and(eq(payments.status, "pending"), sql`${payments.dueDate} <= CURRENT_DATE`))
+        .where(
+          and(
+            inArray(payments.status, ["pending", "partial"]),
+            sql`${payments.dueDate} <= CURRENT_DATE`
+          )
+        )
         .orderBy(payments.dueDate)
     );
 
-    return results.map((row) => ({
-      ...row.payments,
-      assignment: {
-        ...row.assignments!,
-        vehicle: {
-          ...row.vehicles!,
-          owner: row.owners!,
-        },
-        project: row.projects!,
+    return this.hydratePayments(results as PaymentJoinRow[]);
+  }
+
+  async createPayment(
+    insertPayment: InsertPayment,
+    attendanceDates?: string[],
+    maintenanceRecordIds?: string[]
+  ): Promise<Payment> {
+    return await db.transaction(async (tx) => {
+      if (!insertPayment.periodStart || !insertPayment.periodEnd) {
+        throw new Error("Payment period start and end dates are required.");
+      }
+
+      const uniqueAttendanceDates = attendanceDates ? Array.from(new Set(attendanceDates)) : [];
+      const uniqueMaintenanceIds = maintenanceRecordIds ? Array.from(new Set(maintenanceRecordIds)) : [];
+
+      const [assignmentContext] = await tx
+        .select({
+          assignment: assignments,
+          vehicle: vehicles,
+        })
+        .from(assignments)
+        .leftJoin(vehicles, eq(assignments.vehicleId, vehicles.id))
+        .where(eq(assignments.id, insertPayment.assignmentId))
+        .limit(1);
+
+      if (!assignmentContext?.assignment || !assignmentContext.vehicle) {
+        throw new Error("Assignment not found for payment creation");
+      }
+
+      const assignmentRecord = assignmentContext.assignment;
+      const vehicleRecord = assignmentContext.vehicle;
+
+      if (uniqueAttendanceDates.length === 0 && uniqueMaintenanceIds.length === 0) {
+        throw new Error("No attendance or maintenance records were provided for this payment.");
+      }
+
+      const providedTotalDays = insertPayment.totalDays ?? 0;
+      if (providedTotalDays !== uniqueAttendanceDates.length) {
+        throw new Error(
+          "The total days value does not match the number of attendance records selected for payment."
+        );
+      }
+
+      const providedMaintenanceCount = insertPayment.maintenanceCount ?? 0;
+      if (providedMaintenanceCount !== uniqueMaintenanceIds.length) {
+        throw new Error(
+          "The maintenance count does not match the number of maintenance records selected for payment."
+        );
+      }
+
+      const amountNumber = Number(insertPayment.amount);
+      if (Number.isNaN(amountNumber)) {
+        throw new Error("Payment amount is invalid.");
+      }
+
+      const attendanceTotalNumber = Number(insertPayment.attendanceTotal ?? 0);
+      if (Number.isNaN(attendanceTotalNumber)) {
+        throw new Error("Attendance total is invalid.");
+      }
+
+      const deductionTotalNumber = Number(insertPayment.deductionTotal ?? 0);
+      if (Number.isNaN(deductionTotalNumber)) {
+        throw new Error("Deduction total is invalid.");
+      }
+
+      const roundedAmount = Math.round(amountNumber);
+
+      const projectCondition = assignmentRecord.projectId
+        ? eq(vehicleAttendance.projectId, assignmentRecord.projectId)
+        : isNull(vehicleAttendance.projectId);
+
+      const paymentValues: InsertPayment & { ownerId: string } = {
+        ...insertPayment,
+        amount: roundedAmount.toFixed(2),
+        attendanceTotal: attendanceTotalNumber.toFixed(2),
+        deductionTotal: deductionTotalNumber.toFixed(2),
+        totalDays: uniqueAttendanceDates.length,
+        maintenanceCount: uniqueMaintenanceIds.length,
+        ownerId: vehicleRecord.ownerId,
+      };
+
+      const [payment] = await tx.insert(payments).values(paymentValues).returning();
+
+      if (uniqueAttendanceDates.length > 0) {
+        const updatedAttendance = await tx
+          .update(vehicleAttendance)
+          .set({ isPaid: true })
+          .where(
+            and(
+              eq(vehicleAttendance.vehicleId, assignmentRecord.vehicleId),
+              projectCondition,
+              eq(vehicleAttendance.isPaid, false),
+              inArray(vehicleAttendance.attendanceDate, uniqueAttendanceDates)
+            )
+          )
+          .returning({ attendanceDate: vehicleAttendance.attendanceDate });
+
+        const updatedUniqueDates = new Set(updatedAttendance.map((row) => row.attendanceDate));
+
+        if (updatedUniqueDates.size !== uniqueAttendanceDates.length) {
+          throw new Error(
+            "Some attendance days have already been marked as paid. Recalculate the payment before creating it."
+          );
+        }
+      }
+
+      await tx
+        .update(vehicleAttendance)
+        .set({ isPaid: true })
+        .where(
+          and(
+            eq(vehicleAttendance.vehicleId, assignmentRecord.vehicleId),
+            projectCondition,
+            gte(vehicleAttendance.attendanceDate, paymentValues.periodStart),
+            lte(vehicleAttendance.attendanceDate, paymentValues.periodEnd)
+          )
+        );
+
+      if (uniqueMaintenanceIds.length > 0) {
+        const updatedMaintenance = await tx
+          .update(maintenanceRecords)
+          .set({ isPaid: true })
+          .where(
+            and(
+              eq(maintenanceRecords.vehicleId, assignmentRecord.vehicleId),
+              eq(maintenanceRecords.isPaid, false),
+              inArray(maintenanceRecords.id, uniqueMaintenanceIds)
+            )
+          )
+          .returning({ id: maintenanceRecords.id });
+
+        if (updatedMaintenance.length !== uniqueMaintenanceIds.length) {
+          throw new Error(
+            "Some maintenance entries have already been marked as paid. Recalculate the payment before creating it."
+          );
+        }
+      }
+
+      return payment;
+    });
+  }
+
+  async getPaymentTransactions(paymentId: string): Promise<PaymentTransaction[]> {
+    const rows = await db
+      .select({ transaction: paymentTransactions })
+      .from(paymentTransactions)
+      .where(eq(paymentTransactions.paymentId, paymentId))
+      .orderBy(asc(paymentTransactions.transactionDate), asc(paymentTransactions.createdAt));
+
+    return rows.map((row) => row.transaction);
+  }
+
+  async createPaymentTransaction(
+    paymentId: string,
+    transaction: CreatePaymentTransaction
+  ): Promise<PaymentTransaction> {
+    return await db.transaction(async (tx) => {
+      const [existingPayment] = await tx
+        .select()
+        .from(payments)
+        .where(eq(payments.id, paymentId))
+        .limit(1);
+
+      if (!existingPayment) {
+        throw new Error("Payment not found");
+      }
+
+      const amountNumber = Number(transaction.amount);
+      if (Number.isNaN(amountNumber) || amountNumber <= 0) {
+        throw new Error("Transaction amount must be greater than zero");
+      }
+
+      const transactionValues: InsertPaymentTransaction = {
+        ...transaction,
+        paymentId,
+        amount: amountNumber.toFixed(2),
+      };
+
+      const [createdTransaction] = await tx
+        .insert(paymentTransactions)
+        .values(transactionValues)
+        .returning();
+
+      const [{ totalPaid }] = await tx
+        .select({ totalPaid: sql<string>`coalesce(sum(${paymentTransactions.amount}), '0')` })
+        .from(paymentTransactions)
+        .where(eq(paymentTransactions.paymentId, paymentId));
+
+      const totalPaidNumber = Number(totalPaid);
+      const paymentAmountNumber = Number(existingPayment.amount);
+
+      if (!Number.isNaN(paymentAmountNumber)) {
+        let statusUpdate: Partial<Payment> | null = null;
+
+        if (totalPaidNumber >= paymentAmountNumber) {
+          statusUpdate = { status: "paid", paidDate: createdTransaction.transactionDate };
+        } else if (totalPaidNumber > 0) {
+          statusUpdate = { status: "partial", paidDate: null };
+        } else {
+          statusUpdate = { status: "pending", paidDate: null };
+        }
+
+        if (statusUpdate) {
+          await tx.update(payments).set(statusUpdate).where(eq(payments.id, paymentId));
+        }
+      }
+
+      return createdTransaction;
+    });
+  }
+
+  async createVehiclePaymentForPeriod(
+    payload: CreateVehiclePaymentForPeriod
+  ): Promise<VehiclePaymentForPeriodResult> {
+    const assignment = await this.getAssignment(payload.assignmentId);
+
+    if (!assignment) {
+      const error: any = new Error("Assignment not found");
+      error.status = 404;
+      throw error;
+    }
+
+    const start = new Date(payload.startDate);
+    const end = new Date(payload.endDate);
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      const error: any = new Error("Invalid start or end date provided");
+      error.status = 400;
+      throw error;
+    }
+
+    if (end < start) {
+      const error: any = new Error("End date must be on or after the start date");
+      error.status = 400;
+      throw error;
+    }
+
+    const normalizeToUtcDate = (value: Date) =>
+      new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+
+    const parseDateOnly = (value: string | Date) => {
+      if (value instanceof Date) {
+        return normalizeToUtcDate(value);
+      }
+
+      const [datePart] = value.split("T");
+      const [year, month, day] = datePart.split("-").map(Number);
+
+      if ([year, month, day].some((component) => Number.isNaN(component))) {
+        throw new Error(`Invalid date value encountered: ${value}`);
+      }
+
+      return new Date(Date.UTC(year, month - 1, day));
+    };
+
+    const startDateUtc = normalizeToUtcDate(start);
+    const endDateUtc = normalizeToUtcDate(end);
+
+    const monthlyRateNumber = Number(assignment.monthlyRate);
+    if (Number.isNaN(monthlyRateNumber)) {
+      const error: any = new Error("Assignment monthly rate is invalid");
+      error.status = 400;
+      throw error;
+    }
+
+    const formatDate = (value: Date) => {
+      const year = value.getUTCFullYear();
+      const month = String(value.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(value.getUTCDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    };
+
+    const startDateString = formatDate(startDateUtc);
+    const endDateString = formatDate(endDateUtc);
+
+    const attendanceRecords = await db
+      .select({
+        attendanceDate: vehicleAttendance.attendanceDate,
+        isPaid: vehicleAttendance.isPaid,
+      })
+      .from(vehicleAttendance)
+      .where(
+        and(
+          eq(vehicleAttendance.vehicleId, assignment.vehicleId),
+          assignment.projectId
+            ? eq(vehicleAttendance.projectId, assignment.projectId)
+            : isNull(vehicleAttendance.projectId),
+          eq(vehicleAttendance.status, "present"),
+          gte(vehicleAttendance.attendanceDate, startDateString),
+          lte(vehicleAttendance.attendanceDate, endDateString)
+        )
+      );
+
+    const maintenanceRows = await db
+      .select({
+        id: maintenanceRecords.id,
+        serviceDate: maintenanceRecords.serviceDate,
+        type: maintenanceRecords.type,
+        description: maintenanceRecords.description,
+        performedBy: maintenanceRecords.performedBy,
+        cost: maintenanceRecords.cost,
+        isPaid: maintenanceRecords.isPaid,
+      })
+      .from(maintenanceRecords)
+      .where(
+        and(
+          eq(maintenanceRecords.vehicleId, assignment.vehicleId),
+          gte(maintenanceRecords.serviceDate, startDateString),
+          lte(maintenanceRecords.serviceDate, endDateString)
+        )
+      )
+      .orderBy(asc(maintenanceRecords.serviceDate));
+
+    const attendanceBuckets = attendanceRecords.reduce(
+      (acc, record) => {
+        const formattedDate = formatDate(parseDateOnly(record.attendanceDate));
+        if (record.isPaid) {
+          if (!acc.unpaid.has(formattedDate)) {
+            acc.paid.add(formattedDate);
+          }
+        } else {
+          acc.unpaid.add(formattedDate);
+          acc.paid.delete(formattedDate);
+        }
+        return acc;
       },
-    }));
-  }
+      { unpaid: new Set<string>(), paid: new Set<string>() }
+    );
 
-  async createPayment(insertPayment: InsertPayment): Promise<Payment> {
-    const [payment] = await db.insert(payments).values(insertPayment).returning();
-    return payment;
-  }
+    const attendanceDateStrings = Array.from(attendanceBuckets.unpaid).sort();
+    const alreadyPaidDateStrings = Array.from(attendanceBuckets.paid).sort();
+    const attendanceDates = attendanceDateStrings
+      .map((value) => parseDateOnly(value))
+      .sort((a, b) => a.getTime() - b.getTime());
 
-  async updatePayment(id: string, insertPayment: Partial<InsertPayment>): Promise<Payment> {
-    const [payment] = await db
-      .update(payments)
-      .set(insertPayment)
-      .where(eq(payments.id, id))
-      .returning();
-    return payment;
-  }
+    const maintenanceRecordIds: string[] = [];
+    const maintenanceBreakdown: VehiclePaymentCalculation["maintenanceBreakdown"] = [];
+    const alreadyPaidMaintenance: VehiclePaymentCalculation["alreadyPaidMaintenance"] = [];
 
-  async deletePayment(id: string): Promise<void> {
-    await db.delete(payments).where(eq(payments.id, id));
+    maintenanceRows.forEach((row) => {
+      const serviceDate = parseDateOnly(row.serviceDate);
+      const monthLabel = new Intl.DateTimeFormat("en-US", {
+        month: "long",
+        year: "numeric",
+      }).format(serviceDate);
+      const rawCost = Number(row.cost ?? 0);
+      const normalizedCost = Number.isNaN(rawCost) ? 0 : Number(rawCost.toFixed(2));
+
+      const breakdownItem = {
+        id: row.id,
+        year: serviceDate.getUTCFullYear(),
+        month: serviceDate.getUTCMonth() + 1,
+        monthLabel,
+        serviceDate: formatDate(serviceDate),
+        type: row.type,
+        description: row.description,
+        performedBy: row.performedBy,
+        cost: normalizedCost,
+        isPaid: row.isPaid ?? false,
+      };
+      if (row.isPaid) {
+        alreadyPaidMaintenance.push(breakdownItem);
+      } else {
+        maintenanceBreakdown.push(breakdownItem);
+        maintenanceRecordIds.push(row.id);
+      }
+    });
+
+    const maintenanceCostNumber = maintenanceBreakdown.reduce((sum, item) => sum + item.cost, 0);
+
+    const months: VehiclePaymentCalculation["monthlyBreakdown"] = [];
+
+    const startOfFirstMonth = new Date(
+      Date.UTC(startDateUtc.getUTCFullYear(), startDateUtc.getUTCMonth(), 1)
+    );
+    const startOfLastMonth = new Date(
+      Date.UTC(endDateUtc.getUTCFullYear(), endDateUtc.getUTCMonth(), 1)
+    );
+
+    for (
+      let cursor = new Date(startOfFirstMonth.getTime());
+      cursor.getTime() <= startOfLastMonth.getTime();
+      cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1))
+    ) {
+      const monthStart = new Date(cursor.getTime());
+      const monthEnd = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 0));
+      const effectiveStart = startDateUtc > monthStart ? startDateUtc : monthStart;
+      const effectiveEnd = endDateUtc < monthEnd ? endDateUtc : monthEnd;
+
+      const totalDaysInMonth = monthEnd.getUTCDate();
+      const dailyRate = monthlyRateNumber / totalDaysInMonth;
+
+      const presentDaysForMonth = attendanceDates.filter((date) => {
+        return date >= effectiveStart && date <= effectiveEnd;
+      }).length;
+
+      const monthAmount = presentDaysForMonth * dailyRate;
+
+      const monthLabel = new Intl.DateTimeFormat("en-US", {
+        month: "long",
+        year: "numeric",
+      }).format(monthStart);
+
+      months.push({
+        year: cursor.getUTCFullYear(),
+        month: cursor.getUTCMonth() + 1,
+        monthLabel,
+        periodStart: formatDate(effectiveStart),
+        periodEnd: formatDate(effectiveEnd),
+        totalDaysInMonth,
+        presentDays: presentDaysForMonth,
+        dailyRate: Number(dailyRate.toFixed(2)),
+        amount: Number(monthAmount.toFixed(2)),
+      });
+    }
+
+    const totalAttendanceAmount = months.reduce((sum, current) => sum + current.amount, 0);
+    const totalPresentDays = months.reduce((sum, current) => sum + current.presentDays, 0);
+    const netAmount = totalAttendanceAmount - maintenanceCostNumber;
+    const roundedNetAmount = Math.round(netAmount);
+
+    const calculation: VehiclePaymentCalculation = {
+      assignmentId: assignment.id,
+      vehicleId: assignment.vehicleId,
+      projectId: assignment.projectId,
+      periodStart: payload.startDate,
+      periodEnd: payload.endDate,
+      monthlyRate: Number(monthlyRateNumber.toFixed(2)),
+      maintenanceCost: Number(maintenanceCostNumber.toFixed(2)),
+      monthlyBreakdown: months,
+      maintenanceBreakdown,
+      alreadyPaidMaintenance,
+      totalPresentDays,
+      totalAmountBeforeMaintenance: Number(totalAttendanceAmount.toFixed(2)),
+      netAmount: roundedNetAmount,
+      attendanceDates: attendanceDateStrings,
+      maintenanceRecordIds,
+      alreadyPaidDates: alreadyPaidDateStrings,
+    };
+
+    return {
+      assignment,
+      calculation,
+    };
   }
 
   async getMaintenanceRecords(): Promise<MaintenanceRecordWithVehicle[]> {
@@ -783,7 +1267,7 @@ export class DatabaseStorage implements IStorage {
     const [
       totalVehiclesResult,
       activeProjectsResult,
-      outstandingAmountResult,
+      pendingPayments,
       monthlyRevenueResult,
       vehicleStatusResult,
     ] = await withRetry(() => Promise.all([
@@ -793,13 +1277,15 @@ export class DatabaseStorage implements IStorage {
         .from(projects)
         .where(eq(projects.status, "active")),
       db
-        .select({ total: sql<number>`coalesce(sum(${payments.amount}), 0)` })
+        .select({ id: payments.id, amount: payments.amount })
         .from(payments)
-        .where(eq(payments.status, "pending")),
+        .where(inArray(payments.status, ["pending", "partial"])),
       db
-        .select({ total: sql<number>`coalesce(sum(${payments.amount}), 0)` })
-        .from(payments)
-        .where(and(eq(payments.status, "paid"), sql`extract(month from ${payments.paidDate}) = extract(month from current_date)`)),
+        .select({ total: sql<number>`coalesce(sum(${paymentTransactions.amount}), 0)` })
+        .from(paymentTransactions)
+        .where(
+          sql`date_trunc('month', ${paymentTransactions.transactionDate}) = date_trunc('month', CURRENT_DATE)`
+        ),
       db
         .select({
           status: vehicles.status,
@@ -808,6 +1294,30 @@ export class DatabaseStorage implements IStorage {
         .from(vehicles)
         .groupBy(vehicles.status),
     ]));
+
+    let outstandingAmount = 0;
+    if (pendingPayments.length > 0) {
+      const paymentIds = pendingPayments.map((row) => row.id);
+      const transactionTotals = await withRetry(() =>
+        db
+          .select({
+            paymentId: paymentTransactions.paymentId,
+            totalPaid: sql<string>`coalesce(sum(${paymentTransactions.amount}), '0')`,
+          })
+          .from(paymentTransactions)
+          .where(inArray(paymentTransactions.paymentId, paymentIds))
+          .groupBy(paymentTransactions.paymentId)
+      );
+
+      const paidMap = new Map(transactionTotals.map((row) => [row.paymentId, Number(row.totalPaid)]));
+
+      outstandingAmount = pendingPayments.reduce((sum, payment) => {
+        const paymentAmount = Number(payment.amount ?? 0);
+        const paidAmount = paidMap.get(payment.id) ?? 0;
+        const remaining = Math.max(paymentAmount - paidAmount, 0);
+        return sum + remaining;
+      }, 0);
+    }
 
     const vehicleStatusCounts = {
       available: 0,
@@ -826,7 +1336,7 @@ export class DatabaseStorage implements IStorage {
     return {
       totalVehicles: totalVehiclesResult[0]?.count || 0,
       activeProjects: activeProjectsResult[0]?.count || 0,
-      outstandingAmount: Number(outstandingAmountResult[0]?.total || 0),
+      outstandingAmount,
       monthlyRevenue: Number(monthlyRevenueResult[0]?.total || 0),
       vehicleStatusCounts,
     };
@@ -1033,6 +1543,10 @@ export class DatabaseStorage implements IStorage {
         throw new Error("Vehicle already has attendance for this date on another project.");
       }
 
+      if (existingRecords.some((record) => record.isPaid)) {
+        throw new Error("Cannot modify attendance that has already been marked as paid.");
+      }
+
       if (existingRecords.length > 0) {
         const target = existingRecords[0];
         const [updated] = await tx
@@ -1102,6 +1616,10 @@ export class DatabaseStorage implements IStorage {
           throw new Error("Vehicle already has attendance for this date on another project.");
         }
 
+        if (existingRecords.some((record) => record.isPaid)) {
+          throw new Error("Cannot modify attendance that has already been marked as paid.");
+        }
+
         const existing = existingRecords[0];
 
         if (existing) {
@@ -1155,19 +1673,37 @@ export class DatabaseStorage implements IStorage {
     return await db.transaction(async (tx) => {
       const deleted: VehicleAttendance[] = [];
       for (const r of records) {
-        const projectCondition = r.projectId
-          ? eq(vehicleAttendance.projectId, r.projectId)
-          : isNull(vehicleAttendance.projectId);
+        const conditions = [
+          eq(vehicleAttendance.vehicleId, r.vehicleId),
+          eq(vehicleAttendance.attendanceDate, r.attendanceDate),
+        ];
+
+        if (r.projectId !== undefined) {
+          conditions.push(
+            r.projectId === null
+              ? isNull(vehicleAttendance.projectId)
+              : eq(vehicleAttendance.projectId, r.projectId)
+          );
+        }
+
+        const whereClause = conditions.length > 1 ? and(...conditions) : conditions[0];
+
+        const existingRecords = await tx
+          .select()
+          .from(vehicleAttendance)
+          .where(whereClause);
+
+        if (existingRecords.length === 0) {
+          continue;
+        }
+
+        if (existingRecords.some((record) => record.isPaid)) {
+          throw new Error("Cannot delete attendance that has already been marked as paid.");
+        }
 
         const rows = await tx
           .delete(vehicleAttendance)
-          .where(
-            and(
-              eq(vehicleAttendance.vehicleId, r.vehicleId),
-              eq(vehicleAttendance.attendanceDate, r.attendanceDate),
-              projectCondition
-            )
-          )
+          .where(whereClause)
           .returning();
 
         deleted.push(...(rows as VehicleAttendance[]));
