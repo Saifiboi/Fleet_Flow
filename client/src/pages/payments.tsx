@@ -22,6 +22,7 @@ import {
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { PaymentPeriodForm } from "@/components/forms/payment-period-form";
 import {
   CreditCard,
@@ -55,6 +56,8 @@ export default function Payments() {
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PaymentWithDetails | null>(null);
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
 
   const transactionForm = useForm<CreatePaymentTransaction>({
     defaultValues: {
@@ -614,6 +617,7 @@ export default function Payments() {
                   </p>
                 )}
 
+                {isAdmin && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <h5 className="text-sm font-semibold text-foreground">Add transaction</h5>
@@ -756,6 +760,7 @@ export default function Payments() {
                     </form>
                   </Form>
                 </div>
+                )}
               </div>
 
               <p className="text-xs text-muted-foreground">
@@ -822,6 +827,8 @@ export default function Payments() {
               <span>Payments</span>
             </CardTitle>
             <div className="flex flex-wrap items-center gap-3">
+              {isAdmin && (
+                <>
               <Dialog
                 open={isCalculationOpen}
                 onOpenChange={(open) => {
@@ -1169,6 +1176,8 @@ export default function Payments() {
                 <FileText className="mr-2 w-4 h-4" />
                 Generate Invoices
               </Button>
+                </>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -1361,7 +1370,7 @@ export default function Payments() {
                 <p className="text-sm text-muted-foreground">
                   Total Outstanding: <span className="font-semibold text-destructive">${totalOutstanding.toLocaleString()}</span>
                 </p>
-                {overdueCount > 0 && (
+                {isAdmin && overdueCount > 0 && (
                   <Button variant="outline" size="sm" data-testid="send-reminders">
                     Send Reminders ({overdueCount})
                   </Button>

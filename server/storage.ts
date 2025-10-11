@@ -8,6 +8,7 @@ import {
   maintenanceRecords,
   ownershipHistory,
   vehicleAttendance,
+  users,
   type Owner,
   type InsertOwner,
   type UpdateOwner,
@@ -39,6 +40,8 @@ import {
   type CreateVehiclePaymentForPeriod,
   type VehiclePaymentCalculation,
   type VehiclePaymentForPeriodResult,
+  type User,
+  type InsertUser,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, asc, and, sql, isNull, gte, lte, ne, inArray } from "drizzle-orm";
@@ -93,7 +96,7 @@ export interface IStorage {
   deleteOwner(id: string): Promise<void>;
 
   // Vehicles
-  getVehicles(): Promise<VehicleWithOwner[]>;
+  getVehicles(filter?: { ownerId?: string }): Promise<VehicleWithOwner[]>;
   getVehicle(id: string): Promise<VehicleWithOwner | undefined>;
   getVehiclesByOwner(ownerId: string): Promise<VehicleWithOwner[]>;
   createVehicle(vehicle: InsertVehicle): Promise<Vehicle>;
@@ -108,7 +111,7 @@ export interface IStorage {
   deleteProject(id: string): Promise<void>;
 
   // Assignments
-  getAssignments(): Promise<AssignmentWithDetails[]>;
+  getAssignments(filter?: { ownerId?: string }): Promise<AssignmentWithDetails[]>;
   getAssignment(id: string): Promise<AssignmentWithDetails | undefined>;
   getAssignmentsByProject(projectId: string): Promise<AssignmentWithDetails[]>;
   getAssignmentsByVehicle(vehicleId: string): Promise<AssignmentWithDetails[]>;
@@ -117,10 +120,10 @@ export interface IStorage {
   deleteAssignment(id: string): Promise<void>;
 
   // Payments
-  getPayments(): Promise<PaymentWithDetails[]>;
+  getPayments(filter?: { ownerId?: string }): Promise<PaymentWithDetails[]>;
   getPayment(id: string): Promise<PaymentWithDetails | undefined>;
   getPaymentsByAssignment(assignmentId: string): Promise<PaymentWithDetails[]>;
-  getOutstandingPayments(): Promise<PaymentWithDetails[]>;
+  getOutstandingPayments(filter?: { ownerId?: string }): Promise<PaymentWithDetails[]>;
   createPayment(
     payment: InsertPayment,
     attendanceDates?: string[],
@@ -136,7 +139,7 @@ export interface IStorage {
   ): Promise<VehiclePaymentForPeriodResult>;
 
   // Maintenance Records
-  getMaintenanceRecords(): Promise<MaintenanceRecordWithVehicle[]>;
+  getMaintenanceRecords(filter?: { ownerId?: string }): Promise<MaintenanceRecordWithVehicle[]>;
   getMaintenanceRecord(id: string): Promise<MaintenanceRecordWithVehicle | undefined>;
   getMaintenanceRecordsByVehicle(vehicleId: string): Promise<MaintenanceRecordWithVehicle[]>;
   createMaintenanceRecord(record: InsertMaintenanceRecord): Promise<MaintenanceRecord>;
@@ -156,8 +159,14 @@ export interface IStorage {
     projectId?: string | null;
     startDate?: string;
     endDate?: string;
+    ownerId?: string;
   }): Promise<VehicleAttendanceSummary[]>;
-  getVehicleAttendance(filter?: { vehicleId?: string; date?: string; projectId?: string }): Promise<VehicleAttendanceWithVehicle[]>;
+  getVehicleAttendance(filter?: {
+    vehicleId?: string;
+    date?: string;
+    projectId?: string;
+    ownerId?: string;
+  }): Promise<VehicleAttendanceWithVehicle[]>;
   createVehicleAttendance(record: InsertVehicleAttendance): Promise<VehicleAttendance>;
   createVehicleAttendanceBatch(records: InsertVehicleAttendance[]): Promise<VehicleAttendance[]>;
   deleteVehicleAttendanceBatch(records: DeleteVehicleAttendance[]): Promise<VehicleAttendance[]>;
@@ -178,6 +187,11 @@ export interface IStorage {
       outOfService: number;
     };
   }>;
+
+  // Users
+  findUserByEmail(email: string): Promise<User | undefined>;
+  findUserById(id: string): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -285,20 +299,25 @@ export class DatabaseStorage implements IStorage {
     await db.delete(owners).where(eq(owners.id, id));
   }
 
-  async getVehicles(): Promise<VehicleWithOwner[]> {
-    return await withRetry(() =>
-      db
-        .select()
-        .from(vehicles)
-        .leftJoin(owners, eq(vehicles.ownerId, owners.id))
-        .orderBy(desc(vehicles.createdAt))
-        .then((rows) =>
-          rows.map((row) => ({
-            ...row.vehicles,
-            owner: row.owners!,
-          }))
-        )
-    );
+  async getVehicles(filter?: { ownerId?: string }): Promise<VehicleWithOwner[]> {
+    let query = db
+      .select({ vehicle: vehicles, owner: owners })
+      .from(vehicles)
+      .leftJoin(owners, eq(vehicles.ownerId, owners.id))
+      .$dynamic();
+
+    if (filter?.ownerId) {
+      query = query.where(eq(vehicles.ownerId, filter.ownerId));
+    }
+
+    query = query.orderBy(desc(vehicles.createdAt));
+
+    const rows = await withRetry(() => query);
+
+    return rows.map((row) => ({
+      ...row.vehicle,
+      owner: row.owner!,
+    }));
   }
 
   async getVehicle(id: string): Promise<VehicleWithOwner | undefined> {
@@ -317,18 +336,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getVehiclesByOwner(ownerId: string): Promise<VehicleWithOwner[]> {
-    return await db
-      .select()
-      .from(vehicles)
-      .leftJoin(owners, eq(vehicles.ownerId, owners.id))
-      .where(eq(vehicles.ownerId, ownerId))
-      .orderBy(desc(vehicles.createdAt))
-      .then((rows) =>
-        rows.map((row) => ({
-          ...row.vehicles,
-          owner: row.owners!,
-        }))
-      );
+    return await this.getVehicles({ ownerId });
   }
 
   async createVehicle(insertVehicle: InsertVehicle): Promise<Vehicle> {
@@ -409,16 +417,22 @@ export class DatabaseStorage implements IStorage {
     await db.delete(projects).where(eq(projects.id, id));
   }
 
-  async getAssignments(): Promise<AssignmentWithDetails[]> {
-    const results = await withRetry(() =>
-      db
-        .select()
-        .from(assignments)
-        .leftJoin(vehicles, eq(assignments.vehicleId, vehicles.id))
-        .leftJoin(owners, eq(vehicles.ownerId, owners.id))
-        .leftJoin(projects, eq(assignments.projectId, projects.id))
-        .orderBy(desc(assignments.createdAt))
-    );
+  async getAssignments(filter?: { ownerId?: string }): Promise<AssignmentWithDetails[]> {
+    let query = db
+      .select()
+      .from(assignments)
+      .leftJoin(vehicles, eq(assignments.vehicleId, vehicles.id))
+      .leftJoin(owners, eq(vehicles.ownerId, owners.id))
+      .leftJoin(projects, eq(assignments.projectId, projects.id))
+      .$dynamic();
+
+    if (filter?.ownerId) {
+      query = query.where(eq(vehicles.ownerId, filter.ownerId));
+    }
+
+    query = query.orderBy(desc(assignments.createdAt));
+
+    const results = await withRetry(() => query);
 
     return results.map((row) => ({
       ...row.assignments,
@@ -631,15 +645,23 @@ export class DatabaseStorage implements IStorage {
       .where(eq(vehicles.id, assignment.vehicleId));
   }
 
-  async getPayments(): Promise<PaymentWithDetails[]> {
-    const results = await db
+  async getPayments(filter?: { ownerId?: string }): Promise<PaymentWithDetails[]> {
+    let query = db
       .select()
       .from(payments)
       .leftJoin(assignments, eq(payments.assignmentId, assignments.id))
       .leftJoin(vehicles, eq(assignments.vehicleId, vehicles.id))
       .leftJoin(owners, eq(vehicles.ownerId, owners.id))
       .leftJoin(projects, eq(assignments.projectId, projects.id))
-      .orderBy(desc(payments.createdAt));
+      .$dynamic();
+
+    if (filter?.ownerId) {
+      query = query.where(eq(payments.ownerId, filter.ownerId));
+    }
+
+    query = query.orderBy(desc(payments.createdAt));
+
+    const results = await withRetry(() => query);
 
     return this.hydratePayments(results as PaymentJoinRow[]);
   }
@@ -674,23 +696,29 @@ export class DatabaseStorage implements IStorage {
     return this.hydratePayments(results as PaymentJoinRow[]);
   }
 
-  async getOutstandingPayments(): Promise<PaymentWithDetails[]> {
-    const results = await withRetry(() =>
-      db
-        .select()
-        .from(payments)
-        .leftJoin(assignments, eq(payments.assignmentId, assignments.id))
-        .leftJoin(vehicles, eq(assignments.vehicleId, vehicles.id))
-        .leftJoin(owners, eq(vehicles.ownerId, owners.id))
-        .leftJoin(projects, eq(assignments.projectId, projects.id))
-        .where(
-          and(
-            inArray(payments.status, ["pending", "partial"]),
-            sql`${payments.dueDate} <= CURRENT_DATE`
-          )
-        )
-        .orderBy(payments.dueDate)
+  async getOutstandingPayments(filter?: { ownerId?: string }): Promise<PaymentWithDetails[]> {
+    let query = db
+      .select()
+      .from(payments)
+      .leftJoin(assignments, eq(payments.assignmentId, assignments.id))
+      .leftJoin(vehicles, eq(assignments.vehicleId, vehicles.id))
+      .leftJoin(owners, eq(vehicles.ownerId, owners.id))
+      .leftJoin(projects, eq(assignments.projectId, projects.id))
+      .$dynamic();
+
+    let whereClause = and(
+      inArray(payments.status, ["pending", "partial"]),
+      sql`${payments.dueDate} <= CURRENT_DATE`
     );
+
+    if (filter?.ownerId) {
+      whereClause = and(whereClause, eq(payments.ownerId, filter.ownerId));
+    }
+
+    query = query.where(whereClause);
+    query = query.orderBy(payments.dueDate);
+
+    const results = await withRetry(() => query);
 
     return this.hydratePayments(results as PaymentJoinRow[]);
   }
@@ -1139,22 +1167,29 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async getMaintenanceRecords(): Promise<MaintenanceRecordWithVehicle[]> {
-    return await db
+  async getMaintenanceRecords(filter?: { ownerId?: string }): Promise<MaintenanceRecordWithVehicle[]> {
+    let query = db
       .select()
       .from(maintenanceRecords)
       .leftJoin(vehicles, eq(maintenanceRecords.vehicleId, vehicles.id))
       .leftJoin(owners, eq(vehicles.ownerId, owners.id))
-      .orderBy(desc(maintenanceRecords.createdAt))
-      .then((rows) =>
-        rows.map((row) => ({
-          ...row.maintenance_records,
-          vehicle: {
-            ...row.vehicles!,
-            owner: row.owners!,
-          },
-        }))
-      );
+      .$dynamic();
+
+    if (filter?.ownerId) {
+      query = query.where(eq(vehicles.ownerId, filter.ownerId));
+    }
+
+    query = query.orderBy(desc(maintenanceRecords.createdAt));
+
+    const rows = await withRetry(() => query);
+
+    return rows.map((row) => ({
+      ...row.maintenance_records,
+      vehicle: {
+        ...row.vehicles!,
+        owner: row.owners!,
+      },
+    }));
   }
 
   async getMaintenanceRecord(id: string): Promise<MaintenanceRecordWithVehicle | undefined> {
@@ -1421,12 +1456,17 @@ export class DatabaseStorage implements IStorage {
     projectId?: string | null;
     startDate?: string;
     endDate?: string;
+    ownerId?: string;
   }): Promise<VehicleAttendanceSummary[]> {
     if (!filter.vehicleId) {
       return [];
     }
 
     const conditions = [eq(vehicleAttendance.vehicleId, filter.vehicleId)];
+
+    if (filter.ownerId) {
+      conditions.push(eq(vehicles.ownerId, filter.ownerId));
+    }
 
     if (filter.projectId !== undefined) {
       conditions.push(
@@ -1455,6 +1495,7 @@ export class DatabaseStorage implements IStorage {
       })
       .from(vehicleAttendance)
       .leftJoin(projects, eq(vehicleAttendance.projectId, projects.id))
+      .leftJoin(vehicles, eq(vehicleAttendance.vehicleId, vehicles.id))
       .where(whereClause);
 
     const summaryMap = new Map<string | null, VehicleAttendanceSummary>();
@@ -1493,24 +1534,43 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async getVehicleAttendance(filter?: { vehicleId?: string; date?: string; projectId?: string }): Promise<VehicleAttendanceWithVehicle[]> {
-    const query = db.select().from(vehicleAttendance)
+  async getVehicleAttendance(filter?: {
+    vehicleId?: string;
+    date?: string;
+    projectId?: string;
+    ownerId?: string;
+  }): Promise<VehicleAttendanceWithVehicle[]> {
+    let query = db
+      .select()
+      .from(vehicleAttendance)
       .leftJoin(vehicles, eq(vehicleAttendance.vehicleId, vehicles.id))
       .leftJoin(owners, eq(vehicles.ownerId, owners.id))
       .leftJoin(projects, eq(vehicleAttendance.projectId, projects.id))
-      .orderBy(desc(vehicleAttendance.createdAt));
+      .$dynamic();
+
+    const conditions = [] as any[];
 
     if (filter?.vehicleId) {
-      query.where(eq(vehicleAttendance.vehicleId, filter.vehicleId));
+      conditions.push(eq(vehicleAttendance.vehicleId, filter.vehicleId));
     }
     if (filter?.date) {
-      query.where(eq(vehicleAttendance.attendanceDate, filter.date));
+      conditions.push(eq(vehicleAttendance.attendanceDate, filter.date));
     }
     if (filter?.projectId) {
-      query.where(eq(vehicleAttendance.projectId, filter.projectId));
+      conditions.push(eq(vehicleAttendance.projectId, filter.projectId));
+    }
+    if (filter?.ownerId) {
+      conditions.push(eq(vehicles.ownerId, filter.ownerId));
     }
 
-    const results = await query;
+    if (conditions.length > 0) {
+      const whereClause = conditions.length === 1 ? conditions[0] : and(...conditions);
+      query = query.where(whereClause);
+    }
+
+    query = query.orderBy(desc(vehicleAttendance.createdAt));
+
+    const results = await withRetry(() => query);
 
     return results.map((row) => ({
       ...row.vehicle_attendance,
@@ -1711,6 +1771,24 @@ export class DatabaseStorage implements IStorage {
 
       return deleted;
     });
+  }
+
+  async findUserByEmail(email: string): Promise<User | undefined> {
+    const rows = await withRetry(() =>
+      db.select().from(users).where(eq(users.email, email)).limit(1)
+    );
+
+    return rows[0] ?? undefined;
+  }
+
+  async findUserById(id: string): Promise<User | undefined> {
+    const rows = await withRetry(() => db.select().from(users).where(eq(users.id, id)).limit(1));
+    return rows[0] ?? undefined;
+  }
+
+  async createUser(user: InsertUser): Promise<User> {
+    const [created] = await withRetry(() => db.insert(users).values(user).returning());
+    return created;
   }
 }
 

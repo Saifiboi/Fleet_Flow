@@ -17,6 +17,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Calendar, Plus, Edit, Eye, Trash2, Search, Car, MapPin, DollarSign } from "lucide-react";
 import { format } from "date-fns";
 import type { AssignmentWithDetails } from "@shared/schema";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function Assignments() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -25,6 +26,8 @@ export default function Assignments() {
   const [editingAssignment, setEditingAssignment] = useState<AssignmentWithDetails | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
 
   const { data: assignments = [], isLoading } = useAssignments();
 
@@ -99,25 +102,27 @@ export default function Assignments() {
               <Calendar className="w-5 h-5" />
               <span>Vehicle Assignments</span>
             </CardTitle>
-            <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-              <DialogTrigger asChild>
-                <Button data-testid="add-assignment-button">
-                  <Plus className="mr-2 w-4 h-4" />
-                  Add Assignment
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-3xl">
-                <DialogHeader>
-                  <DialogTitle>
-                    {editingAssignment ? "Edit Assignment" : "Add New Assignment"}
-                  </DialogTitle>
-                </DialogHeader>
-                <AssignmentForm 
-                  assignment={editingAssignment} 
-                  onSuccess={handleFormClose}
-                />
-              </DialogContent>
-            </Dialog>
+            {isAdmin && (
+              <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                <DialogTrigger asChild>
+                  <Button data-testid="add-assignment-button">
+                    <Plus className="mr-2 w-4 h-4" />
+                    Add Assignment
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-3xl">
+                  <DialogHeader>
+                    <DialogTitle>
+                      {editingAssignment ? "Edit Assignment" : "Add New Assignment"}
+                    </DialogTitle>
+                  </DialogHeader>
+                  <AssignmentForm
+                    assignment={editingAssignment}
+                    onSuccess={handleFormClose}
+                  />
+                </DialogContent>
+              </Dialog>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -144,7 +149,7 @@ export default function Assignments() {
                 <SelectItem value="cancelled">Cancelled</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={projectFilter} onValueChange={setProjectFilter}>
+                <Select value={projectFilter} onValueChange={setProjectFilter}>
               <SelectTrigger className="w-48" data-testid="filter-project">
                 <SelectValue placeholder="All Projects" />
               </SelectTrigger>
@@ -169,7 +174,7 @@ export default function Assignments() {
                 <TableHead>Monthly Rate (PKR)</TableHead>
                 <TableHead>Assignment Period</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
+                {isAdmin && <TableHead>Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -253,41 +258,43 @@ export default function Assignments() {
                     <TableCell>
                       {getStatusBadge(assignment.status)}
                     </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={() => handleEdit(assignment)}
-                          data-testid={`edit-assignment-${assignment.id}`}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          data-testid={`view-assignment-${assignment.id}`}
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <ConfirmDialog
-                          title="Delete assignment"
-                          description="Are you sure you want to delete this assignment? This will make the vehicle available again."
-                          onConfirm={() => deleteAssignmentMutation.mutate(assignment.id)}
-                          trigger={
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-red-500 hover:text-red-700"
-                              disabled={deleteAssignmentMutation.isPending}
-                              data-testid={`delete-assignment-${assignment.id}`}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          }
-                        />
-                      </div>
-                    </TableCell>
+                    {isAdmin && (
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEdit(assignment)}
+                            data-testid={`edit-assignment-${assignment.id}`}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            data-testid={`view-assignment-${assignment.id}`}
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <ConfirmDialog
+                            title="Delete assignment"
+                            description="Are you sure you want to delete this assignment? This will make the vehicle available again."
+                            onConfirm={() => deleteAssignmentMutation.mutate(assignment.id)}
+                            trigger={
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-500 hover:text-red-700"
+                                disabled={deleteAssignmentMutation.isPending}
+                                data-testid={`delete-assignment-${assignment.id}`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            }
+                          />
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))
               )}

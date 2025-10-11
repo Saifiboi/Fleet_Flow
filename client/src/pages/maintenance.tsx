@@ -12,6 +12,7 @@ import { Wrench, Plus, Calendar, DollarSign, Search, Edit, Trash2, Eye } from "l
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import MaintenanceForm from "@/components/forms/maintenance-form";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { MaintenanceRecordWithVehicle } from "@shared/schema";
@@ -28,6 +29,8 @@ export default function Maintenance() {
   const [viewingRecord, setViewingRecord] = useState<MaintenanceRecordWithVehicle | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
 
   const { data: maintenanceRecords = [], isLoading } = useMaintenanceRecords();
   const { data: vehicles = [] } = useVehicles();
@@ -239,25 +242,27 @@ export default function Maintenance() {
               <Wrench className="w-5 h-5" />
               <span>Maintenance Records</span>
             </CardTitle>
-            <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-              <DialogTrigger asChild>
-                <Button data-testid="add-maintenance-button">
-                  <Plus className="mr-2 w-4 h-4" />
-                  Add Maintenance Record
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>
-                    {editingRecord ? "Edit Maintenance Record" : "Add New Maintenance Record"}
-                  </DialogTitle>
-                </DialogHeader>
-                <MaintenanceForm 
-                  record={editingRecord} 
-                  onSuccess={handleFormClose}
-                />
-              </DialogContent>
-            </Dialog>
+            {isAdmin && (
+              <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                <DialogTrigger asChild>
+                  <Button data-testid="add-maintenance-button">
+                    <Plus className="mr-2 w-4 h-4" />
+                    Add Maintenance Record
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>
+                      {editingRecord ? "Edit Maintenance Record" : "Add New Maintenance Record"}
+                    </DialogTitle>
+                  </DialogHeader>
+                  <MaintenanceForm
+                    record={editingRecord}
+                    onSuccess={handleFormClose}
+                  />
+                </DialogContent>
+              </Dialog>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -421,7 +426,7 @@ export default function Maintenance() {
                       <TableHead>Cost (PKR)</TableHead>
                       <TableHead>Service Date</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
+                      {isAdmin ? <TableHead>Actions</TableHead> : <TableHead>View</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -457,34 +462,38 @@ export default function Maintenance() {
                               >
                                 <Eye className="w-4 h-4" />
                               </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleEdit(record)}
-                                data-testid={`edit-maintenance-${record.id}`}
-                              >
-                                <Edit className="w-4 h-4" />
-                              </Button>
-                              <ConfirmDialog
-                                title="Delete maintenance record"
-                                description="Are you sure you want to delete this maintenance record?"
-                                onConfirm={() => handleDeleteRecord(record)}
-                                trigger={
+                              {isAdmin && (
+                                <>
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    disabled={deleteRecordMutation.isPending || record.status === "completed"}
-                                    data-testid={`delete-maintenance-${record.id}`}
-                                    title={
-                                      record.status === "completed"
-                                        ? "Completed maintenance records cannot be deleted."
-                                        : undefined
-                                    }
+                                    onClick={() => handleEdit(record)}
+                                    data-testid={`edit-maintenance-${record.id}`}
                                   >
-                                    <Trash2 className="w-4 h-4" />
+                                    <Edit className="w-4 h-4" />
                                   </Button>
-                                }
-                              />
+                                  <ConfirmDialog
+                                    title="Delete maintenance record"
+                                    description="Are you sure you want to delete this maintenance record?"
+                                    onConfirm={() => handleDeleteRecord(record)}
+                                    trigger={
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        disabled={deleteRecordMutation.isPending || record.status === "completed"}
+                                        data-testid={`delete-maintenance-${record.id}`}
+                                        title={
+                                          record.status === "completed"
+                                            ? "Completed maintenance records cannot be deleted."
+                                            : undefined
+                                        }
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </Button>
+                                    }
+                                  />
+                                </>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
