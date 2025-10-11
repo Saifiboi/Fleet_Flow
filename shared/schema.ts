@@ -19,6 +19,15 @@ export const owners = pgTable("owners", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const users = pgTable("users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ownerId: varchar("owner_id").references(() => owners.id, { onDelete: "set null" }),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  role: text("role").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const vehicles = pgTable("vehicles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   ownerId: varchar("owner_id").notNull().references(() => owners.id, { onDelete: "cascade" }),
@@ -133,6 +142,13 @@ export const ownersRelations = relations(owners, ({ many }) => ({
   ownershipHistory: many(ownershipHistory),
 }));
 
+export const usersRelations = relations(users, ({ one }) => ({
+  owner: one(owners, {
+    fields: [users.ownerId],
+    references: [owners.id],
+  }),
+}));
+
 export const vehiclesRelations = relations(vehicles, ({ one, many }) => ({
   owner: one(owners, {
     fields: [vehicles.ownerId],
@@ -197,6 +213,21 @@ export const vehicleAttendanceRelations = relations(vehicleAttendance, ({ one })
     references: [projects.id],
   }),
 }));
+
+export const insertUserSchema = createInsertSchema(users, {
+  email: z.string().email(),
+  role: z.enum(["admin", "owner"]),
+});
+
+export const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1, "Password is required"),
+});
+
+export type User = typeof users.$inferSelect;
+export type InsertUser = typeof users.$inferInsert;
+export type UserRole = User["role"];
+export type SessionUser = Pick<User, "id" | "email" | "role" | "ownerId">;
 
 export const ownershipHistoryRelations = relations(ownershipHistory, ({ one }) => ({
   vehicle: one(vehicles, {

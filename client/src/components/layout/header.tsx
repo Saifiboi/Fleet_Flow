@@ -1,6 +1,9 @@
 import { Button } from "@/components/ui/button";
-import { Bell, Plus, Menu } from "lucide-react";
+import { Bell, Menu, LogOut } from "lucide-react";
 import { useLocation } from "wouter";
+import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -42,10 +45,26 @@ const pageLabels: Record<string, { title: string; description: string }> = {
 };
 
 export default function Header({ onMenuClick }: HeaderProps) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
+  const { user, setUser } = useAuth();
+  const { toast } = useToast();
   const pageInfo = pageLabels[location] || {
     title: "Page",
     description: "Fleet management system",
+  };
+
+  const handleLogout = async () => {
+    try {
+      await apiRequest("POST", "/api/auth/logout");
+      setUser(null);
+      setLocation("/login");
+    } catch (error: any) {
+      toast({
+        title: "Failed to log out",
+        description: error?.message || "An unexpected error occurred",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -73,7 +92,10 @@ export default function Header({ onMenuClick }: HeaderProps) {
             </p>
           </div>
         </div>
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-3">
+          <div className="hidden text-sm text-muted-foreground sm:block" title={user?.email}>
+            {user?.email}
+          </div>
           <Button
             variant="ghost"
             size="sm"
@@ -81,9 +103,10 @@ export default function Header({ onMenuClick }: HeaderProps) {
             data-testid="notifications"
           >
             <Bell className="h-5 w-5" />
-            <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-xs rounded-full w-5 h-5 flex items-center justify-center">
-              3
-            </span>
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleLogout}>
+            <LogOut className="mr-2 h-4 w-4" />
+            Logout
           </Button>
         </div>
       </div>

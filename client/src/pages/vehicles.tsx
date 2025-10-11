@@ -16,6 +16,7 @@ import VehicleForm from "@/components/forms/vehicle-form";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Car, Plus, Edit, Eye, Trash2, Search } from "lucide-react";
 import type { VehicleWithOwner } from "@shared/schema";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function Vehicles() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -23,6 +24,8 @@ export default function Vehicles() {
   const [editingVehicle, setEditingVehicle] = useState<VehicleWithOwner | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
 
   const { data: vehicles = [], isLoading } = useVehicles();
 
@@ -93,25 +96,27 @@ export default function Vehicles() {
               <Car className="w-5 h-5" />
               <span>Vehicles</span>
             </CardTitle>
-            <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-              <DialogTrigger asChild>
-                <Button data-testid="add-vehicle-button">
-                  <Plus className="mr-2 w-4 h-4" />
-                  Add Vehicle
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl">
-                <DialogHeader>
-                  <DialogTitle>
-                    {editingVehicle ? "Edit Vehicle" : "Add New Vehicle"}
-                  </DialogTitle>
-                </DialogHeader>
-                <VehicleForm 
-                  vehicle={editingVehicle} 
-                  onSuccess={handleFormClose}
-                />
-              </DialogContent>
-            </Dialog>
+            {isAdmin && (
+              <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                <DialogTrigger asChild>
+                  <Button data-testid="add-vehicle-button">
+                    <Plus className="mr-2 w-4 h-4" />
+                    Add Vehicle
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>
+                      {editingVehicle ? "Edit Vehicle" : "Add New Vehicle"}
+                    </DialogTitle>
+                  </DialogHeader>
+                  <VehicleForm
+                    vehicle={editingVehicle}
+                    onSuccess={handleFormClose}
+                  />
+                </DialogContent>
+              </Dialog>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -150,7 +155,7 @@ export default function Vehicles() {
                 <TableHead>License Plate</TableHead>
                 <TableHead>Year</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
+                {isAdmin && <TableHead>Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -211,41 +216,43 @@ export default function Vehicles() {
                     <TableCell>
                       {getStatusBadge(vehicle.status)}
                     </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={() => handleEdit(vehicle)}
-                          data-testid={`edit-vehicle-${vehicle.id}`}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          data-testid={`view-vehicle-${vehicle.id}`}
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <ConfirmDialog
-                          title="Delete vehicle"
-                          description="Are you sure you want to delete this vehicle?"
-                          onConfirm={() => deleteVehicleMutation.mutate(vehicle.id)}
-                          trigger={
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-red-500 hover:text-red-700"
-                              disabled={deleteVehicleMutation.isPending}
-                              data-testid={`delete-vehicle-${vehicle.id}`}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          }
-                        />
-                      </div>
-                    </TableCell>
+                    {isAdmin && (
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEdit(vehicle)}
+                            data-testid={`edit-vehicle-${vehicle.id}`}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            data-testid={`view-vehicle-${vehicle.id}`}
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <ConfirmDialog
+                            title="Delete vehicle"
+                            description="Are you sure you want to delete this vehicle?"
+                            onConfirm={() => deleteVehicleMutation.mutate(vehicle.id)}
+                            trigger={
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-500 hover:text-red-700"
+                                disabled={deleteVehicleMutation.isPending}
+                                data-testid={`delete-vehicle-${vehicle.id}`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            }
+                          />
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))
               )}

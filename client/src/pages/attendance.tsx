@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import {
   format,
   startOfMonth,
@@ -64,6 +65,9 @@ export default function Attendance() {
   const [summaryStartDate, setSummaryStartDate] = useState<string>("");
   const [summaryEndDate, setSummaryEndDate] = useState<string>("");
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+  const canManageAttendance = isAdmin;
   const today = useMemo(() => startOfToday(), []);
   const maxMonth = useMemo(() => startOfMonth(today), [today]);
 
@@ -427,6 +431,7 @@ export default function Attendance() {
   });
 
   const handleToggleDay = (dateStr: string) => {
+    if (!canManageAttendance) return;
     const defaultState = defaultDayStates[dateStr];
     if (!defaultState) return;
 
@@ -448,6 +453,7 @@ export default function Attendance() {
   };
 
   const handleStatusChange = (dateStr: string, status: string) => {
+    if (!canManageAttendance) return;
     const defaultState = defaultDayStates[dateStr];
     if (!defaultState) return;
 
@@ -469,6 +475,7 @@ export default function Attendance() {
   };
 
   const handleNoteChange = (dateStr: string, note: string) => {
+    if (!canManageAttendance) return;
     const defaultState = defaultDayStates[dateStr];
     if (!defaultState) return;
 
@@ -490,6 +497,7 @@ export default function Attendance() {
   };
 
   const handleSelectAll = (checked: boolean) => {
+    if (!canManageAttendance) return;
     if (nonFutureDays.length === 0) return;
 
     setSelectedDays((prev) => {
@@ -514,6 +522,7 @@ export default function Attendance() {
   };
 
   const applyStatusToDates = (dates: Date[], status: string) => {
+    if (!canManageAttendance) return;
     if (dates.length === 0) return;
 
     setSelectedDays((prev) => {
@@ -542,6 +551,7 @@ export default function Attendance() {
   };
 
   const handleApplyStatusToAll = () => {
+    if (!canManageAttendance) return;
     if (!selectedAssignment) {
       return toast({
         title: "Select assignment",
@@ -562,6 +572,7 @@ export default function Attendance() {
   };
 
   const handleApplyStatusToRange = () => {
+    if (!canManageAttendance) return;
     if (!selectedAssignment) {
       return toast({
         title: "Select assignment",
@@ -604,6 +615,7 @@ export default function Attendance() {
   };
 
   const handleRangeStartChange = (value: string) => {
+    if (!canManageAttendance) return;
     setRangeStart(value);
     setRangeEnd((prevEnd) => {
       if (!prevEnd) return value;
@@ -617,6 +629,7 @@ export default function Attendance() {
   };
 
   const handleRangeEndChange = (value: string) => {
+    if (!canManageAttendance) return;
     setRangeEnd(value);
     setRangeStart((prevStart) => {
       if (!prevStart) return value;
@@ -630,6 +643,7 @@ export default function Attendance() {
   };
 
   const handleSubmit = () => {
+    if (!canManageAttendance) return;
     if (!selectedAssignmentId) return toast({ title: "Select vehicle", description: "Please select an assigned vehicle first.", variant: "destructive" });
     if (!selectedAssignment) {
       return toast({ title: "Invalid assignment", description: "Selected assignment not found.", variant: "destructive" });
@@ -645,6 +659,12 @@ export default function Attendance() {
   };
 
   const handleDeleteSelected = () => {
+    if (!canManageAttendance)
+      return toast({
+        title: "Access denied",
+        description: "You don't have permission to modify attendance records.",
+        variant: "destructive",
+      });
     if (!selectedAssignmentId)
       return toast({
         title: "Select vehicle",
@@ -698,35 +718,41 @@ export default function Attendance() {
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle>Vehicle Attendance</CardTitle>
-              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-                <ConfirmDialog
-                  title="Delete attendance?"
-                  description="This will permanently remove the selected attendance records. This action cannot be undone."
-                  confirmText="Delete"
-                  trigger={
-                    <Button
-                      variant="destructive"
-                      className="w-full sm:w-auto"
-                      disabled={
-                        deleteMutation.isPending ||
-                        !selectedAssignment ||
-                        deletableSelectedCount === 0 ||
-                        !isViewingCurrentMonth
-                      }
-                    >
-                      Delete Selected
-                    </Button>
-                  }
-                  onConfirm={handleDeleteSelected}
-                />
-                <Button
-                  className="w-full sm:w-auto"
-                  onClick={handleSubmit}
-                  disabled={saveMutation.isPending || !selectedAssignment}
-                >
-                  Save Attendance
-                </Button>
-              </div>
+              {isAdmin ? (
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                  <ConfirmDialog
+                    title="Delete attendance?"
+                    description="This will permanently remove the selected attendance records. This action cannot be undone."
+                    confirmText="Delete"
+                    trigger={
+                      <Button
+                        variant="destructive"
+                        className="w-full sm:w-auto"
+                        disabled={
+                          deleteMutation.isPending ||
+                          !selectedAssignment ||
+                          deletableSelectedCount === 0 ||
+                          !isViewingCurrentMonth
+                        }
+                      >
+                        Delete Selected
+                      </Button>
+                    }
+                    onConfirm={handleDeleteSelected}
+                  />
+                  <Button
+                    className="w-full sm:w-auto"
+                    onClick={handleSubmit}
+                    disabled={saveMutation.isPending || !selectedAssignment}
+                  >
+                    Save Attendance
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground sm:text-right">
+                  Attendance records are read-only for your account.
+                </p>
+              )}
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="w-full sm:w-80">
@@ -787,98 +813,104 @@ export default function Attendance() {
         <CardContent>
           {selectedAssignment ? (
             <div className="space-y-4">
-              <div className="flex flex-col gap-3 rounded-md border p-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      checked={allSelected ? true : partiallySelected ? "indeterminate" : false}
-                      onCheckedChange={(value) => handleSelectAll(value === true)}
-                      disabled={nonFutureDays.length === 0 || selectableCount === 0}
-                      id="select-all-days"
-                    />
-                    <label htmlFor="select-all-days" className="text-sm font-medium">
-                      Select all available days
-                    </label>
+              {isAdmin ? (
+                <div className="flex flex-col gap-3 rounded-md border p-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        checked={allSelected ? true : partiallySelected ? "indeterminate" : false}
+                        onCheckedChange={(value) => handleSelectAll(value === true)}
+                        disabled={nonFutureDays.length === 0 || selectableCount === 0}
+                        id="select-all-days"
+                      />
+                      <label htmlFor="select-all-days" className="text-sm font-medium">
+                        Select all available days
+                      </label>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium">Set status</span>
+                      <UiSelect value={bulkStatus} onValueChange={setBulkStatus}>
+                        <UiSelectTrigger className="w-36">
+                          <UiSelectValue />
+                        </UiSelectTrigger>
+                        <UiSelectContent>
+                          <UiSelectItem value="present">Present</UiSelectItem>
+                          <UiSelectItem value="off">Off</UiSelectItem>
+                          <UiSelectItem value="standby">Standby</UiSelectItem>
+                          <UiSelectItem value="maintenance">Maintenance</UiSelectItem>
+                        </UiSelectContent>
+                      </UiSelect>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleApplyStatusToAll}
+                        disabled={nonFutureDays.length === 0 || selectableCount === 0}
+                      >
+                        Apply to all days
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium">Set status</span>
-                    <UiSelect value={bulkStatus} onValueChange={setBulkStatus}>
-                      <UiSelectTrigger className="w-36">
-                        <UiSelectValue />
-                      </UiSelectTrigger>
-                      <UiSelectContent>
-                        <UiSelectItem value="present">Present</UiSelectItem>
-                        <UiSelectItem value="off">Off</UiSelectItem>
-                        <UiSelectItem value="standby">Standby</UiSelectItem>
-                        <UiSelectItem value="maintenance">Maintenance</UiSelectItem>
-                      </UiSelectContent>
-                    </UiSelect>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleApplyStatusToAll}
-                      disabled={nonFutureDays.length === 0 || selectableCount === 0}
-                    >
-                      Apply to all days
-                    </Button>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium">Date range</span>
+                      <UiSelect
+                        value={rangeStart ?? undefined}
+                        onValueChange={handleRangeStartChange}
+                        disabled={nonFutureDays.length === 0}
+                      >
+                        <UiSelectTrigger className="w-32">
+                          <UiSelectValue placeholder="Start date" />
+                        </UiSelectTrigger>
+                        <UiSelectContent>
+                          {nonFutureDays.map((day) => {
+                            const value = format(day, "yyyy-MM-dd");
+                            return (
+                              <UiSelectItem key={value} value={value}>
+                                {format(day, "MMM dd")}
+                              </UiSelectItem>
+                            );
+                          })}
+                        </UiSelectContent>
+                      </UiSelect>
+                      <span className="text-sm text-muted-foreground">to</span>
+                      <UiSelect
+                        value={rangeEnd ?? undefined}
+                        onValueChange={handleRangeEndChange}
+                        disabled={nonFutureDays.length === 0}
+                      >
+                        <UiSelectTrigger className="w-32">
+                          <UiSelectValue placeholder="End date" />
+                        </UiSelectTrigger>
+                        <UiSelectContent>
+                          {nonFutureDays.map((day) => {
+                            const value = format(day, "yyyy-MM-dd");
+                            return (
+                              <UiSelectItem key={value} value={value}>
+                                {format(day, "MMM dd")}
+                              </UiSelectItem>
+                            );
+                          })}
+                        </UiSelectContent>
+                      </UiSelect>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={handleApplyStatusToRange}
+                        disabled={nonFutureDays.length === 0 || !rangeStart || !rangeEnd}
+                      >
+                        Apply to range
+                      </Button>
+                    </div>
+                    <div className="text-xs text-muted-foreground sm:text-right">
+                      {selectedCount} of {selectableCount} days selected
+                    </div>
                   </div>
                 </div>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium">Date range</span>
-                    <UiSelect
-                      value={rangeStart ?? undefined}
-                      onValueChange={handleRangeStartChange}
-                      disabled={nonFutureDays.length === 0}
-                    >
-                      <UiSelectTrigger className="w-32">
-                        <UiSelectValue placeholder="Start date" />
-                      </UiSelectTrigger>
-                      <UiSelectContent>
-                        {nonFutureDays.map((day) => {
-                          const value = format(day, "yyyy-MM-dd");
-                          return (
-                            <UiSelectItem key={value} value={value}>
-                              {format(day, "MMM dd")}
-                            </UiSelectItem>
-                          );
-                        })}
-                      </UiSelectContent>
-                    </UiSelect>
-                    <span className="text-sm text-muted-foreground">to</span>
-                    <UiSelect
-                      value={rangeEnd ?? undefined}
-                      onValueChange={handleRangeEndChange}
-                      disabled={nonFutureDays.length === 0}
-                    >
-                      <UiSelectTrigger className="w-32">
-                        <UiSelectValue placeholder="End date" />
-                      </UiSelectTrigger>
-                      <UiSelectContent>
-                        {nonFutureDays.map((day) => {
-                          const value = format(day, "yyyy-MM-dd");
-                          return (
-                            <UiSelectItem key={value} value={value}>
-                              {format(day, "MMM dd")}
-                            </UiSelectItem>
-                          );
-                        })}
-                      </UiSelectContent>
-                    </UiSelect>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={handleApplyStatusToRange}
-                      disabled={nonFutureDays.length === 0 || !rangeStart || !rangeEnd}
-                    >
-                      Apply to range
-                    </Button>
-                  </div>
-                  <div className="text-xs text-muted-foreground sm:text-right">
-                    {selectedCount} of {selectableCount} days selected
-                  </div>
+              ) : (
+                <div className="rounded-md border border-dashed bg-muted/30 p-4 text-sm text-muted-foreground">
+                  Review the attendance history for your assigned vehicle below. Contact an administrator for any updates.
                 </div>
-              </div>
+              )}
               <div className="max-h-[55vh] overflow-auto">
                 {attendanceLoading && (
                   <div className="p-3 text-sm text-muted-foreground">Loading previous attendance...</div>
@@ -892,8 +924,8 @@ export default function Attendance() {
                     <TableHead>Previous Status</TableHead>
                     <TableHead>Payment Status</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Note</TableHead>
-                    <TableHead>Mark</TableHead>
+                    <TableHead>{isAdmin ? "Note" : "Notes"}</TableHead>
+                    {isAdmin && <TableHead>Mark</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -983,42 +1015,60 @@ export default function Attendance() {
                           )}
                         </TableCell>
                         <TableCell>
-                          <UiSelect
-                            value={state.status}
-                            onValueChange={(v) => handleStatusChange(dateStr, v)}
-                            disabled={isFutureDate || isLocked}
-                          >
-                            <UiSelectTrigger className="w-36" disabled={isFutureDate || isLocked}>
-                              <UiSelectValue />
-                            </UiSelectTrigger>
-                            <UiSelectContent>
-                              <UiSelectItem value="present">Present</UiSelectItem>
-                              <UiSelectItem value="off">Off</UiSelectItem>
-                              <UiSelectItem value="standby">Standby</UiSelectItem>
-                              <UiSelectItem value="maintenance">Maintenance</UiSelectItem>
-                            </UiSelectContent>
-                          </UiSelect>
-                        </TableCell>
-                        <TableCell>
-                          {state.status !== "present" && !isFutureDate && !isLocked && (
-                            <Input
-                              value={state.note || ""}
-                              onChange={(e) => handleNoteChange(dateStr, e.target.value)}
-                              placeholder="Note (optional)"
-                            />
+                          {isAdmin ? (
+                            <UiSelect
+                              value={state.status}
+                              onValueChange={(v) => handleStatusChange(dateStr, v)}
+                              disabled={isFutureDate || isLocked}
+                            >
+                              <UiSelectTrigger className="w-36" disabled={isFutureDate || isLocked}>
+                                <UiSelectValue />
+                              </UiSelectTrigger>
+                              <UiSelectContent>
+                                <UiSelectItem value="present">Present</UiSelectItem>
+                                <UiSelectItem value="off">Off</UiSelectItem>
+                                <UiSelectItem value="standby">Standby</UiSelectItem>
+                                <UiSelectItem value="maintenance">Maintenance</UiSelectItem>
+                              </UiSelectContent>
+                            </UiSelect>
+                          ) : (
+                            <span className="text-sm">
+                              {existingRecord
+                                ? formatStatusLabel(existingRecord.status)
+                                : isFutureDate
+                                  ? "Upcoming"
+                                  : "Not marked"}
+                            </span>
                           )}
                         </TableCell>
                         <TableCell>
-                          <Checkbox
-                            checked={!!state.selected}
-                            onCheckedChange={() => {
-                              if (!isFutureDate && !isLocked) {
-                                handleToggleDay(dateStr);
-                              }
-                            }}
-                            disabled={isFutureDate || isLocked}
-                          />
+                          {isAdmin ? (
+                            state.status !== "present" && !isFutureDate && !isLocked && (
+                              <Input
+                                value={state.note || ""}
+                                onChange={(e) => handleNoteChange(dateStr, e.target.value)}
+                                placeholder="Note (optional)"
+                              />
+                            )
+                          ) : existingRecord?.notes ? (
+                            <span className="text-sm">{existingRecord.notes}</span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">No notes</span>
+                          )}
                         </TableCell>
+                        {isAdmin && (
+                          <TableCell>
+                            <Checkbox
+                              checked={!!state.selected}
+                              onCheckedChange={() => {
+                                if (!isFutureDate && !isLocked) {
+                                  handleToggleDay(dateStr);
+                                }
+                              }}
+                              disabled={isFutureDate || isLocked}
+                            />
+                          </TableCell>
+                        )}
                       </TableRow>
                     );
                   })}
