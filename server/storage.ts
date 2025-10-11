@@ -1527,6 +1527,10 @@ export class DatabaseStorage implements IStorage {
         throw new Error("Vehicle already has attendance for this date on another project.");
       }
 
+      if (existingRecords.some((record) => record.isPaid)) {
+        throw new Error("Cannot modify attendance that has already been marked as paid.");
+      }
+
       if (existingRecords.length > 0) {
         const target = existingRecords[0];
         const [updated] = await tx
@@ -1596,6 +1600,10 @@ export class DatabaseStorage implements IStorage {
           throw new Error("Vehicle already has attendance for this date on another project.");
         }
 
+        if (existingRecords.some((record) => record.isPaid)) {
+          throw new Error("Cannot modify attendance that has already been marked as paid.");
+        }
+
         const existing = existingRecords[0];
 
         if (existing) {
@@ -1649,19 +1657,37 @@ export class DatabaseStorage implements IStorage {
     return await db.transaction(async (tx) => {
       const deleted: VehicleAttendance[] = [];
       for (const r of records) {
-        const projectCondition = r.projectId
-          ? eq(vehicleAttendance.projectId, r.projectId)
-          : isNull(vehicleAttendance.projectId);
+        const conditions = [
+          eq(vehicleAttendance.vehicleId, r.vehicleId),
+          eq(vehicleAttendance.attendanceDate, r.attendanceDate),
+        ];
+
+        if (r.projectId !== undefined) {
+          conditions.push(
+            r.projectId === null
+              ? isNull(vehicleAttendance.projectId)
+              : eq(vehicleAttendance.projectId, r.projectId)
+          );
+        }
+
+        const whereClause = conditions.length > 1 ? and(...conditions) : conditions[0];
+
+        const existingRecords = await tx
+          .select()
+          .from(vehicleAttendance)
+          .where(whereClause);
+
+        if (existingRecords.length === 0) {
+          continue;
+        }
+
+        if (existingRecords.some((record) => record.isPaid)) {
+          throw new Error("Cannot delete attendance that has already been marked as paid.");
+        }
 
         const rows = await tx
           .delete(vehicleAttendance)
-          .where(
-            and(
-              eq(vehicleAttendance.vehicleId, r.vehicleId),
-              eq(vehicleAttendance.attendanceDate, r.attendanceDate),
-              projectCondition
-            )
-          )
+          .where(whereClause)
           .returning();
 
         deleted.push(...(rows as VehicleAttendance[]));
