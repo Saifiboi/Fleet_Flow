@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   Select as UiSelect,
   SelectTrigger as UiSelectTrigger,
@@ -698,19 +699,26 @@ export default function Attendance() {
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle>Vehicle Attendance</CardTitle>
               <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-                <Button
-                  variant="destructive"
-                  className="w-full sm:w-auto"
-                  onClick={handleDeleteSelected}
-                  disabled={
-                    deleteMutation.isPending ||
-                    !selectedAssignment ||
-                    deletableSelectedCount === 0 ||
-                    !isViewingCurrentMonth
+                <ConfirmDialog
+                  title="Delete attendance?"
+                  description="This will permanently remove the selected attendance records. This action cannot be undone."
+                  confirmText="Delete"
+                  trigger={
+                    <Button
+                      variant="destructive"
+                      className="w-full sm:w-auto"
+                      disabled={
+                        deleteMutation.isPending ||
+                        !selectedAssignment ||
+                        deletableSelectedCount === 0 ||
+                        !isViewingCurrentMonth
+                      }
+                    >
+                      Delete Selected
+                    </Button>
                   }
-                >
-                  Delete Selected
-                </Button>
+                  onConfirm={handleDeleteSelected}
+                />
                 <Button
                   className="w-full sm:w-auto"
                   onClick={handleSubmit}

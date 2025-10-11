@@ -782,14 +782,15 @@ export class DatabaseStorage implements IStorage {
             and(
               eq(vehicleAttendance.vehicleId, assignmentRecord.vehicleId),
               projectCondition,
-              eq(vehicleAttendance.status, "present"),
               eq(vehicleAttendance.isPaid, false),
               inArray(vehicleAttendance.attendanceDate, uniqueAttendanceDates)
             )
           )
           .returning({ attendanceDate: vehicleAttendance.attendanceDate });
 
-        if (updatedAttendance.length !== uniqueAttendanceDates.length) {
+        const updatedUniqueDates = new Set(updatedAttendance.map((row) => row.attendanceDate));
+
+        if (updatedUniqueDates.size !== uniqueAttendanceDates.length) {
           throw new Error(
             "Some attendance days have already been marked as paid. Recalculate the payment before creating it."
           );
