@@ -176,6 +176,7 @@ export default function Payments() {
       return {
         monthTotal: 0,
         maintenance: 0,
+        netRaw: 0,
         net: 0,
       };
     }
@@ -189,12 +190,15 @@ export default function Payments() {
       return sum + value;
     }, 0);
 
-    const maintenance = parseFloat(maintenanceOverride || "0");
+    const maintenanceValue = parseFloat(maintenanceOverride || "0");
+    const normalizedMaintenance = Number.isNaN(maintenanceValue) ? 0 : maintenanceValue;
+    const netRaw = monthTotal - normalizedMaintenance;
 
     return {
       monthTotal,
-      maintenance: Number.isNaN(maintenance) ? 0 : maintenance,
-      net: monthTotal - (Number.isNaN(maintenance) ? 0 : maintenance),
+      maintenance: normalizedMaintenance,
+      netRaw,
+      net: Math.round(netRaw),
     };
   }, [calculationResult, monthOverrides, maintenanceOverride]);
 

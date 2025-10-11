@@ -758,9 +758,15 @@ export class DatabaseStorage implements IStorage {
         throw new Error("Deduction total is invalid.");
       }
 
+      const roundedAmount = Math.round(amountNumber);
+
+      const projectCondition = assignmentRecord.projectId
+        ? eq(vehicleAttendance.projectId, assignmentRecord.projectId)
+        : isNull(vehicleAttendance.projectId);
+
       const paymentValues: InsertPayment & { ownerId: string } = {
         ...insertPayment,
-        amount: amountNumber.toFixed(2),
+        amount: roundedAmount.toFixed(2),
         attendanceTotal: attendanceTotalNumber.toFixed(2),
         deductionTotal: deductionTotalNumber.toFixed(2),
         totalDays: uniqueAttendanceDates.length,
@@ -771,10 +777,6 @@ export class DatabaseStorage implements IStorage {
       const [payment] = await tx.insert(payments).values(paymentValues).returning();
 
       if (uniqueAttendanceDates.length > 0) {
-        const projectCondition = assignmentRecord.projectId
-          ? eq(vehicleAttendance.projectId, assignmentRecord.projectId)
-          : isNull(vehicleAttendance.projectId);
-
         const updatedAttendance = await tx
           .update(vehicleAttendance)
           .set({ isPaid: true })
@@ -796,6 +798,18 @@ export class DatabaseStorage implements IStorage {
           );
         }
       }
+
+      await tx
+        .update(vehicleAttendance)
+        .set({ isPaid: true })
+        .where(
+          and(
+            eq(vehicleAttendance.vehicleId, assignmentRecord.vehicleId),
+            projectCondition,
+            gte(vehicleAttendance.attendanceDate, paymentValues.periodStart),
+            lte(vehicleAttendance.attendanceDate, paymentValues.periodEnd)
+          )
+        );
 
       if (uniqueMaintenanceIds.length > 0) {
         const updatedMaintenance = await tx
@@ -1098,6 +1112,7 @@ export class DatabaseStorage implements IStorage {
     const totalAttendanceAmount = months.reduce((sum, current) => sum + current.amount, 0);
     const totalPresentDays = months.reduce((sum, current) => sum + current.presentDays, 0);
     const netAmount = totalAttendanceAmount - maintenanceCostNumber;
+    const roundedNetAmount = Math.round(netAmount);
 
     const calculation: VehiclePaymentCalculation = {
       assignmentId: assignment.id,
@@ -1112,7 +1127,7 @@ export class DatabaseStorage implements IStorage {
       alreadyPaidMaintenance,
       totalPresentDays,
       totalAmountBeforeMaintenance: Number(totalAttendanceAmount.toFixed(2)),
-      netAmount: Number(netAmount.toFixed(2)),
+      netAmount: roundedNetAmount,
       attendanceDates: attendanceDateStrings,
       maintenanceRecordIds,
       alreadyPaidDates: alreadyPaidDateStrings,
