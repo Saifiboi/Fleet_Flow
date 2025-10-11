@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Car, FolderKanban, AlertTriangle, DollarSign, Check, Wrench, X, Eye, Edit, FileText } from "lucide-react";
-import { format } from "date-fns";
+import { format, differenceInDays } from "date-fns";
 
 export default function Dashboard() {
   const { data: stats, isLoading: statsLoading } = useDashboardStats();
@@ -39,17 +39,49 @@ export default function Dashboard() {
     return <Badge variant={variants[status] || "outline"}>{status}</Badge>;
   };
 
-  const getPaymentStatusBadge = (status: string, dueDate: string) => {
-    const today = new Date();
-    const due = new Date(dueDate);
-    const daysOverdue = Math.floor((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
-    
-    if (status === "paid") return <Badge variant="outline">Paid</Badge>;
-    if (daysOverdue > 0) return <Badge variant="destructive">{daysOverdue} days overdue</Badge>;
-    if (daysOverdue === 0) return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100">Due Today</Badge>;
-    if (daysOverdue >= -3) return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">Due Soon</Badge>;
-    
+  const getPaymentStatusBadge = (status: string, dueDate: string, outstandingAmount: number) => {
+    const remaining = Math.max(outstandingAmount ?? 0, 0);
+
+    if (remaining <= 0 || status === "paid") {
+      return <Badge variant="outline">Paid</Badge>;
+    }
+
+    const daysOverdue = differenceInDays(new Date(), new Date(dueDate));
+
+    if (daysOverdue > 0) {
+      const label = status === "partial" ? `Partial • ${daysOverdue} days overdue` : `${daysOverdue} days overdue`;
+      return <Badge variant="destructive">{label}</Badge>;
+    }
+
+    if (daysOverdue === 0) {
+      return (
+        <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100">
+          {status === "partial" ? "Partial • Due Today" : "Due Today"}
+        </Badge>
+      );
+    }
+
+    if (daysOverdue >= -3) {
+      return (
+        <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
+          {status === "partial" ? "Partial • Due Soon" : "Due Soon"}
+        </Badge>
+      );
+    }
+
+    if (status === "partial") {
+      return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">Partial</Badge>;
+    }
+
     return <Badge variant="secondary">Pending</Badge>;
+  };
+
+  const formatCurrency = (value: number | string | null | undefined) => {
+    const numeric = Number(value ?? 0);
+    if (Number.isNaN(numeric)) {
+      return "0.00";
+    }
+    return numeric.toFixed(2);
   };
 
   return (
@@ -430,13 +462,18 @@ export default function Dashboard() {
                       <p className="text-xs text-muted-foreground">{payment.assignment.vehicle.licensePlate}</p>
                     </TableCell>
                     <TableCell>
-                      <p className="text-sm font-semibold text-foreground">${payment.amount}</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        ${formatCurrency(payment.outstandingAmount)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        of ${formatCurrency(payment.amount)}
+                      </p>
                     </TableCell>
                     <TableCell>
                       <p className="text-sm text-foreground">{format(new Date(payment.dueDate), "MMM dd, yyyy")}</p>
                     </TableCell>
                     <TableCell>
-                      {getPaymentStatusBadge(payment.status, payment.dueDate)}
+                      {getPaymentStatusBadge(payment.status, payment.dueDate, payment.outstandingAmount)}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center space-x-2">

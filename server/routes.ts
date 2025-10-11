@@ -9,6 +9,9 @@ import {
   insertProjectSchema,
   insertAssignmentSchema,
   insertPaymentSchema,
+  createPaymentRequestSchema,
+  createPaymentTransactionSchema,
+  createVehiclePaymentForPeriodSchema,
   insertMaintenanceRecordSchema,
   insertOwnershipHistorySchema,
   updateOwnerSchema,
@@ -302,31 +305,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/payments", async (req, res) => {
     try {
-      const validatedData = insertPaymentSchema.parse(req.body);
-      const payment = await storage.createPayment(validatedData);
+      const parsedData = createPaymentRequestSchema.parse(req.body);
+      const { attendanceDates, maintenanceRecordIds, ...paymentValues } = parsedData;
+      const payment = await storage.createPayment(
+        paymentValues,
+        attendanceDates,
+        maintenanceRecordIds
+      );
       res.status(201).json(payment);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
   });
 
-  app.put("/api/payments/:id", async (req, res) => {
+  app.post("/api/payments/:id/transactions", async (req, res) => {
     try {
-      const validatedData = insertPaymentSchema.partial().parse(req.body);
-      const payment = await storage.updatePayment(req.params.id, validatedData);
-      res.json(payment);
+      const validatedData = createPaymentTransactionSchema.parse(req.body);
+      const transaction = await storage.createPaymentTransaction(req.params.id, validatedData);
+      const payment = await storage.getPayment(req.params.id);
+      res.status(201).json({ transaction, payment });
     } catch (error: any) {
-      res.status(400).json({ message: error.message });
+      const status = error.status ?? (error instanceof Error && error.message.includes("not found") ? 404 : 400);
+      res.status(status).json({ message: error.message });
     }
   });
 
-  app.delete("/api/payments/:id", async (req, res) => {
+  app.post("/api/payments/calculate", async (req, res) => {
     try {
-      await storage.deletePayment(req.params.id);
-      res.status(204).send();
+      const payload = createVehiclePaymentForPeriodSchema.parse(req.body);
+      const result = await storage.createVehiclePaymentForPeriod(payload);
+      res.status(200).json(result);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      const status = error.status ?? 400;
+      res.status(status).json({ message: error.message });
     }
+  });
+
+  app.put("/api/payments/:id", async (_req, res) => {
+    res.status(405).json({ message: "Payments cannot be modified after they are created." });
+  });
+
+  app.delete("/api/payments/:id", async (_req, res) => {
+    res.status(405).json({ message: "Payments cannot be deleted once created." });
   });
 
   // Maintenance Record routes

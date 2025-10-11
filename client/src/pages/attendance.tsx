@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   Select as UiSelect,
   SelectTrigger as UiSelectTrigger,
@@ -44,6 +45,7 @@ type DaySelectionState = {
   locked?: boolean;
   lockedProjectName?: string;
   lockedStatus?: string;
+  lockedReason?: "cross-project" | "paid";
 };
 
 const UNASSIGNED_SUMMARY_KEY = "unassigned";
@@ -252,14 +254,21 @@ export default function Attendance() {
       const dateStr = format(d, "yyyy-MM-dd");
       const existingRecord = attendanceByDate[dateStr];
       const crossProjectRecord = crossProjectAttendanceByDate[dateStr];
-      const isLocked = !!crossProjectRecord;
+      const isPaid = existingRecord?.isPaid ?? false;
+      const isCrossProjectLocked = !!crossProjectRecord;
+      const lockedReason = isPaid ? "paid" : isCrossProjectLocked ? "cross-project" : undefined;
+      const isLocked = isPaid || isCrossProjectLocked;
       map[dateStr] = {
-        selected: !!existingRecord && !isAfter(d, today),
+        selected: !isLocked && !!existingRecord && !isAfter(d, today),
         status: existingRecord ? existingRecord.status : "present",
         note: existingRecord?.notes ?? "",
         locked: isLocked,
-        lockedProjectName: crossProjectRecord?.project?.name || crossProjectRecord?.projectId || undefined,
-        lockedStatus: crossProjectRecord?.status,
+        lockedProjectName:
+          lockedReason === "cross-project"
+            ? crossProjectRecord?.project?.name || crossProjectRecord?.projectId || undefined
+            : undefined,
+        lockedStatus: lockedReason === "cross-project" ? crossProjectRecord?.status : undefined,
+        lockedReason,
       };
     });
     return map;
@@ -690,19 +699,26 @@ export default function Attendance() {
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle>Vehicle Attendance</CardTitle>
               <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-                <Button
-                  variant="destructive"
-                  className="w-full sm:w-auto"
-                  onClick={handleDeleteSelected}
-                  disabled={
-                    deleteMutation.isPending ||
-                    !selectedAssignment ||
-                    deletableSelectedCount === 0 ||
-                    !isViewingCurrentMonth
+                <ConfirmDialog
+                  title="Delete attendance?"
+                  description="This will permanently remove the selected attendance records. This action cannot be undone."
+                  confirmText="Delete"
+                  trigger={
+                    <Button
+                      variant="destructive"
+                      className="w-full sm:w-auto"
+                      disabled={
+                        deleteMutation.isPending ||
+                        !selectedAssignment ||
+                        deletableSelectedCount === 0 ||
+                        !isViewingCurrentMonth
+                      }
+                    >
+                      Delete Selected
+                    </Button>
                   }
-                >
-                  Delete Selected
-                </Button>
+                  onConfirm={handleDeleteSelected}
+                />
                 <Button
                   className="w-full sm:w-auto"
                   onClick={handleSubmit}
@@ -874,6 +890,7 @@ export default function Attendance() {
                     <TableHead>Day</TableHead>
                     <TableHead>Project</TableHead>
                     <TableHead>Previous Status</TableHead>
+                    <TableHead>Payment Status</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Note</TableHead>
                     <TableHead>Mark</TableHead>
@@ -888,6 +905,7 @@ export default function Attendance() {
                     const isFutureDate = isAfter(d, today);
                     const isCurrentOrPastDate = !isFutureDate;
                     const isLocked = state?.locked;
+                    const lockedReason = state?.lockedReason;
                     const statusBadgeClass = (() => {
                       switch (existingRecord?.status) {
                         case "present":
@@ -914,10 +932,46 @@ export default function Attendance() {
                               {existingRecord.notes ? (
                                 <div className="text-xs text-muted-foreground">{existingRecord.notes}</div>
                               ) : null}
+                              {existingRecord.isPaid ? (
+                                <div className="text-xs text-muted-foreground">
+                                  Included in a payment. Attendance cannot be modified.
+                                </div>
+                              ) : null}
                             </div>
-                          ) : isLocked && isCurrentOrPastDate ? (
+                          ) : isLocked && lockedReason === "cross-project" && isCurrentOrPastDate ? (
                             <div className="space-y-1">
                               <Badge className="bg-slate-100 text-slate-800 border-slate-200">Reserved for another project</Badge>
+                              <div className="text-xs text-muted-foreground">
+                                {state.lockedProjectName ? `Attendance already marked for ${state.lockedProjectName}.` : "Attendance already marked for another project."}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              {isCurrentOrPastDate ? "No record" : "Upcoming"}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {existingRecord && isCurrentOrPastDate ? (
+                            <div className="space-y-1">
+                              <Badge
+                                className={
+                                  existingRecord.isPaid
+                                    ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+                                    : "bg-slate-100 text-slate-800 border-slate-200"
+                                }
+                              >
+                                {existingRecord.isPaid ? "Paid" : "Unpaid"}
+                              </Badge>
+                              {existingRecord.isPaid ? (
+                                <div className="text-xs text-muted-foreground">Paid attendance cannot be edited or deleted.</div>
+                              ) : (
+                                <div className="text-xs text-muted-foreground">Pending payment.</div>
+                              )}
+                            </div>
+                          ) : isLocked && lockedReason === "cross-project" && isCurrentOrPastDate ? (
+                            <div className="space-y-1">
+                              <Badge className="bg-slate-100 text-slate-800 border-slate-200">Reserved</Badge>
                               <div className="text-xs text-muted-foreground">
                                 {state.lockedProjectName ? `Attendance already marked for ${state.lockedProjectName}.` : "Attendance already marked for another project."}
                               </div>
