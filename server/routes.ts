@@ -23,6 +23,7 @@ import {
   createUserSchema,
   updateUserSchema,
   changePasswordSchema,
+  adminResetPasswordSchema,
 } from "@shared/schema";
 import { passport } from "./auth";
 import { hashPassword, verifyPassword } from "./password";
@@ -316,6 +317,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { passwordHash: _ph, ...safeUser } = updated;
 
       res.json({ ...safeUser, owner });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/users/:id/reset-password", async (req, res) => {
+    if (!requireAdmin(req, res)) {
+      return;
+    }
+
+    let validatedData: ReturnType<typeof adminResetPasswordSchema.parse>;
+    try {
+      validatedData = adminResetPasswordSchema.parse(req.body);
+    } catch (error: any) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    try {
+      const user = await storage.findUserById(req.params.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (user.role !== "owner") {
+        return res.status(400).json({ message: "Only owner accounts can have their password reset by an admin" });
+      }
+
+      const passwordHash = await hashPassword(validatedData.newPassword);
+      await storage.updateUserPassword(user.id, passwordHash);
+
+      res.status(204).send();
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

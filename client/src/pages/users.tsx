@@ -23,8 +23,10 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
+  DialogDescription,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Form,
@@ -50,6 +52,7 @@ import { useOwners, useUsers } from "@/lib/api";
 import {
   changePasswordSchema,
   createUserSchema,
+  adminResetPasswordSchema,
   type UserRole,
   type UserWithOwner,
 } from "@shared/schema";
@@ -57,15 +60,19 @@ import { Shield, UserPlus, Mail, UserX, UserCheck, KeyRound } from "lucide-react
 
 const createUserFormSchema = createUserSchema;
 const changePasswordFormSchema = changePasswordSchema;
+const resetOwnerPasswordFormSchema = adminResetPasswordSchema;
 
 type CreateUserFormValues = z.infer<typeof createUserFormSchema>;
 type ChangePasswordFormValues = z.infer<typeof changePasswordFormSchema>;
+type ResetOwnerPasswordFormValues = z.infer<typeof resetOwnerPasswordFormSchema>;
 
 export default function Users() {
   const { data: users = [], isLoading: isLoadingUsers } = useUsers();
   const { data: owners = [], isLoading: isLoadingOwners } = useOwners();
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
+  const [userToReset, setUserToReset] = useState<UserWithOwner | null>(null);
 
   const createForm = useForm<CreateUserFormValues>({
     resolver: zodResolver(createUserFormSchema),
@@ -81,6 +88,14 @@ export default function Users() {
     resolver: zodResolver(changePasswordFormSchema),
     defaultValues: {
       currentPassword: "",
+      newPassword: "",
+      confirmPassword: "",
+    },
+  });
+
+  const resetPasswordForm = useForm<ResetOwnerPasswordFormValues>({
+    resolver: zodResolver(resetOwnerPasswordFormSchema),
+    defaultValues: {
       newPassword: "",
       confirmPassword: "",
     },
@@ -104,6 +119,26 @@ export default function Users() {
         ownerId: undefined,
       });
     }
+  };
+
+  const handleResetDialogChange = (open: boolean) => {
+    setIsResetDialogOpen(open);
+    if (!open) {
+      setUserToReset(null);
+      resetPasswordForm.reset({
+        newPassword: "",
+        confirmPassword: "",
+      });
+    }
+  };
+
+  const openResetDialog = (user: UserWithOwner) => {
+    setUserToReset(user);
+    setIsResetDialogOpen(true);
+    resetPasswordForm.reset({
+      newPassword: "",
+      confirmPassword: "",
+    });
   };
 
   const createUserMutation = useMutation({
@@ -173,6 +208,30 @@ export default function Users() {
     },
   });
 
+  const resetOwnerPasswordMutation = useMutation({
+    mutationFn: async ({ userId, ...values }: ResetOwnerPasswordFormValues & { userId: string }) => {
+      await apiRequest("POST", `/api/users/${userId}/reset-password`, values);
+    },
+    onSuccess: () => {
+      resetPasswordForm.reset({
+        newPassword: "",
+        confirmPassword: "",
+      });
+      toast({
+        title: "Password reset",
+        description: "A new password has been set for the owner account.",
+      });
+      handleResetDialogChange(false);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to reset password",
+        description: error?.message || "An unexpected error occurred.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const sortedUsers = useMemo(() => {
     return [...users].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [users]);
@@ -183,6 +242,14 @@ export default function Users() {
 
   const onChangePasswordSubmit = (values: ChangePasswordFormValues) => {
     changePasswordMutation.mutate(values);
+  };
+
+  const onResetOwnerPasswordSubmit = (values: ResetOwnerPasswordFormValues) => {
+    if (!userToReset) {
+      return;
+    }
+
+    resetOwnerPasswordMutation.mutate({ userId: userToReset.id, ...values });
   };
 
   const renderStatusBadge = (user: UserWithOwner) => {
@@ -377,6 +444,16 @@ export default function Users() {
                     <TableCell className="text-right">
                       {user.role === "owner" ? (
                         <div className="flex items-center justify-end space-x-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            type="button"
+                            onClick={() => openResetDialog(user)}
+                            disabled={resetOwnerPasswordMutation.isPending}
+                            data-testid={`reset-password-${user.id}`}
+                          >
+                            <KeyRound className="mr-1 h-3 w-3" /> Reset
+                          </Button>
                           <Switch
                             checked={user.isActive}
                             onCheckedChange={(checked) =>
@@ -397,6 +474,61 @@ export default function Users() {
           </Table>
         </CardContent>
       </Card>
+
+      <Dialog open={isResetDialogOpen} onOpenChange={handleResetDialogChange}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reset Owner Password</DialogTitle>
+            <DialogDescription>
+              Set a new password for {userToReset?.owner?.name ?? userToReset?.email ?? "this owner account"}.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...resetPasswordForm}>
+            <form
+              onSubmit={resetPasswordForm.handleSubmit(onResetOwnerPasswordSubmit)}
+              className="space-y-4"
+              data-testid="reset-owner-password-form"
+            >
+              <FormField
+                control={resetPasswordForm.control}
+                name="newPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>New Password</FormLabel>
+                    <FormControl>
+                      <Input type="password" placeholder="Enter new password" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={resetPasswordForm.control}
+                name="confirmPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Confirm New Password</FormLabel>
+                    <FormControl>
+                      <Input type="password" placeholder="Confirm new password" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <DialogFooter className="flex items-center justify-end space-x-2">
+                <Button type="button" variant="outline" onClick={() => handleResetDialogChange(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={resetOwnerPasswordMutation.isPending || !userToReset}>
+                  {resetOwnerPasswordMutation.isPending ? "Resetting..." : "Reset Password"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader>
