@@ -15,12 +15,17 @@ import type {
   VehicleAttendanceWithVehicle,
   VehicleAttendanceSummary,
   CreateVehiclePaymentForPeriod,
-  VehiclePaymentForPeriodResult
+  VehiclePaymentForPeriodResult,
+  UserWithOwner,
 } from "@shared/schema";
 
 // Typed query hooks to fix TypeScript issues
 export const useOwners = () => useQuery<Owner[]>({
   queryKey: ["/api/owners"],
+});
+
+export const useUsers = () => useQuery<UserWithOwner[]>({
+  queryKey: ["/api/users"],
 });
 
 export const useVehicles = () => useQuery<VehicleWithOwner[]>({

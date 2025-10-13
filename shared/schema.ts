@@ -25,6 +25,7 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   role: text("role").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -219,6 +220,50 @@ export const insertUserSchema = createInsertSchema(users, {
   role: z.enum(["admin", "owner"]),
 });
 
+export const createUserSchema = z
+  .object({
+    email: z.string().email(),
+    password: z.string().min(8, "Password must be at least 8 characters long"),
+    role: z.enum(["admin", "owner"]),
+    ownerId: z.string().uuid().optional().nullable(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.role === "owner" && !data.ownerId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["ownerId"],
+        message: "Owner is required when creating an owner account",
+      });
+    }
+    if (data.role === "admin" && data.ownerId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["ownerId"],
+        message: "Admin accounts cannot be linked to an owner",
+      });
+    }
+  });
+
+export const updateUserSchema = z
+  .object({
+    ownerId: z.string().uuid().optional().nullable(),
+    isActive: z.boolean().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field must be provided",
+  });
+
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Current password is required"),
+    newPassword: z.string().min(8, "New password must be at least 8 characters long"),
+    confirmPassword: z.string().min(8, "Confirm password is required"),
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
+
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1, "Password is required"),
@@ -228,6 +273,8 @@ export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type UserRole = User["role"];
 export type SessionUser = Pick<User, "id" | "email" | "role" | "ownerId">;
+export type PublicUser = Omit<User, "passwordHash">;
+export type UserWithOwner = PublicUser & { owner: Owner | null };
 
 export const ownershipHistoryRelations = relations(ownershipHistory, ({ one }) => ({
   vehicle: one(vehicles, {

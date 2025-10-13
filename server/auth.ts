@@ -33,6 +33,7 @@ async function ensureDefaultAdminUser() {
     email: normalizedEmail,
     passwordHash,
     role: "admin",
+    isActive: true,
   });
 
   console.warn(
@@ -70,6 +71,10 @@ export async function initializeAuth(app: Express) {
           const user = await storage.findUserByEmail(email.toLowerCase());
           if (!user) {
             return done(null, false, { message: "Invalid email or password" });
+          }
+
+          if (!user.isActive) {
+            return done(null, false, { message: "Account is disabled" });
           }
 
           const isValid = await verifyPassword(password, user.passwordHash);
