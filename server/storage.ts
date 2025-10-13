@@ -42,6 +42,7 @@ import {
   type VehiclePaymentForPeriodResult,
   type User,
   type InsertUser,
+  type UserWithOwner,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, asc, and, sql, isNull, gte, lte, ne, inArray } from "drizzle-orm";
@@ -192,6 +193,12 @@ export interface IStorage {
   findUserByEmail(email: string): Promise<User | undefined>;
   findUserById(id: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  getUsers(): Promise<UserWithOwner[]>;
+  updateUser(
+    id: string,
+    updates: Partial<Pick<User, "ownerId" | "isActive">>,
+  ): Promise<User>;
+  updateUserPassword(id: string, passwordHash: string): Promise<User>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1786,9 +1793,61 @@ export class DatabaseStorage implements IStorage {
     return rows[0] ?? undefined;
   }
 
+  async getUsers(): Promise<UserWithOwner[]> {
+    const rows = await withRetry(() =>
+      db
+        .select({
+          id: users.id,
+          email: users.email,
+          role: users.role,
+          ownerId: users.ownerId,
+          createdAt: users.createdAt,
+          isActive: users.isActive,
+          owner: owners,
+        })
+        .from(users)
+        .leftJoin(owners, eq(users.ownerId, owners.id))
+        .orderBy(desc(users.createdAt))
+    );
+
+    return rows.map(({ owner, ...user }) => ({
+      ...user,
+      owner: owner ?? null,
+    }));
+  }
+
   async createUser(user: InsertUser): Promise<User> {
     const [created] = await withRetry(() => db.insert(users).values(user).returning());
     return created;
+  }
+
+  async updateUser(
+    id: string,
+    updates: Partial<Pick<User, "ownerId" | "isActive">>,
+  ): Promise<User> {
+    const updateData: Partial<InsertUser> = {};
+
+    if (Object.prototype.hasOwnProperty.call(updates, "ownerId")) {
+      updateData.ownerId = updates.ownerId ?? null;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updates, "isActive")) {
+      updateData.isActive = updates.isActive;
+    }
+
+    const [updated] = await withRetry(() =>
+      db.update(users).set(updateData).where(eq(users.id, id)).returning()
+    );
+
+    return updated;
+  }
+
+  async updateUserPassword(id: string, passwordHash: string): Promise<User> {
+    const [updated] = await withRetry(() =>
+      db.update(users).set({ passwordHash }).where(eq(users.id, id)).returning()
+    );
+
+    return updated;
   }
 }
 

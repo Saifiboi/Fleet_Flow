@@ -14,6 +14,10 @@ const pageLabels: Record<string, { title: string; description: string }> = {
     title: "Dashboard",
     description: "Overview of your fleet management system",
   },
+  "/users": {
+    title: "Users",
+    description: "Manage system access and owner logins",
+  },
   "/vehicles": {
     title: "Vehicles",
     description: "Manage your fleet vehicles and their status",
