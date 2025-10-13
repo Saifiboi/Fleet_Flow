@@ -284,10 +284,8 @@ export default function Users() {
                           <FormItem>
                             <FormLabel>Owner</FormLabel>
                             <Select
-                              value={field.value ?? ""}
-                              onValueChange={(value) =>
-                                field.onChange(value === "" ? undefined : value)
-                              }
+                              value={field.value ?? undefined}
+                              onValueChange={(value) => field.onChange(value)}
                               disabled={isLoadingOwners}
                             >
                               <FormControl>
@@ -296,9 +294,6 @@ export default function Users() {
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                <SelectItem value="" disabled>
-                                  Select an owner
-                                </SelectItem>
                                 {owners.map((owner) => (
                                   <SelectItem key={owner.id} value={owner.id}>
                                     {owner.name}
