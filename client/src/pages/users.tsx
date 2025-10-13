@@ -373,7 +373,7 @@ export default function Users() {
                               </FormControl>
                               <SelectContent>
                                 {availableOwners.length === 0 ? (
-                                  <SelectItem value="" disabled>
+                                  <SelectItem value="no-owners" disabled>
                                     All owners already have accounts
                                   </SelectItem>
                                 ) : (
