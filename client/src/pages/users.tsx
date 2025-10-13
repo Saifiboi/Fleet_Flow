@@ -103,11 +103,22 @@ export default function Users() {
 
   const selectedRole = createForm.watch("role");
 
+  const availableOwners = useMemo(
+    () => owners.filter((owner) => !users.some((user) => user.role === "owner" && user.ownerId === owner.id)),
+    [owners, users],
+  );
+
   useEffect(() => {
     if (selectedRole === "admin") {
       createForm.setValue("ownerId", null);
+      return;
     }
-  }, [createForm, selectedRole]);
+
+    const currentOwnerId = createForm.getValues("ownerId");
+    if (currentOwnerId && !availableOwners.some((owner) => owner.id === currentOwnerId)) {
+      createForm.setValue("ownerId", undefined);
+    }
+  }, [availableOwners, createForm, selectedRole]);
 
   const handleDialogChange = (open: boolean) => {
     setIsDialogOpen(open);
@@ -353,7 +364,7 @@ export default function Users() {
                             <Select
                               value={field.value ?? undefined}
                               onValueChange={(value) => field.onChange(value)}
-                              disabled={isLoadingOwners}
+                              disabled={isLoadingOwners || availableOwners.length === 0}
                             >
                               <FormControl>
                                 <SelectTrigger>
@@ -361,13 +372,24 @@ export default function Users() {
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                {owners.map((owner) => (
-                                  <SelectItem key={owner.id} value={owner.id}>
-                                    {owner.name}
+                                {availableOwners.length === 0 ? (
+                                  <SelectItem value="" disabled>
+                                    All owners already have accounts
                                   </SelectItem>
-                                ))}
+                                ) : (
+                                  availableOwners.map((owner) => (
+                                    <SelectItem key={owner.id} value={owner.id}>
+                                      {owner.name}
+                                    </SelectItem>
+                                  ))
+                                )}
                               </SelectContent>
                             </Select>
+                            {availableOwners.length === 0 && !isLoadingOwners ? (
+                              <p className="text-sm text-muted-foreground">
+                                All owners already have user accounts.
+                              </p>
+                            ) : null}
                             <FormMessage />
                           </FormItem>
                         )}
