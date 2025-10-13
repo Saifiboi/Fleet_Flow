@@ -20,8 +20,13 @@ import {
   insertVehicleAttendanceSchema,
   deleteVehicleAttendanceSchema,
   loginSchema,
+  createUserSchema,
+  updateUserSchema,
+  changePasswordSchema,
+  adminResetPasswordSchema,
 } from "@shared/schema";
 import { passport } from "./auth";
+import { hashPassword, verifyPassword } from "./password";
 
 function ensureAuthenticated(req: Request, res: Response, next: NextFunction) {
   if (req.isAuthenticated && req.isAuthenticated()) {
@@ -207,6 +212,178 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     try {
       await storage.deleteOwner(req.params.id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // User management routes
+  app.get("/api/users", async (req, res) => {
+    if (!requireAdmin(req, res)) {
+      return;
+    }
+
+    try {
+      const users = await storage.getUsers();
+      res.json(users);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/users", async (req, res) => {
+    if (!requireAdmin(req, res)) {
+      return;
+    }
+
+    let validatedData: ReturnType<typeof createUserSchema.parse>;
+    try {
+      validatedData = createUserSchema.parse(req.body);
+    } catch (error: any) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    try {
+      const email = validatedData.email.toLowerCase();
+
+      const existing = await storage.findUserByEmail(email);
+      if (existing) {
+        return res.status(409).json({ message: "Email is already in use" });
+      }
+
+      if (validatedData.role === "owner" && validatedData.ownerId) {
+        const owner = await storage.getOwner(validatedData.ownerId);
+        if (!owner) {
+          return res.status(400).json({ message: "Owner not found" });
+        }
+      }
+
+      const passwordHash = await hashPassword(validatedData.password);
+      const created = await storage.createUser({
+        email,
+        passwordHash,
+        role: validatedData.role,
+        ownerId: validatedData.role === "owner" ? validatedData.ownerId : null,
+        isActive: true,
+      });
+
+      const owner = created.ownerId ? await storage.getOwner(created.ownerId) : null;
+      const { passwordHash: _ph, ...user } = created;
+
+      res.status(201).json({ ...user, owner });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/users/:id", async (req, res) => {
+    if (!requireAdmin(req, res)) {
+      return;
+    }
+
+    let validatedData: ReturnType<typeof updateUserSchema.parse>;
+    try {
+      validatedData = updateUserSchema.parse(req.body);
+    } catch (error: any) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    try {
+      const user = await storage.findUserById(req.params.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (Object.prototype.hasOwnProperty.call(validatedData, "ownerId")) {
+        if (user.role !== "owner") {
+          return res.status(400).json({ message: "Only owner accounts can be linked to an owner" });
+        }
+
+        if (validatedData.ownerId) {
+          const owner = await storage.getOwner(validatedData.ownerId);
+          if (!owner) {
+            return res.status(400).json({ message: "Owner not found" });
+          }
+        }
+      }
+
+      if (Object.prototype.hasOwnProperty.call(validatedData, "isActive") && user.role !== "owner") {
+        return res.status(400).json({ message: "Only owner accounts can be enabled or disabled" });
+      }
+
+      const updated = await storage.updateUser(user.id, validatedData);
+      const owner = updated.ownerId ? await storage.getOwner(updated.ownerId) : null;
+      const { passwordHash: _ph, ...safeUser } = updated;
+
+      res.json({ ...safeUser, owner });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/users/:id/reset-password", async (req, res) => {
+    if (!requireAdmin(req, res)) {
+      return;
+    }
+
+    let validatedData: ReturnType<typeof adminResetPasswordSchema.parse>;
+    try {
+      validatedData = adminResetPasswordSchema.parse(req.body);
+    } catch (error: any) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    try {
+      const user = await storage.findUserById(req.params.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (user.role !== "owner") {
+        return res.status(400).json({ message: "Only owner accounts can have their password reset by an admin" });
+      }
+
+      const passwordHash = await hashPassword(validatedData.newPassword);
+      await storage.updateUserPassword(user.id, passwordHash);
+
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/users/change-password", async (req, res) => {
+    let validatedData: ReturnType<typeof changePasswordSchema.parse>;
+    try {
+      validatedData = changePasswordSchema.parse(req.body);
+    } catch (error: any) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+
+    try {
+      const user = await storage.findUserById(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const isValid = await verifyPassword(validatedData.currentPassword, user.passwordHash);
+      if (!isValid) {
+        return res.status(400).json({ message: "Current password is incorrect" });
+      }
+
+      if (await verifyPassword(validatedData.newPassword, user.passwordHash)) {
+        return res.status(400).json({ message: "New password must be different from the current password" });
+      }
+
+      const newHash = await hashPassword(validatedData.newPassword);
+      await storage.updateUserPassword(userId, newHash);
+
       res.status(204).send();
     } catch (error: any) {
       res.status(500).json({ message: error.message });

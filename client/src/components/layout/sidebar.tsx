@@ -4,6 +4,7 @@ import {
   BarChart3,
   Car,
   Users,
+  Shield,
   FolderKanban,
   Calendar,
   CreditCard,
@@ -28,6 +29,7 @@ type NavigationItem = {
 
 const navigationItems: NavigationItem[] = [
   { path: "/", label: "Dashboard", icon: BarChart3, roles: ["admin"] },
+  { path: "/users", label: "Users", icon: Shield, roles: ["admin"] },
   { path: "/owners", label: "Owners", icon: Users, roles: ["admin"] },
   { path: "/vehicles", label: "Vehicles", icon: Car, roles: ["admin", "owner"] },
   { path: "/projects", label: "Projects", icon: FolderKanban, roles: ["admin"] },

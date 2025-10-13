@@ -13,6 +13,7 @@ import Assignments from "@/pages/assignments";
 import Payments from "@/pages/payments";
 import Maintenance from "@/pages/maintenance";
 import Attendance from "@/pages/attendance";
+import Users from "@/pages/users";
 import NotFound from "@/pages/not-found";
 import Login from "@/pages/login";
 import Forbidden from "@/pages/forbidden";
@@ -27,6 +28,7 @@ interface ProtectedRoute {
 
 const protectedRoutes: ProtectedRoute[] = [
   { path: "/", component: Dashboard, roles: ["admin"] },
+  { path: "/users", component: Users, roles: ["admin"] },
   { path: "/owners", component: Owners, roles: ["admin"] },
   { path: "/vehicles", component: Vehicles, roles: ["admin", "owner"] },
   { path: "/projects", component: Projects, roles: ["admin"] },
