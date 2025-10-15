@@ -2,18 +2,10 @@
   "version": 2,
   "installCommand": "pnpm install --frozen-lockfile",
   "buildCommand": "pnpm run build",
-  "builds": [
-    {
-      "src": "dist/index.js",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": "dist/public/**"
-      }
-    }
-  ],
   "functions": {
     "dist/index.js": {
-      "runtime": "nodejs20.x"
+      "runtime": "nodejs20.x",
+      "includeFiles": "dist/public/**"
     }
   },
   "routes": [
