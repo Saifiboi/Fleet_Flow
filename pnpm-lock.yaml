@@ -207,15 +207,6 @@ optionalDependencies:
     version: 4.0.8
 
 devDependencies:
-  '@replit/vite-plugin-cartographer':
-    specifier: ^0.3.0
-    version: 0.3.0
-  '@replit/vite-plugin-dev-banner':
-    specifier: ^0.1.1
-    version: 0.1.1
-  '@replit/vite-plugin-runtime-error-modal':
-    specifier: ^0.0.3
-    version: 0.0.3
   '@tailwindcss/typography':
     specifier: ^0.5.15
     version: 0.5.15(tailwindcss@3.4.17)
@@ -2842,28 +2833,6 @@ packages:
     resolution: {integrity: sha512-HPwpGIzkl28mWyZqG52jiqDJ12waP11Pa1lGoiyUkIEuMLBP0oeK/C89esbXrxsky5we7dfd8U58nm0SgAWpVw==}
     dev: false
 
-  /@replit/vite-plugin-cartographer@0.3.0:
-    resolution: {integrity: sha512-sCeHU694gqRKtUHpLSNiRDpsOW6ppMvXjCgCDAHQicgdQjTr3TKZkZLZPtUZfR7iIThmFMf3T0O+wZE06rXfzQ==}
-    dependencies:
-      '@babel/parser': 7.28.4
-      '@babel/traverse': 7.28.4
-      '@babel/types': 7.28.4
-      magic-string: 0.30.19
-      modern-screenshot: 4.6.6
-    transitivePeerDependencies:
-      - supports-color
-    dev: true
-
-  /@replit/vite-plugin-dev-banner@0.1.1:
-    resolution: {integrity: sha512-LnFraZhsZBbAwM/tm6SeWKa1/hboAZzXd2vtn8EdKrIXAYSeQbRWCr3WYnlFd6tnuq5tXkKQZ5m8WMpyOu3aCQ==}
-    dev: true
-
-  /@replit/vite-plugin-runtime-error-modal@0.0.3:
-    resolution: {integrity: sha512-4wZHGuI9W4o9p8g4Ma/qj++7SP015+FMDGYobj7iap5oEsxXMm0B02TO5Y5PW8eqBPd4wX5l3UGco/hlC0qapw==}
-    dependencies:
-      '@jridgewell/trace-mapping': 0.3.25
-    dev: true
-
   /@rollup/rollup-android-arm-eabi@4.52.4:
     resolution: {integrity: sha512-BTm2qKNnWIQ5auf4deoetINJm2JzvihvGb9R6K/ETwKLql/Bb3Eg2H1FBp1gUb4YGbydMA3jcmQTR73q7J+GAA==}
     cpu: [arm]
@@ -4738,12 +4707,6 @@ packages:
       react: 18.3.1
     dev: false
 
-  /magic-string@0.30.19:
-    resolution: {integrity: sha512-2N21sPY9Ws53PZvsEpVtNuSW+ScYbQdp4b9qUaL+9QkHUrGFKo56Lg9Emg5s9V/qrtNBmiR01sYhUOwu3H+VOw==}
-    dependencies:
-      '@jridgewell/sourcemap-codec': 1.5.5
-    dev: true
-
   /math-intrinsics@1.1.0:
     resolution: {integrity: sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==}
     engines: {node: '>= 0.4'}
@@ -4815,10 +4778,6 @@ packages:
   /mitt@3.0.1:
     resolution: {integrity: sha512-vKivATfr97l2/QBCYAkXYDbrIWPM2IIKEl7YPhjCvKlG3kE2gm+uBo6nEXK3M5/Ffh/FLpKExzOQ3JJoJGFKBw==}
     dev: false
-
-  /modern-screenshot@4.6.6:
-    resolution: {integrity: sha512-8tF0xEpe7yx37mK95UcIghSCWYeu628K2hLJl+ZNY2ANmRzYLlRLpquPHAQcL8keF6BoeEzTEw4GrgmUpGuZ8w==}
-    dev: true
 
   /motion-dom@11.18.1:
     resolution: {integrity: sha512-g76KvA001z+atjfxczdRtw/RXOM3OMSdd1f4DL77qCTF/+avrRJiawSG4yDibEQ215sr9kpinSlX2pCTJ9zbhw==}
