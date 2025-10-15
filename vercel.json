@@ -1,8 +1,10 @@
 {
-    
+  "installCommand": "pnpm install",
+  "buildCommand": "pnpm run build",
   "builds": [
     {
-      "src": "./server/index.ts"
+      "src": "./server/index.ts",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
