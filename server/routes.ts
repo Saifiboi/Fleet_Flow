@@ -1185,6 +1185,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(400).json({ message: error?.message || "Failed to delete attendance" });
     }
   });
+  app.get("/", async(req, res) => {
+    res.json({message: "hello world", status: 200})
+  })
 
   const httpServer = createServer(app);
   return httpServer;
