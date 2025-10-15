@@ -1,6 +1,6 @@
 {
     
-  "build": [
+  "builds": [
     {
       "src": "./server/index.ts",
       "use": "vercel/node"
