@@ -26,8 +26,5 @@
       "dest": "client/dist/$1"
     }
   ],
-  "buildCommand": "npm run build:all",
-  "env": {
-    "DATABASE_URL": "@database_url"
-  }
+  "buildCommand": "npm run build"
 }
