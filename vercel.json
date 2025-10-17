@@ -9,21 +9,24 @@
       }
     },
     {
-      "src": "client/vite.config.js",
+      "src": "package.json",
       "use": "@vercel/static-build",
       "config": {
-        "distDir": "client/dist"
+        "distDir": "dist/public"
       }
     }
   ],
   "routes": [
     {
-      "src": "server/routes.ts",
+      "src": "/api/(.*)",
       "dest": "server/index.ts"
     },
     {
+      "handle": "filesystem"
+    },
+    {
       "src": "/(.*)",
-      "dest": "client/dist/$1"
+      "dest": "dist/public/index.html"
     }
   ]
 }

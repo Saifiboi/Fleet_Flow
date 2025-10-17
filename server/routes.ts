@@ -1,5 +1,4 @@
 import type { Application, Request, Response, NextFunction } from "express";
-import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import {
   insertOwnerSchema,
@@ -77,7 +76,7 @@ function ensureOwnerAccess(req: Request, res: Response, ownerId: string): boolea
   return false;
 }
 
-export async function registerRoutes(app: Application): Promise<Server> {
+export async function registerRoutes(app: Application): Promise<void> {
   app.post("/api/auth/login", async (req, res, next) => {
     try {
       loginSchema.parse(req.body);
@@ -1189,6 +1188,4 @@ export async function registerRoutes(app: Application): Promise<Server> {
     res.json({ message: "hello world", status: 200 });
   });
 
-  const httpServer = createServer(app);
-  return httpServer;
 }
