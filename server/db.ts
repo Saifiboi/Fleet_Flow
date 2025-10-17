@@ -5,7 +5,6 @@ import ws from "ws";
 import * as schema from "@shared/schema";
 
 neonConfig.webSocketConstructor = ws;
-console.log("DATABASE_URL", process.env);
 
 if (!process.env.DATABASE_URL) {
   throw new Error(

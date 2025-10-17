@@ -1184,8 +1184,8 @@ export async function registerRoutes(app: Application): Promise<void> {
       res.status(400).json({ message: error?.message || "Failed to delete attendance" });
     }
   });
-  app.get("/", async (req: Request, res: Response) => {
-    res.json({ message: "hello world", status: 200 });
+  app.get("/chicken", async (req: Request, res: Response) => {
+    res.json({ message: "healthy", status: 200 });
   });
 
 }
