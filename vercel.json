@@ -18,13 +18,12 @@
   ],
   "routes": [
     {
-      "src": "/api/(.*)",
+      "src": "server/routes.ts",
       "dest": "server/index.ts"
     },
     {
       "src": "/(.*)",
       "dest": "client/dist/$1"
     }
-  ],
-  "buildCommand": "npm run build"
+  ]
 }
