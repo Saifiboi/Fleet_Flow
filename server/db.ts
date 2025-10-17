@@ -23,7 +23,7 @@ export const pool = new Pool({
 });
 
 // Add error handling for the pool
-pool.on('error', (err) => {
+pool.on('error', (err: unknown) => {
   console.error('Database pool error:', err);
 });
 
@@ -33,6 +33,6 @@ export const db = drizzle({ client: pool, schema });
 // Test connection on startup
 pool.query('SELECT 1').then(() => {
   console.log('Database connection established successfully');
-}).catch((err) => {
+}).catch((err: unknown) => {
   console.error('Failed to establish database connection:', err);
 });
