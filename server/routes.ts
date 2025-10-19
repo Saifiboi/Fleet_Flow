@@ -1,5 +1,4 @@
-import type { Express, Request, Response, NextFunction } from "express";
-import { createServer, type Server } from "http";
+import type { Application, Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
 import {
   insertOwnerSchema,
@@ -77,7 +76,7 @@ function ensureOwnerAccess(req: Request, res: Response, ownerId: string): boolea
   return false;
 }
 
-export async function registerRoutes(app: Express): Promise<Server> {
+export async function registerRoutes(app: Application): Promise<void> {
   app.post("/api/auth/login", async (req, res, next) => {
     try {
       loginSchema.parse(req.body);
@@ -1018,7 +1017,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Vehicle ownership transfer route
-  app.post("/api/vehicles/:vehicleId/transfer-ownership", async (req, res) => {
+  app.post("/api/vehicles/:vehicleId/transfer-ownership", async (req: Request, res: Response) => {
     if (!requireAdmin(req, res)) {
       return;
     }
@@ -1041,7 +1040,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Vehicle Attendance routes
-  app.get("/api/vehicle-attendance", async (req, res) => {
+  app.get("/api/vehicle-attendance", async (req: Request, res: Response) => {
     try {
       const { vehicleId, date, projectId } = req.query as Record<string, string | undefined>;
 
@@ -1076,7 +1075,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/vehicle-attendance/summary", async (req, res) => {
+  app.get("/api/vehicle-attendance/summary", async (req: Request, res: Response) => {
     try {
       const { vehicleId, projectId, startDate, endDate } = req.query as Record<string, string | undefined>;
 
@@ -1130,7 +1129,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/vehicle-attendance", async (req, res) => {
+  app.post("/api/vehicle-attendance", async (req: Request, res: Response) => {
     if (!requireAdmin(req, res)) {
       return;
     }
@@ -1145,7 +1144,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Batch create attendance records
-  app.post("/api/vehicle-attendance/batch", async (req, res) => {
+  app.post("/api/vehicle-attendance/batch", async (req: Request, res: Response) => {
     if (!requireAdmin(req, res)) {
       return;
     }
@@ -1167,7 +1166,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/vehicle-attendance/delete", async (req, res) => {
+  app.post("/api/vehicle-attendance/delete", async (req: Request, res: Response) => {
     if (!requireAdmin(req, res)) {
       return;
     }
@@ -1185,10 +1184,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(400).json({ message: error?.message || "Failed to delete attendance" });
     }
   });
-  app.get("/", async(req, res) => {
-    res.json({message: "hello world", status: 200})
-  })
+  app.get("/chicken", async (req: Request, res: Response) => {
+    res.json({ message: "healthy", status: 200 });
+  });
 
-  const httpServer = createServer(app);
-  return httpServer;
 }
