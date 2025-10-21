@@ -357,6 +357,13 @@ export const updateVehicleSchema = z.object({
 // Schema for vehicle ownership transfer validation
 export const transferVehicleOwnershipSchema = z.object({
   newOwnerId: z.string().min(1, "New owner ID is required"),
+  transferDate: z
+    .string()
+    .min(1, "Transfer date is required")
+    .refine(
+      (val) => !Number.isNaN(Date.parse(val)),
+      "Transfer date must be a valid date"
+    ),
   transferReason: z.string().optional(),
   transferPrice: z.preprocess(
     (val) => val === "" ? undefined : val,

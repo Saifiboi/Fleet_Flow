@@ -45,7 +45,7 @@ import {
   type UserWithOwner,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, asc, and, sql, isNull, gte, lte, ne, inArray } from "drizzle-orm";
+import { eq, desc, asc, and, sql, isNull, gte, lte, ne, inArray, or } from "drizzle-orm";
 
 // Helper function to retry database operations on connection failures
 async function withRetry<T>(operation: () => Promise<T>, maxRetries: number = 3): Promise<T> {
@@ -173,7 +173,14 @@ export interface IStorage {
   deleteVehicleAttendanceBatch(records: DeleteVehicleAttendance[]): Promise<VehicleAttendance[]>;
   
   // New method for transferring vehicle ownership with proper tracking
-  transferVehicleOwnership(vehicleId: string, newOwnerId: string, transferReason?: string, transferPrice?: string, notes?: string): Promise<void>;
+  transferVehicleOwnership(
+    vehicleId: string,
+    newOwnerId: string,
+    transferDate: string,
+    transferReason?: string,
+    transferPrice?: string,
+    notes?: string
+  ): Promise<void>;
 
   // Dashboard stats
   getDashboardStats(): Promise<{
@@ -1413,47 +1420,105 @@ export class DatabaseStorage implements IStorage {
   }
 
   async transferVehicleOwnership(
-    vehicleId: string, 
-    newOwnerId: string, 
-    transferReason?: string, 
-    transferPrice?: string, 
+    vehicleId: string,
+    newOwnerId: string,
+    transferDate: string,
+    transferReason?: string,
+    transferPrice?: string,
     notes?: string
   ): Promise<void> {
-    // Start a transaction to ensure data consistency
-    await db.transaction(async (tx) => {
-      // 1. Get the current vehicle to find current owner
-      const [vehicle] = await tx.select().from(vehicles).where(eq(vehicles.id, vehicleId));
-      if (!vehicle) {
-        throw new Error('Vehicle not found');
+    const parseDateStrict = (value: string | Date) => {
+      const stringValue = value instanceof Date ? value.toISOString().split("T")[0] : String(value);
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(stringValue);
+
+      if (!match) {
+        throw new Error("Transfer date must be in YYYY-MM-DD format");
       }
-      
-      // 2. Close the current ownership record (set endDate)
-      const today = new Date().toISOString().split('T')[0];
-      await tx
-        .update(ownershipHistory)
-        .set({ endDate: today })
-        .where(
-          and(
-            eq(ownershipHistory.vehicleId, vehicleId),
-            sql`${ownershipHistory.endDate} IS NULL`
-          )
-        );
-      
-      // 3. Create new ownership history record
+
+      const [, year, month, day] = match;
+      const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+
+      if (
+        date.getUTCFullYear() !== Number(year) ||
+        date.getUTCMonth() !== Number(month) - 1 ||
+        date.getUTCDate() !== Number(day)
+      ) {
+        throw new Error("Transfer date must be a valid date");
+      }
+
+      return date;
+    };
+
+    const formatDate = (date: Date) => date.toISOString().split("T")[0];
+
+    await db.transaction(async (tx) => {
+      const [vehicle] = await tx.select().from(vehicles).where(eq(vehicles.id, vehicleId)).limit(1);
+      if (!vehicle) {
+        throw new Error("Vehicle not found");
+      }
+
+      if (vehicle.ownerId === newOwnerId) {
+        throw new Error("Vehicle is already assigned to the specified owner");
+      }
+
+      const transferDateObject = parseDateStrict(transferDate);
+      const transferDateString = formatDate(transferDateObject);
+
+      const [currentOwnership] = await tx
+        .select()
+        .from(ownershipHistory)
+        .where(and(eq(ownershipHistory.vehicleId, vehicleId), isNull(ownershipHistory.endDate)))
+        .orderBy(desc(ownershipHistory.startDate))
+        .limit(1);
+
+      if (currentOwnership) {
+        const currentStartDate = parseDateStrict(currentOwnership.startDate);
+
+        if (transferDateObject <= currentStartDate) {
+          throw new Error("Transfer date must be after the current ownership start date");
+        }
+
+        const previousOwnerEndDate = new Date(transferDateObject);
+        previousOwnerEndDate.setUTCDate(previousOwnerEndDate.getUTCDate() - 1);
+
+        await tx
+          .update(ownershipHistory)
+          .set({ endDate: formatDate(previousOwnerEndDate) })
+          .where(eq(ownershipHistory.id, currentOwnership.id));
+      }
+
       await tx.insert(ownershipHistory).values({
         vehicleId,
         ownerId: newOwnerId,
-        startDate: today,
-        transferReason: transferReason || 'transfer',
-        transferPrice: transferPrice || null,
-        notes,
+        startDate: transferDateString,
+        transferReason: transferReason || "transfer",
+        transferPrice: transferPrice ?? null,
+        notes: notes ?? null,
       });
-      
-      // 4. Update the vehicle's current owner
-      await tx
-        .update(vehicles)
-        .set({ ownerId: newOwnerId })
-        .where(eq(vehicles.id, vehicleId));
+
+      await tx.update(vehicles).set({ ownerId: newOwnerId }).where(eq(vehicles.id, vehicleId));
+
+      const assignmentRows = await tx
+        .select({ id: assignments.id })
+        .from(assignments)
+        .where(eq(assignments.vehicleId, vehicleId));
+
+      if (assignmentRows.length > 0) {
+        const assignmentIds = assignmentRows.map((row) => row.id);
+
+        await tx
+          .update(payments)
+          .set({ ownerId: newOwnerId })
+          .where(
+            and(
+              inArray(payments.assignmentId, assignmentIds),
+              or(
+                gte(payments.periodStart, transferDateString),
+                and(isNull(payments.periodStart), gte(payments.dueDate, transferDateString))
+              )
+            )
+          );
+      }
     });
   }
 

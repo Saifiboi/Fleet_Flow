@@ -13,8 +13,9 @@ import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import VehicleForm from "@/components/forms/vehicle-form";
+import { VehicleOwnershipTransferForm } from "@/components/forms/vehicle-ownership-transfer-form";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { Car, Plus, Edit, Eye, Trash2, Search } from "lucide-react";
+import { Car, Plus, Edit, Eye, Trash2, Search, ArrowLeftRight } from "lucide-react";
 import type { VehicleWithOwner } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -23,6 +24,7 @@ export default function Vehicles() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [editingVehicle, setEditingVehicle] = useState<VehicleWithOwner | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [transferVehicle, setTransferVehicle] = useState<VehicleWithOwner | null>(null);
   const { toast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
@@ -85,6 +87,10 @@ export default function Vehicles() {
   const handleFormClose = () => {
     setIsFormOpen(false);
     setEditingVehicle(null);
+  };
+
+  const closeTransferDialog = () => {
+    setTransferVehicle(null);
   };
 
   return (
@@ -234,6 +240,14 @@ export default function Vehicles() {
                           >
                             <Eye className="w-4 h-4" />
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setTransferVehicle(vehicle)}
+                            data-testid={`transfer-vehicle-${vehicle.id}`}
+                          >
+                            <ArrowLeftRight className="w-4 h-4" />
+                          </Button>
                           <ConfirmDialog
                             title="Delete vehicle"
                             description="Are you sure you want to delete this vehicle?"
@@ -267,6 +281,24 @@ export default function Vehicles() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={!!transferVehicle}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeTransferDialog();
+          }
+        }}
+      >
+        {transferVehicle && (
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Transfer Ownership</DialogTitle>
+            </DialogHeader>
+            <VehicleOwnershipTransferForm vehicle={transferVehicle} onSuccess={closeTransferDialog} />
+          </DialogContent>
+        )}
+      </Dialog>
     </div>
   );
 }
