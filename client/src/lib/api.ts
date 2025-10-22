@@ -17,6 +17,7 @@ import type {
   CreateVehiclePaymentForPeriod,
   VehiclePaymentForPeriodResult,
   UserWithOwner,
+  OwnershipHistoryWithOwner,
 } from "@shared/schema";
 
 // Typed query hooks to fix TypeScript issues
@@ -60,9 +61,17 @@ export const useAssignmentsByProject = (projectId: string) => useQuery<Assignmen
   queryKey: ["/api/assignments/project", projectId],
 });
 
-export const useAssignmentsByVehicle = (vehicleId: string) => useQuery<AssignmentWithDetails[]>({
-  queryKey: ["/api/assignments/vehicle", vehicleId],
-});
+export const useAssignmentsByVehicle = (vehicleId?: string, options?: { enabled?: boolean }) =>
+  useQuery<AssignmentWithDetails[]>({
+    queryKey: ["/api/assignments/vehicle", vehicleId ?? ""],
+    enabled: !!vehicleId && (options?.enabled ?? true),
+  });
+
+export const useOwnershipHistoryByVehicle = (vehicleId?: string, options?: { enabled?: boolean }) =>
+  useQuery<OwnershipHistoryWithOwner[]>({
+    queryKey: ["/api/ownership-history/vehicle", vehicleId ?? ""],
+    enabled: !!vehicleId && (options?.enabled ?? true),
+  });
 
 export const usePaymentsByAssignment = (assignmentId: string) => useQuery<PaymentWithDetails[]>({
   queryKey: ["/api/payments/assignment", assignmentId],

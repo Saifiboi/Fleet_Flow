@@ -70,6 +70,8 @@ export function VehicleOwnershipTransferForm({ vehicle, onSuccess }: VehicleOwne
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
       queryClient.invalidateQueries({ queryKey: ["/api/ownership-history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ownership-history/vehicle", vehicle.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/assignments/vehicle", vehicle.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/payments/outstanding"] });
       toast({

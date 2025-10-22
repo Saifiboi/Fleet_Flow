@@ -597,6 +597,9 @@ export type UpdateOwner = z.infer<typeof updateOwnerSchema>;
 export type OwnershipHistory = typeof ownershipHistory.$inferSelect;
 export type InsertOwnershipHistory = z.infer<typeof insertOwnershipHistorySchema>;
 export type UpdateOwnershipHistory = z.infer<typeof updateOwnershipHistorySchema>;
+export type OwnershipHistoryWithOwner = OwnershipHistory & {
+  owner: Owner;
+};
 
 export type Vehicle = typeof vehicles.$inferSelect;
 export type InsertVehicle = z.infer<typeof insertVehicleSchema>;

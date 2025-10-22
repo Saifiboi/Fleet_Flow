@@ -28,6 +28,7 @@ import {
   type OwnershipHistory,
   type InsertOwnershipHistory,
   type UpdateOwnershipHistory,
+  type OwnershipHistoryWithOwner,
   type VehicleWithOwner,
   type VehicleAttendance,
   type InsertVehicleAttendance,
@@ -148,8 +149,8 @@ export interface IStorage {
   deleteMaintenanceRecord(id: string): Promise<void>;
 
   // Ownership History
-  getOwnershipHistory(): Promise<OwnershipHistory[]>;
-  getOwnershipHistoryByVehicle(vehicleId: string): Promise<OwnershipHistory[]>;
+  getOwnershipHistory(): Promise<OwnershipHistoryWithOwner[]>;
+  getOwnershipHistoryByVehicle(vehicleId: string): Promise<OwnershipHistoryWithOwner[]>;
   createOwnershipHistoryRecord(record: InsertOwnershipHistory): Promise<OwnershipHistory>;
   updateOwnershipHistoryRecord(id: string, record: Partial<UpdateOwnershipHistory>): Promise<OwnershipHistory>;
   deleteOwnershipHistoryRecord(id: string): Promise<void>;
@@ -1391,14 +1392,35 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async getOwnershipHistory(): Promise<OwnershipHistory[]> {
-    return await db.select().from(ownershipHistory).orderBy(desc(ownershipHistory.createdAt));
+  async getOwnershipHistory(): Promise<OwnershipHistoryWithOwner[]> {
+    const results = await db
+      .select({ record: ownershipHistory, owner: owners })
+      .from(ownershipHistory)
+      .leftJoin(owners, eq(ownershipHistory.ownerId, owners.id))
+      .orderBy(desc(ownershipHistory.startDate));
+
+    return results
+      .filter((row) => row.owner)
+      .map((row) => ({
+        ...row.record,
+        owner: row.owner!,
+      }));
   }
 
-  async getOwnershipHistoryByVehicle(vehicleId: string): Promise<OwnershipHistory[]> {
-    return await db.select().from(ownershipHistory)
+  async getOwnershipHistoryByVehicle(vehicleId: string): Promise<OwnershipHistoryWithOwner[]> {
+    const results = await db
+      .select({ record: ownershipHistory, owner: owners })
+      .from(ownershipHistory)
+      .leftJoin(owners, eq(ownershipHistory.ownerId, owners.id))
       .where(eq(ownershipHistory.vehicleId, vehicleId))
       .orderBy(desc(ownershipHistory.startDate));
+
+    return results
+      .filter((row) => row.owner)
+      .map((row) => ({
+        ...row.record,
+        owner: row.owner!,
+      }));
   }
 
   async createOwnershipHistoryRecord(record: InsertOwnershipHistory): Promise<OwnershipHistory> {
