@@ -44,9 +44,10 @@ import {
   type User,
   type InsertUser,
   type UserWithOwner,
+  vehicleTransferPendingPaymentError,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, asc, and, sql, isNull, gte, lte, ne, inArray, or } from "drizzle-orm";
+import { eq, desc, asc, and, sql, isNull, gte, lte, ne, inArray, or, lt } from "drizzle-orm";
 
 // Helper function to retry database operations on connection failures
 async function withRetry<T>(operation: () => Promise<T>, maxRetries: number = 3): Promise<T> {
@@ -1485,6 +1486,23 @@ export class DatabaseStorage implements IStorage {
 
       const transferDateObject = parseDateStrict(transferDate);
       const transferDateString = formatDate(transferDateObject);
+
+      const [unpaidAttendanceRecord] = await tx
+        .select({ attendanceDate: vehicleAttendance.attendanceDate })
+        .from(vehicleAttendance)
+        .where(
+          and(
+            eq(vehicleAttendance.vehicleId, vehicleId),
+            eq(vehicleAttendance.isPaid, false),
+            eq(vehicleAttendance.status, "present"),
+            lt(vehicleAttendance.attendanceDate, transferDateString)
+          )
+        )
+        .limit(1);
+
+      if (unpaidAttendanceRecord) {
+        throw new Error(vehicleTransferPendingPaymentError);
+      }
 
       const [currentOwnership] = await tx
         .select()

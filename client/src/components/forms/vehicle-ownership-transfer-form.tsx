@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
@@ -14,7 +14,17 @@ import {
   transferVehicleOwnershipSchema,
   type TransferVehicleOwnership,
   type VehicleWithOwner,
+  vehicleTransferPendingPaymentError,
 } from "@shared/schema";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface VehicleOwnershipTransferFormProps {
   vehicle: VehicleWithOwner;
@@ -24,6 +34,7 @@ interface VehicleOwnershipTransferFormProps {
 export function VehicleOwnershipTransferForm({ vehicle, onSuccess }: VehicleOwnershipTransferFormProps) {
   const { toast } = useToast();
   const { data: owners = [] } = useOwners();
+  const [showPendingPaymentsDialog, setShowPendingPaymentsDialog] = useState(false);
 
   const availableOwners = useMemo(
     () => owners.filter((owner) => owner.id !== vehicle.ownerId),
@@ -88,9 +99,16 @@ export function VehicleOwnershipTransferForm({ vehicle, onSuccess }: VehicleOwne
       onSuccess?.();
     },
     onError: (error: any) => {
+      const message = error?.message ?? "Failed to transfer ownership";
+
+      if (message === vehicleTransferPendingPaymentError) {
+        setShowPendingPaymentsDialog(true);
+        return;
+      }
+
       toast({
         title: "Error",
-        description: error.message || "Failed to transfer ownership",
+        description: message,
         variant: "destructive",
       });
     },
@@ -221,6 +239,19 @@ export function VehicleOwnershipTransferForm({ vehicle, onSuccess }: VehicleOwne
           </Button>
         </div>
       </form>
+      <AlertDialog open={showPendingPaymentsDialog} onOpenChange={setShowPendingPaymentsDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Pending Payments</AlertDialogTitle>
+            <AlertDialogDescription>
+              {vehicleTransferPendingPaymentError}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setShowPendingPaymentsDialog(false)}>OK</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Form>
   );
 }

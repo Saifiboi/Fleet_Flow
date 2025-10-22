@@ -375,6 +375,9 @@ export const transferVehicleOwnershipSchema = z.object({
   notes: z.string().optional(),
 });
 
+export const vehicleTransferPendingPaymentError =
+  "Pending attendance payments exist before the ownership transfer date. Please calculate and create the payment for the previous owner before transferring ownership.";
+
 export const insertProjectSchema = createInsertSchema(projects).omit({
   id: true,
   createdAt: true,
