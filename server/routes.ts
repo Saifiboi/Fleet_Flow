@@ -1028,6 +1028,7 @@ export async function registerRoutes(app: Application): Promise<void> {
       await storage.transferVehicleOwnership(
         req.params.vehicleId,
         validatedData.newOwnerId,
+        validatedData.transferDate,
         validatedData.transferReason,
         validatedData.transferPrice,
         validatedData.notes

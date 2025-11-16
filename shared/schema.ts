@@ -357,6 +357,13 @@ export const updateVehicleSchema = z.object({
 // Schema for vehicle ownership transfer validation
 export const transferVehicleOwnershipSchema = z.object({
   newOwnerId: z.string().min(1, "New owner ID is required"),
+  transferDate: z
+    .string()
+    .min(1, "Transfer date is required")
+    .refine(
+      (val) => !Number.isNaN(Date.parse(val)),
+      "Transfer date must be a valid date"
+    ),
   transferReason: z.string().optional(),
   transferPrice: z.preprocess(
     (val) => val === "" ? undefined : val,
@@ -367,6 +374,9 @@ export const transferVehicleOwnershipSchema = z.object({
   ),
   notes: z.string().optional(),
 });
+
+export const vehicleTransferPendingPaymentError =
+  "Pending attendance payments exist before the ownership transfer date. Please calculate and create the payment for the previous owner before transferring ownership.";
 
 export const insertProjectSchema = createInsertSchema(projects).omit({
   id: true,
@@ -590,6 +600,9 @@ export type UpdateOwner = z.infer<typeof updateOwnerSchema>;
 export type OwnershipHistory = typeof ownershipHistory.$inferSelect;
 export type InsertOwnershipHistory = z.infer<typeof insertOwnershipHistorySchema>;
 export type UpdateOwnershipHistory = z.infer<typeof updateOwnershipHistorySchema>;
+export type OwnershipHistoryWithOwner = OwnershipHistory & {
+  owner: Owner;
+};
 
 export type Vehicle = typeof vehicles.$inferSelect;
 export type InsertVehicle = z.infer<typeof insertVehicleSchema>;

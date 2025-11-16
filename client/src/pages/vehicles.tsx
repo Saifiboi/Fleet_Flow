@@ -1,20 +1,21 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { useVehicles } from "@/lib/api";
+import { useVehicles, useAssignmentsByVehicle, useOwnershipHistoryByVehicle } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import VehicleForm from "@/components/forms/vehicle-form";
+import { VehicleOwnershipTransferForm } from "@/components/forms/vehicle-ownership-transfer-form";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { Car, Plus, Edit, Eye, Trash2, Search } from "lucide-react";
+import { Car, Plus, Edit, Eye, Trash2, Search, ArrowLeftRight } from "lucide-react";
 import type { VehicleWithOwner } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -23,11 +24,21 @@ export default function Vehicles() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [editingVehicle, setEditingVehicle] = useState<VehicleWithOwner | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [transferVehicle, setTransferVehicle] = useState<VehicleWithOwner | null>(null);
+  const [viewVehicle, setViewVehicle] = useState<VehicleWithOwner | null>(null);
   const { toast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
 
   const { data: vehicles = [], isLoading } = useVehicles();
+  const { data: ownershipHistory = [], isLoading: isOwnershipHistoryLoading } = useOwnershipHistoryByVehicle(
+    viewVehicle?.id,
+    { enabled: !!viewVehicle }
+  );
+  const { data: assignmentHistory = [], isLoading: isAssignmentHistoryLoading } = useAssignmentsByVehicle(
+    viewVehicle?.id,
+    { enabled: !!viewVehicle }
+  );
 
   const deleteVehicleMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -64,7 +75,7 @@ export default function Vehicles() {
   const getStatusBadge = (status: string) => {
     const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
       available: "default",
-      assigned: "secondary", 
+      assigned: "secondary",
       maintenance: "outline",
       out_of_service: "destructive",
     };
@@ -77,6 +88,60 @@ export default function Vehicles() {
     return <Badge variant={variants[status] || "outline"}>{labels[status] || status}</Badge>;
   };
 
+  const getAssignmentStatusBadge = (status: string) => {
+    const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+      active: "secondary",
+      completed: "default",
+      cancelled: "destructive",
+    };
+    const labels: Record<string, string> = {
+      active: "Active",
+      completed: "Completed",
+      cancelled: "Cancelled",
+    };
+
+    return <Badge variant={variants[status] || "outline"}>{labels[status] || status}</Badge>;
+  };
+
+  const formatDisplayDate = (value?: string | Date | null) => {
+    if (value === undefined || value === null || value === "") {
+      return "—";
+    }
+
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return typeof value === "string" ? value : "—";
+    }
+
+    return date.toLocaleDateString();
+  };
+
+  const formatPeriod = (start?: string | Date | null, end?: string | Date | null) => {
+    const startLabel = formatDisplayDate(start);
+    const endLabel = end ? formatDisplayDate(end) : "Present";
+    return `${startLabel} – ${endLabel}`;
+  };
+
+  const formatCurrency = (value?: string | number | null) => {
+    if (value === undefined || value === null || value === "") {
+      return "—";
+    }
+
+    const numericValue = typeof value === "number" ? value : Number(value);
+    if (Number.isNaN(numericValue)) {
+      return String(value);
+    }
+
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(numericValue);
+  };
+
+  const renderDetail = (label: string, value: ReactNode) => (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <div className="mt-1 text-sm font-medium text-foreground">{value ?? "—"}</div>
+    </div>
+  );
+
   const handleEdit = (vehicle: VehicleWithOwner) => {
     setEditingVehicle(vehicle);
     setIsFormOpen(true);
@@ -85,6 +150,14 @@ export default function Vehicles() {
   const handleFormClose = () => {
     setIsFormOpen(false);
     setEditingVehicle(null);
+  };
+
+  const closeTransferDialog = () => {
+    setTransferVehicle(null);
+  };
+
+  const closeViewDialog = () => {
+    setViewVehicle(null);
   };
 
   return (
@@ -230,9 +303,18 @@ export default function Vehicles() {
                           <Button
                             variant="ghost"
                             size="sm"
+                            onClick={() => setViewVehicle(vehicle)}
                             data-testid={`view-vehicle-${vehicle.id}`}
                           >
                             <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setTransferVehicle(vehicle)}
+                            data-testid={`transfer-vehicle-${vehicle.id}`}
+                          >
+                            <ArrowLeftRight className="w-4 h-4" />
                           </Button>
                           <ConfirmDialog
                             title="Delete vehicle"
@@ -267,6 +349,186 @@ export default function Vehicles() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={!!viewVehicle}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeViewDialog();
+          }
+        }}
+      >
+        {viewVehicle && (
+          <DialogContent className="max-w-4xl" data-testid="vehicle-details-dialog">
+            <DialogHeader>
+              <DialogTitle>
+                {viewVehicle.make} {viewVehicle.model}
+              </DialogTitle>
+              <DialogDescription>
+                License Plate {viewVehicle.licensePlate}
+                {viewVehicle.vin ? ` • VIN ${viewVehicle.vin}` : ""}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="max-h-[70vh] overflow-y-auto pr-1 space-y-6">
+              <section className="space-y-4">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  Vehicle Information
+                </h3>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {renderDetail("Status", getStatusBadge(viewVehicle.status))}
+                  {renderDetail("Make", viewVehicle.make)}
+                  {renderDetail("Model", viewVehicle.model)}
+                  {renderDetail("Year", viewVehicle.year)}
+                  {renderDetail("License Plate", viewVehicle.licensePlate)}
+                  {renderDetail("VIN", viewVehicle.vin ?? "—")}
+                  {renderDetail(
+                    "Current Odometer",
+                    viewVehicle.currentOdometer !== null && viewVehicle.currentOdometer !== undefined
+                      ? viewVehicle.currentOdometer.toLocaleString()
+                      : "—"
+                  )}
+                  {renderDetail("Fuel Type", viewVehicle.fuelType ?? "—")}
+                  {renderDetail("Transmission", viewVehicle.transmissionType ?? "—")}
+                  {renderDetail("Category", viewVehicle.category ?? "—")}
+                  {renderDetail("Passenger Capacity", viewVehicle.passengerCapacity ?? "—")}
+                  {renderDetail("Created", formatDisplayDate(viewVehicle.createdAt))}
+                </div>
+              </section>
+
+              <section className="space-y-3">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  Current Owner
+                </h3>
+                <div className="rounded-lg border p-4 shadow-sm">
+                  <p className="text-base font-semibold text-foreground">{viewVehicle.owner.name}</p>
+                  <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+                    <p>{viewVehicle.owner.phone}</p>
+                    <p>{viewVehicle.owner.email}</p>
+                    <p>{viewVehicle.owner.address}</p>
+                    {viewVehicle.owner.companyName && (
+                      <p>Company: {viewVehicle.owner.companyName}</p>
+                    )}
+                    {viewVehicle.owner.contactPerson && (
+                      <p>Contact: {viewVehicle.owner.contactPerson}</p>
+                    )}
+                  </div>
+                </div>
+              </section>
+
+              <section className="space-y-3">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  Ownership History
+                </h3>
+                {isOwnershipHistoryLoading ? (
+                  <div className="space-y-3">
+                    {Array.from({ length: 3 }).map((_, index) => (
+                      <Skeleton key={index} className="h-12 w-full" />
+                    ))}
+                  </div>
+                ) : ownershipHistory.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No ownership history recorded for this vehicle.</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Owner</TableHead>
+                        <TableHead>Ownership Period</TableHead>
+                        <TableHead>Transfer Details</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {ownershipHistory.map((record) => (
+                        <TableRow key={record.id}>
+                          <TableCell>
+                            <div className="text-sm font-medium text-foreground">{record.owner.name}</div>
+                            <div className="text-xs text-muted-foreground">{record.owner.phone}</div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm font-medium text-foreground">{formatPeriod(record.startDate, record.endDate)}</div>
+                            {record.transferReason && (
+                              <p className="mt-1 text-xs text-muted-foreground">Reason: {record.transferReason}</p>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-1 text-sm text-foreground">
+                              <p>Price: {formatCurrency(record.transferPrice)}</p>
+                              {record.notes && (
+                                <p className="text-xs text-muted-foreground">Notes: {record.notes}</p>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </section>
+
+              <section className="space-y-3 pb-1">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  Assignment History
+                </h3>
+                {isAssignmentHistoryLoading ? (
+                  <div className="space-y-3">
+                    {Array.from({ length: 3 }).map((_, index) => (
+                      <Skeleton key={index} className="h-12 w-full" />
+                    ))}
+                  </div>
+                ) : assignmentHistory.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No assignments recorded for this vehicle yet.</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Project</TableHead>
+                        <TableHead>Assignment Period</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Monthly Rate</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {assignmentHistory.map((assignment) => (
+                        <TableRow key={assignment.id}>
+                          <TableCell>
+                            <div className="text-sm font-medium text-foreground">{assignment.project.name}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {assignment.project.location ?? "—"}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm font-medium text-foreground">{formatPeriod(assignment.startDate, assignment.endDate)}</div>
+                          </TableCell>
+                          <TableCell>{getAssignmentStatusBadge(assignment.status)}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(assignment.monthlyRate)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </section>
+            </div>
+          </DialogContent>
+        )}
+      </Dialog>
+
+      <Dialog
+        open={!!transferVehicle}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeTransferDialog();
+          }
+        }}
+      >
+        {transferVehicle && (
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Transfer Ownership</DialogTitle>
+            </DialogHeader>
+            <VehicleOwnershipTransferForm vehicle={transferVehicle} onSuccess={closeTransferDialog} />
+          </DialogContent>
+        )}
+      </Dialog>
     </div>
   );
 }
