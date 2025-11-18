@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useVehicles, useAssignmentsByVehicle, useOwnershipHistoryByVehicle } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -220,126 +221,130 @@ export default function Vehicles() {
           </div>
 
           {/* Vehicles Table */}
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Vehicle</TableHead>
-                <TableHead>Owner</TableHead>
-                <TableHead>License Plate</TableHead>
-                <TableHead>Year</TableHead>
-                <TableHead>Status</TableHead>
-                {isAdmin && <TableHead>Actions</TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={i}>
-                    {Array.from({ length: 6 }).map((_, j) => (
-                      <TableCell key={j}>
-                        <Skeleton className="h-4 w-full" />
-                      </TableCell>
-                    ))}
+          <div className="rounded-md border">
+            <ScrollArea className="h-[60vh]">
+              <Table className="min-w-full">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Vehicle</TableHead>
+                    <TableHead>Owner</TableHead>
+                    <TableHead>License Plate</TableHead>
+                    <TableHead>Year</TableHead>
+                    <TableHead>Status</TableHead>
+                    {isAdmin && <TableHead>Actions</TableHead>}
                   </TableRow>
-                ))
-              ) : filteredVehicles?.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8">
-                    <div className="flex flex-col items-center space-y-2">
-                      <Car className="w-12 h-12 text-muted-foreground" />
-                      <p className="text-muted-foreground">No vehicles found</p>
-                      {searchTerm || statusFilter !== "all" ? (
-                        <p className="text-sm text-muted-foreground">Try adjusting your filters</p>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">Get started by adding your first vehicle</p>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredVehicles?.map((vehicle: VehicleWithOwner) => (
-                  <TableRow key={vehicle.id} data-testid={`vehicle-row-${vehicle.id}`}>
-                    <TableCell>
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                          <Car className="text-primary w-5 h-5" />
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    Array.from({ length: 5 }).map((_, i) => (
+                      <TableRow key={i}>
+                        {Array.from({ length: 6 }).map((_, j) => (
+                          <TableCell key={j}>
+                            <Skeleton className="h-4 w-full" />
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))
+                  ) : filteredVehicles?.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-8">
+                        <div className="flex flex-col items-center space-y-2">
+                          <Car className="w-12 h-12 text-muted-foreground" />
+                          <p className="text-muted-foreground">No vehicles found</p>
+                          {searchTerm || statusFilter !== "all" ? (
+                            <p className="text-sm text-muted-foreground">Try adjusting your filters</p>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">Get started by adding your first vehicle</p>
+                          )}
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">
-                            {vehicle.make} {vehicle.model}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Added {new Date(vehicle.createdAt).toLocaleDateString()}
-                          </p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <p className="text-sm font-medium text-foreground">{vehicle.owner.name}</p>
-                        <p className="text-xs text-muted-foreground">{vehicle.owner.phone}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-sm font-mono text-foreground">{vehicle.licensePlate}</p>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-sm text-foreground">{vehicle.year}</p>
-                    </TableCell>
-                    <TableCell>
-                      {getStatusBadge(vehicle.status)}
-                    </TableCell>
-                    {isAdmin && (
-                      <TableCell>
-                        <div className="flex items-center space-x-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEdit(vehicle)}
-                            data-testid={`edit-vehicle-${vehicle.id}`}
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setViewVehicle(vehicle)}
-                            data-testid={`view-vehicle-${vehicle.id}`}
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setTransferVehicle(vehicle)}
-                            data-testid={`transfer-vehicle-${vehicle.id}`}
-                          >
-                            <ArrowLeftRight className="w-4 h-4" />
-                          </Button>
-                          <ConfirmDialog
-                            title="Delete vehicle"
-                            description="Are you sure you want to delete this vehicle?"
-                            onConfirm={() => deleteVehicleMutation.mutate(vehicle.id)}
-                            trigger={
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredVehicles?.map((vehicle: VehicleWithOwner) => (
+                      <TableRow key={vehicle.id} data-testid={`vehicle-row-${vehicle.id}`}>
+                        <TableCell>
+                          <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+                              <Car className="text-primary w-5 h-5" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-foreground">
+                                {vehicle.make} {vehicle.model}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Added {new Date(vehicle.createdAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="text-sm font-medium text-foreground">{vehicle.owner.name}</p>
+                            <p className="text-xs text-muted-foreground">{vehicle.owner.phone}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <p className="text-sm font-mono text-foreground">{vehicle.licensePlate}</p>
+                        </TableCell>
+                        <TableCell>
+                          <p className="text-sm text-foreground">{vehicle.year}</p>
+                        </TableCell>
+                        <TableCell>
+                          {getStatusBadge(vehicle.status)}
+                        </TableCell>
+                        {isAdmin && (
+                          <TableCell>
+                            <div className="flex items-center space-x-2">
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="text-red-500 hover:text-red-700"
-                                disabled={deleteVehicleMutation.isPending}
-                                data-testid={`delete-vehicle-${vehicle.id}`}
+                                onClick={() => handleEdit(vehicle)}
+                                data-testid={`edit-vehicle-${vehicle.id}`}
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Edit className="w-4 h-4" />
                               </Button>
-                            }
-                          />
-                        </div>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setViewVehicle(vehicle)}
+                                data-testid={`view-vehicle-${vehicle.id}`}
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setTransferVehicle(vehicle)}
+                                data-testid={`transfer-vehicle-${vehicle.id}`}
+                              >
+                                <ArrowLeftRight className="w-4 h-4" />
+                              </Button>
+                              <ConfirmDialog
+                                title="Delete vehicle"
+                                description="Are you sure you want to delete this vehicle?"
+                                onConfirm={() => deleteVehicleMutation.mutate(vehicle.id)}
+                                trigger={
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-red-500 hover:text-red-700"
+                                    disabled={deleteVehicleMutation.isPending}
+                                    data-testid={`delete-vehicle-${vehicle.id}`}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                }
+                              />
+                            </div>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </ScrollArea>
+          </div>
 
           {/* Summary */}
           {filteredVehicles && filteredVehicles.length > 0 && (
