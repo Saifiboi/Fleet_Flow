@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useProjects } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -138,130 +139,133 @@ export default function Projects() {
             </Select>
           </div>
 
-          {/* Projects Table */}
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Project</TableHead>
-                <TableHead>Location</TableHead>
-                <TableHead>Start Date</TableHead>
-                <TableHead>End Date</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={i}>
-                    {Array.from({ length: 6 }).map((_, j) => (
-                      <TableCell key={j}>
-                        <Skeleton className="h-4 w-full" />
-                      </TableCell>
-                    ))}
+          <div className="rounded-md border">
+            <ScrollArea className="h-[60vh]">
+              <Table className="min-w-full">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Project</TableHead>
+                    <TableHead>Location</TableHead>
+                    <TableHead>Start Date</TableHead>
+                    <TableHead>End Date</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
-                ))
-              ) : filteredProjects?.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8">
-                    <div className="flex flex-col items-center space-y-2">
-                      <FolderKanban className="w-12 h-12 text-muted-foreground" />
-                      <p className="text-muted-foreground">No projects found</p>
-                      {searchTerm || statusFilter !== "all" ? (
-                        <p className="text-sm text-muted-foreground">Try adjusting your filters</p>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">Get started by adding your first project</p>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredProjects?.map((project: Project) => (
-                  <TableRow key={project.id} data-testid={`project-row-${project.id}`}>
-                    <TableCell>
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                          <FolderKanban className="text-primary w-5 h-5" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{project.name}</p>
-                          {project.description && (
-                            <p className="text-xs text-muted-foreground line-clamp-2">
-                              {project.description}
-                            </p>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    Array.from({ length: 5 }).map((_, i) => (
+                      <TableRow key={i}>
+                        {Array.from({ length: 6 }).map((_, j) => (
+                          <TableCell key={j}>
+                            <Skeleton className="h-4 w-full" />
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))
+                  ) : filteredProjects?.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-8">
+                        <div className="flex flex-col items-center space-y-2">
+                          <FolderKanban className="w-12 h-12 text-muted-foreground" />
+                          <p className="text-muted-foreground">No projects found</p>
+                          {searchTerm || statusFilter !== "all" ? (
+                            <p className="text-sm text-muted-foreground">Try adjusting your filters</p>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">Get started by adding your first project</p>
                           )}
                         </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <MapPin className="w-3 h-3 text-muted-foreground" />
-                        <p className="text-sm text-foreground">{project.location}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <Calendar className="w-3 h-3 text-muted-foreground" />
-                        <p className="text-sm text-foreground">
-                          {format(new Date(project.startDate), "MMM dd, yyyy")}
-                        </p>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {project.endDate ? (
-                        <div className="flex items-center space-x-2">
-                          <Calendar className="w-3 h-3 text-muted-foreground" />
-                          <p className="text-sm text-foreground">
-                            {format(new Date(project.endDate), "MMM dd, yyyy")}
-                          </p>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">Ongoing</p>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {getStatusBadge(project.status)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={() => handleEdit(project)}
-                          data-testid={`edit-project-${project.id}`}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          data-testid={`view-project-${project.id}`}
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <ConfirmDialog
-                          title="Delete project"
-                          description="Are you sure you want to delete this project? This will also delete all its assignments."
-                          onConfirm={() => deleteProjectMutation.mutate(project.id)}
-                          trigger={
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredProjects?.map((project: Project) => (
+                      <TableRow key={project.id} data-testid={`project-row-${project.id}`}>
+                        <TableCell>
+                          <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+                              <FolderKanban className="text-primary w-5 h-5" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-foreground">{project.name}</p>
+                              {project.description && (
+                                <p className="text-xs text-muted-foreground line-clamp-2">
+                                  {project.description}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <MapPin className="w-3 h-3 text-muted-foreground" />
+                            <p className="text-sm text-foreground">{project.location}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <Calendar className="w-3 h-3 text-muted-foreground" />
+                            <p className="text-sm text-foreground">
+                              {format(new Date(project.startDate), "MMM dd, yyyy")}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {project.endDate ? (
+                            <div className="flex items-center space-x-2">
+                              <Calendar className="w-3 h-3 text-muted-foreground" />
+                              <p className="text-sm text-foreground">
+                                {format(new Date(project.endDate), "MMM dd, yyyy")}
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">Ongoing</p>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {getStatusBadge(project.status)}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="text-red-500 hover:text-red-700"
-                              disabled={deleteProjectMutation.isPending}
-                              data-testid={`delete-project-${project.id}`}
+                              onClick={() => handleEdit(project)}
+                              data-testid={`edit-project-${project.id}`}
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Edit className="w-4 h-4" />
                             </Button>
-                          }
-                        />
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              data-testid={`view-project-${project.id}`}
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            <ConfirmDialog
+                              title="Delete project"
+                              description="Are you sure you want to delete this project? This will also delete all its assignments."
+                              onConfirm={() => deleteProjectMutation.mutate(project.id)}
+                              trigger={
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-red-500 hover:text-red-700"
+                                  disabled={deleteProjectMutation.isPending}
+                                  data-testid={`delete-project-${project.id}`}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              }
+                            />
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </ScrollArea>
+          </div>
 
           {/* Summary */}
           {filteredProjects && filteredProjects.length > 0 && (

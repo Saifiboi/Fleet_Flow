@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
@@ -35,10 +36,16 @@ export default function VehicleForm({ vehicle, onSuccess }: VehicleFormProps) {
       transmissionType: vehicle?.transmissionType as any || undefined,
       category: vehicle?.category as any || undefined,
       passengerCapacity: vehicle?.passengerCapacity || undefined,
-      ownerId: vehicle?.ownerId || "",
+      ownerId: isEditing ? undefined : (vehicle?.ownerId || ""),
       status: vehicle?.status || "available",
     },
   });
+
+  useEffect(() => {
+    if (isEditing) {
+      form.unregister("ownerId");
+    }
+  }, [form, isEditing]);
 
   const createVehicleMutation = useMutation({
     mutationFn: async (data: InsertVehicle) => {
@@ -288,30 +295,42 @@ export default function VehicleForm({ vehicle, onSuccess }: VehicleFormProps) {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <FormField
-            control={form.control}
-            name="ownerId"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Owner</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <FormControl>
-                    <SelectTrigger data-testid="select-owner">
-                      <SelectValue placeholder="Select an owner" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {owners?.map((owner: Owner) => (
-                      <SelectItem key={owner.id} value={owner.id}>
-                        {owner.name} - {owner.phone}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          {!isEditing ? (
+            <FormField
+              control={form.control}
+              name="ownerId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Owner</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-owner">
+                        <SelectValue placeholder="Select an owner" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {owners?.map((owner: Owner) => (
+                        <SelectItem key={owner.id} value={owner.id}>
+                          {owner.name} - {owner.phone}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          ) : (
+            <div className="space-y-2">
+              <FormLabel>Owner</FormLabel>
+              <p className="text-sm text-muted-foreground">
+                {vehicle?.owner?.name} ({vehicle?.owner?.phone})
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Use the ownership transfer action to assign this vehicle to a different owner.
+              </p>
+            </div>
+          )}
 
           <FormField
             control={form.control}
