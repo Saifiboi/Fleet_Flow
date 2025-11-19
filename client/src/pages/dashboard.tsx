@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Link, useLocation } from "wouter";
 import { Car, FolderKanban, AlertTriangle, DollarSign, Check, Wrench, X, Eye, Edit, FileText } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
 
@@ -15,6 +17,8 @@ export default function Dashboard() {
   const { data: assignments = [], isLoading: assignmentsLoading } = useAssignments();
 
   const { data: outstandingPayments = [], isLoading: paymentsLoading } = useOutstandingPayments();
+
+  const [, setLocation] = useLocation();
 
   if (statsLoading) {
     return (
@@ -88,77 +92,93 @@ export default function Dashboard() {
     <div className="space-y-6" data-testid="dashboard">
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card data-testid="stat-total-vehicles">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Total Vehicles</p>
-                <p className="text-2xl font-bold text-foreground">{stats?.totalVehicles || 0}</p>
-              </div>
-              <div className="bg-primary/10 p-3 rounded-full">
-                <Car className="text-primary w-6 h-6" />
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              <span className="text-green-600">+2</span> from last month
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card data-testid="stat-active-projects">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Active Projects</p>
-                <p className="text-2xl font-bold text-foreground">{stats?.activeProjects || 0}</p>
-              </div>
-              <div className="bg-green-100 p-3 rounded-full">
-                <FolderKanban className="text-green-600 w-6 h-6" />
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              <span className="text-green-600">+1</span> new this week
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card data-testid="stat-outstanding-payments">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Outstanding Payments</p>
-                <p className="text-2xl font-bold text-foreground">
-                  {stats?.outstandingAmount?.toLocaleString() || 0}
+        <Link href="/vehicles" aria-label="View all vehicles">
+          <a className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary/50 text-foreground no-underline">
+            <Card data-testid="stat-total-vehicles" className="transition-shadow hover:shadow-lg cursor-pointer">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Total Vehicles</p>
+                    <p className="text-2xl font-bold text-foreground">{stats?.totalVehicles || 0}</p>
+                  </div>
+                  <div className="bg-primary/10 p-3 rounded-full">
+                    <Car className="text-primary w-6 h-6" />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  <span className="text-green-600">+2</span> from last month
                 </p>
-              </div>
-              <div className="bg-orange-100 p-3 rounded-full">
-                <AlertTriangle className="text-orange-600 w-6 h-6" />
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              <span className="text-red-600">5</span> overdue invoices
-            </p>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          </a>
+        </Link>
 
-        <Card data-testid="stat-monthly-revenue">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Monthly Revenue</p>
-                <p className="text-2xl font-bold text-foreground">
-                  {stats?.monthlyRevenue?.toLocaleString() || 0}
+        <Link href="/projects" aria-label="View active projects">
+          <a className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary/50 text-foreground no-underline">
+            <Card data-testid="stat-active-projects" className="transition-shadow hover:shadow-lg cursor-pointer">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Active Projects</p>
+                    <p className="text-2xl font-bold text-foreground">{stats?.activeProjects || 0}</p>
+                  </div>
+                  <div className="bg-green-100 p-3 rounded-full">
+                    <FolderKanban className="text-green-600 w-6 h-6" />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  <span className="text-green-600">+1</span> new this week
                 </p>
-              </div>
-              <div className="bg-green-100 p-3 rounded-full">
-                <DollarSign className="text-green-600 w-6 h-6" />
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              <span className="text-green-600">+15%</span> from last month
-            </p>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          </a>
+        </Link>
+
+        <Link href="/payments" aria-label="Review outstanding payments">
+          <a className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary/50 text-foreground no-underline">
+            <Card data-testid="stat-outstanding-payments" className="transition-shadow hover:shadow-lg cursor-pointer">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Outstanding Payments</p>
+                    <p className="text-2xl font-bold text-foreground">
+                      {stats?.outstandingAmount?.toLocaleString() || 0}
+                    </p>
+                  </div>
+                  <div className="bg-orange-100 p-3 rounded-full">
+                    <AlertTriangle className="text-orange-600 w-6 h-6" />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  <span className="text-red-600">5</span> overdue invoices
+                </p>
+              </CardContent>
+            </Card>
+          </a>
+        </Link>
+
+        <Link href="/payments" aria-label="View revenue reports">
+          <a className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary/50 text-foreground no-underline">
+            <Card data-testid="stat-monthly-revenue" className="transition-shadow hover:shadow-lg cursor-pointer">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Monthly Revenue</p>
+                    <p className="text-2xl font-bold text-foreground">
+                      {stats?.monthlyRevenue?.toLocaleString() || 0}
+                    </p>
+                  </div>
+                  <div className="bg-green-100 p-3 rounded-full">
+                    <DollarSign className="text-green-600 w-6 h-6" />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  <span className="text-green-600">+15%</span> from last month
+                </p>
+              </CardContent>
+            </Card>
+          </a>
+        </Link>
       </div>
 
       {/* Content Grid */}
@@ -257,7 +277,12 @@ export default function Dashboard() {
                   ))
                 )}
               </div>
-              <Button variant="ghost" className="w-full mt-4 text-primary" data-testid="view-all-assignments">
+              <Button
+                variant="ghost"
+                className="w-full mt-4 text-primary"
+                data-testid="view-all-assignments"
+                onClick={() => setLocation("/assignments")}
+              >
                 View All Assignments
               </Button>
             </CardContent>
@@ -289,7 +314,12 @@ export default function Dashboard() {
                   ))
                 )}
               </div>
-              <Button variant="ghost" className="w-full mt-4 text-primary" data-testid="manage-payments">
+              <Button
+                variant="ghost"
+                className="w-full mt-4 text-primary"
+                data-testid="manage-payments"
+                onClick={() => setLocation("/payments")}
+              >
                 Manage Payments
               </Button>
             </CardContent>
@@ -322,82 +352,86 @@ export default function Dashboard() {
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Vehicle</TableHead>
-                <TableHead>Owner</TableHead>
-                <TableHead>Project</TableHead>
-                <TableHead>Monthly Rate</TableHead>
-                <TableHead>Assignment Date</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {assignmentsLoading ? (
-                Array.from({ length: 3 }).map((_, i) => (
-                  <TableRow key={i}>
-                    {Array.from({ length: 7 }).map((_, j) => (
-                      <TableCell key={j}>
-                        <Skeleton className="h-4 w-full" />
-                      </TableCell>
-                    ))}
+          <ScrollArea className="h-[60vh]">
+            <div className="rounded-md border">
+              <Table className="min-w-full">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Vehicle</TableHead>
+                    <TableHead>Owner</TableHead>
+                    <TableHead>Project</TableHead>
+                    <TableHead>Monthly Rate</TableHead>
+                    <TableHead>Assignment Date</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
-                ))
-              ) : (
-                assignments?.slice(0, 5).map((assignment: any) => (
-                  <TableRow key={assignment.id} data-testid={`assignment-row-${assignment.id}`}>
-                    <TableCell>
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                          <Car className="text-primary w-5 h-5" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">
-                            {assignment.vehicle.make} {assignment.vehicle.model} {assignment.vehicle.year}
-                          </p>
-                          <p className="text-xs text-muted-foreground">License: {assignment.vehicle.licensePlate}</p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <p className="text-sm font-medium text-foreground">{assignment.vehicle.owner.name}</p>
-                        <p className="text-xs text-muted-foreground">{assignment.vehicle.owner.phone}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-sm font-medium text-foreground">{assignment.project.name}</p>
-                      <p className="text-xs text-muted-foreground">{assignment.project.location}</p>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-sm font-semibold text-foreground">${assignment.monthlyRate}</p>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-sm text-foreground">{format(new Date(assignment.startDate), "MMM dd, yyyy")}</p>
-                    </TableCell>
-                    <TableCell>
-                      {getStatusBadge(assignment.status)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <Button variant="ghost" size="sm" data-testid={`edit-assignment-${assignment.id}`}>
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" data-testid={`view-assignment-${assignment.id}`}>
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700" data-testid={`delete-assignment-${assignment.id}`}>
-                          <X className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                </TableHeader>
+                <TableBody>
+                  {assignmentsLoading ? (
+                    Array.from({ length: 3 }).map((_, i) => (
+                      <TableRow key={i}>
+                        {Array.from({ length: 7 }).map((_, j) => (
+                          <TableCell key={j}>
+                            <Skeleton className="h-4 w-full" />
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))
+                  ) : (
+                    assignments?.slice(0, 5).map((assignment: any) => (
+                      <TableRow key={assignment.id} data-testid={`assignment-row-${assignment.id}`}>
+                        <TableCell>
+                          <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+                              <Car className="text-primary w-5 h-5" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-foreground">
+                                {assignment.vehicle.make} {assignment.vehicle.model} {assignment.vehicle.year}
+                              </p>
+                              <p className="text-xs text-muted-foreground">License: {assignment.vehicle.licensePlate}</p>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="text-sm font-medium text-foreground">{assignment.vehicle.owner.name}</p>
+                            <p className="text-xs text-muted-foreground">{assignment.vehicle.owner.phone}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <p className="text-sm font-medium text-foreground">{assignment.project.name}</p>
+                          <p className="text-xs text-muted-foreground">{assignment.project.location}</p>
+                        </TableCell>
+                        <TableCell>
+                          <p className="text-sm font-semibold text-foreground">${assignment.monthlyRate}</p>
+                        </TableCell>
+                        <TableCell>
+                          <p className="text-sm text-foreground">{format(new Date(assignment.startDate), "MMM dd, yyyy")}</p>
+                        </TableCell>
+                        <TableCell>
+                          {getStatusBadge(assignment.status)}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <Button variant="ghost" size="sm" data-testid={`edit-assignment-${assignment.id}`}>
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button variant="ghost" size="sm" data-testid={`view-assignment-${assignment.id}`}>
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700" data-testid={`delete-assignment-${assignment.id}`}>
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </ScrollArea>
         </CardContent>
       </Card>
 
@@ -426,73 +460,77 @@ export default function Dashboard() {
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Project</TableHead>
-                <TableHead>Vehicle</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Due Date</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paymentsLoading ? (
-                Array.from({ length: 3 }).map((_, i) => (
-                  <TableRow key={i}>
-                    {Array.from({ length: 6 }).map((_, j) => (
-                      <TableCell key={j}>
-                        <Skeleton className="h-4 w-full" />
-                      </TableCell>
-                    ))}
+          <ScrollArea className="h-[60vh]">
+            <div className="rounded-md border">
+              <Table className="min-w-full">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Project</TableHead>
+                    <TableHead>Vehicle</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Due Date</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
-                ))
-              ) : (
-                outstandingPayments?.slice(0, 5).map((payment: any) => (
-                  <TableRow key={payment.id} data-testid={`payment-row-${payment.id}`}>
-                    <TableCell>
-                      <p className="text-sm font-medium text-foreground">{payment.assignment.project.name}</p>
-                      <p className="text-xs text-muted-foreground">Invoice #{payment.invoiceNumber || 'Pending'}</p>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-sm font-medium text-foreground">
-                        {payment.assignment.vehicle.make} {payment.assignment.vehicle.model} {payment.assignment.vehicle.year}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{payment.assignment.vehicle.licensePlate}</p>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-sm font-semibold text-foreground">
-                        ${formatCurrency(payment.outstandingAmount)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        of ${formatCurrency(payment.amount)}
-                      </p>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-sm text-foreground">{format(new Date(payment.dueDate), "MMM dd, yyyy")}</p>
-                    </TableCell>
-                    <TableCell>
-                      {getPaymentStatusBadge(payment.status, payment.dueDate, payment.outstandingAmount)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <Button variant="ghost" size="sm" data-testid={`pay-${payment.id}`}>
-                          <DollarSign className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" data-testid={`view-payment-${payment.id}`}>
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" className="text-green-600 hover:text-green-800" data-testid={`mark-paid-${payment.id}`}>
-                          <Check className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                </TableHeader>
+                <TableBody>
+                  {paymentsLoading ? (
+                    Array.from({ length: 3 }).map((_, i) => (
+                      <TableRow key={i}>
+                        {Array.from({ length: 6 }).map((_, j) => (
+                          <TableCell key={j}>
+                            <Skeleton className="h-4 w-full" />
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))
+                  ) : (
+                    outstandingPayments?.slice(0, 5).map((payment: any) => (
+                      <TableRow key={payment.id} data-testid={`payment-row-${payment.id}`}>
+                        <TableCell>
+                          <p className="text-sm font-medium text-foreground">{payment.assignment.project.name}</p>
+                          <p className="text-xs text-muted-foreground">Invoice #{payment.invoiceNumber || "Pending"}</p>
+                        </TableCell>
+                        <TableCell>
+                          <p className="text-sm font-medium text-foreground">
+                            {payment.assignment.vehicle.make} {payment.assignment.vehicle.model} {payment.assignment.vehicle.year}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{payment.assignment.vehicle.licensePlate}</p>
+                        </TableCell>
+                        <TableCell>
+                          <p className="text-sm font-semibold text-foreground">
+                            ${formatCurrency(payment.outstandingAmount)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            of ${formatCurrency(payment.amount)}
+                          </p>
+                        </TableCell>
+                        <TableCell>
+                          <p className="text-sm text-foreground">{format(new Date(payment.dueDate), "MMM dd, yyyy")}</p>
+                        </TableCell>
+                        <TableCell>
+                          {getPaymentStatusBadge(payment.status, payment.dueDate, payment.outstandingAmount)}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <Button variant="ghost" size="sm" data-testid={`pay-${payment.id}`}>
+                              <DollarSign className="w-4 h-4" />
+                            </Button>
+                            <Button variant="ghost" size="sm" data-testid={`view-payment-${payment.id}`}>
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            <Button variant="ghost" size="sm" className="text-green-600 hover:text-green-800" data-testid={`mark-paid-${payment.id}`}>
+                              <Check className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </ScrollArea>
         </CardContent>
       </Card>
     </div>
