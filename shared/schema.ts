@@ -217,14 +217,14 @@ export const vehicleAttendanceRelations = relations(vehicleAttendance, ({ one })
 
 export const insertUserSchema = createInsertSchema(users, {
   email: z.string().email(),
-  role: z.enum(["admin", "owner"]),
+  role: z.enum(["admin", "owner", "employee"]),
 });
 
 export const createUserSchema = z
   .object({
     email: z.string().email(),
     password: z.string().min(8, "Password must be at least 8 characters long"),
-    role: z.enum(["admin", "owner"]),
+    role: z.enum(["admin", "owner", "employee"]),
     ownerId: z.string().uuid().optional().nullable(),
   })
   .superRefine((data, ctx) => {
@@ -240,6 +240,13 @@ export const createUserSchema = z
         code: z.ZodIssueCode.custom,
         path: ["ownerId"],
         message: "Admin accounts cannot be linked to an owner",
+      });
+    }
+    if (data.role === "employee" && data.ownerId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["ownerId"],
+        message: "Employee accounts cannot be linked to an owner",
       });
     }
   });

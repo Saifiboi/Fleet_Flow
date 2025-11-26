@@ -346,6 +346,7 @@ export default function Users() {
                             </FormControl>
                             <SelectContent>
                               <SelectItem value="owner">Owner</SelectItem>
+                              <SelectItem value="employee">Employee</SelectItem>
                               <SelectItem value="admin">Admin</SelectItem>
                             </SelectContent>
                           </Select>

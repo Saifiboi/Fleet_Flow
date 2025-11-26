@@ -31,12 +31,12 @@ const navigationItems: NavigationItem[] = [
   { path: "/", label: "Dashboard", icon: BarChart3, roles: ["admin"] },
   { path: "/users", label: "Users", icon: Shield, roles: ["admin"] },
   { path: "/owners", label: "Owners", icon: Users, roles: ["admin"] },
-  { path: "/vehicles", label: "Vehicles", icon: Car, roles: ["admin", "owner"] },
-  { path: "/projects", label: "Projects", icon: FolderKanban, roles: ["admin"] },
-  { path: "/assignments", label: "Assignments", icon: Calendar, roles: ["admin", "owner"] },
-  { path: "/attendance", label: "Attendance", icon: Calendar, roles: ["admin", "owner"] },
+  { path: "/vehicles", label: "Vehicles", icon: Car, roles: ["admin", "owner", "employee"] },
+  { path: "/projects", label: "Projects", icon: FolderKanban, roles: ["admin", "employee"] },
+  { path: "/assignments", label: "Assignments", icon: Calendar, roles: ["admin", "owner", "employee"] },
+  { path: "/attendance", label: "Attendance", icon: Calendar, roles: ["admin", "owner", "employee"] },
   { path: "/payments", label: "Payments", icon: CreditCard, roles: ["admin", "owner"] },
-  { path: "/maintenance", label: "Maintenance", icon: Wrench, roles: ["admin", "owner"] },
+  { path: "/maintenance", label: "Maintenance", icon: Wrench, roles: ["admin", "owner", "employee"] },
 ] as const;
 
 export default function Sidebar({ isOpen }: SidebarProps) {

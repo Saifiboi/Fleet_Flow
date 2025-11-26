@@ -29,7 +29,7 @@ export default function Vehicles() {
   const [viewVehicle, setViewVehicle] = useState<VehicleWithOwner | null>(null);
   const { toast } = useToast();
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const canManageVehicles = user?.role === "admin" || user?.role === "employee";
 
   const { data: vehicles = [], isLoading } = useVehicles();
   const { data: ownershipHistory = [], isLoading: isOwnershipHistoryLoading } = useOwnershipHistoryByVehicle(
@@ -170,7 +170,7 @@ export default function Vehicles() {
               <Car className="w-5 h-5" />
               <span>Vehicles</span>
             </CardTitle>
-            {isAdmin && (
+            {canManageVehicles && (
               <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
                 <DialogTrigger asChild>
                   <Button data-testid="add-vehicle-button">
@@ -231,7 +231,7 @@ export default function Vehicles() {
                     <TableHead>License Plate</TableHead>
                     <TableHead>Year</TableHead>
                     <TableHead>Status</TableHead>
-                    {isAdmin && <TableHead>Actions</TableHead>}
+                    {canManageVehicles && <TableHead>Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -292,7 +292,7 @@ export default function Vehicles() {
                         <TableCell>
                           {getStatusBadge(vehicle.status)}
                         </TableCell>
-                        {isAdmin && (
+                        {canManageVehicles && (
                           <TableCell>
                             <div className="flex items-center space-x-2">
                               <Button

@@ -30,12 +30,12 @@ const protectedRoutes: ProtectedRoute[] = [
   { path: "/", component: Dashboard, roles: ["admin"] },
   { path: "/users", component: Users, roles: ["admin"] },
   { path: "/owners", component: Owners, roles: ["admin"] },
-  { path: "/vehicles", component: Vehicles, roles: ["admin", "owner"] },
-  { path: "/projects", component: Projects, roles: ["admin"] },
-  { path: "/assignments", component: Assignments, roles: ["admin", "owner"] },
-  { path: "/attendance", component: Attendance, roles: ["admin", "owner"] },
+  { path: "/vehicles", component: Vehicles, roles: ["admin", "owner", "employee"] },
+  { path: "/projects", component: Projects, roles: ["admin", "employee"] },
+  { path: "/assignments", component: Assignments, roles: ["admin", "owner", "employee"] },
+  { path: "/attendance", component: Attendance, roles: ["admin", "owner", "employee"] },
   { path: "/payments", component: Payments, roles: ["admin", "owner"] },
-  { path: "/maintenance", component: Maintenance, roles: ["admin", "owner"] },
+  { path: "/maintenance", component: Maintenance, roles: ["admin", "owner", "employee"] },
 ];
 
 function RequireRole({ roles, children }: { roles?: UserRole[]; children: React.ReactNode }) {
@@ -60,7 +60,7 @@ function ProtectedApp() {
 
   useEffect(() => {
     if (!isLoading && user) {
-      if (user.role === "owner" && location === "/") {
+      if ((user.role === "owner" || user.role === "employee") && location === "/") {
         setLocation("/vehicles", { replace: true });
       }
       if (location === "/login") {

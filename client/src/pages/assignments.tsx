@@ -28,7 +28,7 @@ export default function Assignments() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const canManageAssignments = user?.role === "admin" || user?.role === "employee";
 
   const { data: assignments = [], isLoading } = useAssignments();
 
@@ -103,7 +103,7 @@ export default function Assignments() {
               <Calendar className="w-5 h-5" />
               <span>Vehicle Assignments</span>
             </CardTitle>
-            {isAdmin && (
+            {canManageAssignments && (
               <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
                 <DialogTrigger asChild>
                   <Button data-testid="add-assignment-button">
@@ -176,7 +176,7 @@ export default function Assignments() {
                     <TableHead>Monthly Rate (PKR)</TableHead>
                     <TableHead>Assignment Period</TableHead>
                     <TableHead>Status</TableHead>
-                    {isAdmin && <TableHead>Actions</TableHead>}
+                    {canManageAssignments && <TableHead>Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -260,7 +260,7 @@ export default function Assignments() {
                         <TableCell>
                           {getStatusBadge(assignment.status)}
                         </TableCell>
-                        {isAdmin && (
+                        {canManageAssignments && (
                           <TableCell>
                             <div className="flex items-center space-x-2">
                               <Button
