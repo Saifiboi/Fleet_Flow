@@ -60,11 +60,11 @@ import { Shield, UserPlus, Mail, UserX, UserCheck, KeyRound } from "lucide-react
 
 const createUserFormSchema = createUserSchema;
 const changePasswordFormSchema = changePasswordSchema;
-const resetOwnerPasswordFormSchema = adminResetPasswordSchema;
+const resetUserPasswordFormSchema = adminResetPasswordSchema;
 
 type CreateUserFormValues = z.infer<typeof createUserFormSchema>;
 type ChangePasswordFormValues = z.infer<typeof changePasswordFormSchema>;
-type ResetOwnerPasswordFormValues = z.infer<typeof resetOwnerPasswordFormSchema>;
+type ResetUserPasswordFormValues = z.infer<typeof resetUserPasswordFormSchema>;
 
 export default function Users() {
   const { data: users = [], isLoading: isLoadingUsers } = useUsers();
@@ -93,8 +93,8 @@ export default function Users() {
     },
   });
 
-  const resetPasswordForm = useForm<ResetOwnerPasswordFormValues>({
-    resolver: zodResolver(resetOwnerPasswordFormSchema),
+  const resetPasswordForm = useForm<ResetUserPasswordFormValues>({
+    resolver: zodResolver(resetUserPasswordFormSchema),
     defaultValues: {
       newPassword: "",
       confirmPassword: "",
@@ -184,10 +184,10 @@ export default function Users() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       toast({
-        title: variables.isActive ? "Owner enabled" : "Owner disabled",
+        title: variables.isActive ? "Account enabled" : "Account disabled",
         description: variables.isActive
-          ? "The owner can now access the system."
-          : "The owner has been prevented from accessing the system.",
+          ? "The user can now access the system."
+          : "The user has been prevented from accessing the system.",
       });
     },
     onError: (error: any) => {
@@ -219,8 +219,8 @@ export default function Users() {
     },
   });
 
-  const resetOwnerPasswordMutation = useMutation({
-    mutationFn: async ({ userId, ...values }: ResetOwnerPasswordFormValues & { userId: string }) => {
+  const resetUserPasswordMutation = useMutation({
+    mutationFn: async ({ userId, ...values }: ResetUserPasswordFormValues & { userId: string }) => {
       await apiRequest("POST", `/api/users/${userId}/reset-password`, values);
     },
     onSuccess: () => {
@@ -230,7 +230,7 @@ export default function Users() {
       });
       toast({
         title: "Password reset",
-        description: "A new password has been set for the owner account.",
+        description: "A new password has been set for the account.",
       });
       handleResetDialogChange(false);
     },
@@ -255,16 +255,16 @@ export default function Users() {
     changePasswordMutation.mutate(values);
   };
 
-  const onResetOwnerPasswordSubmit = (values: ResetOwnerPasswordFormValues) => {
+  const onResetUserPasswordSubmit = (values: ResetUserPasswordFormValues) => {
     if (!userToReset) {
       return;
     }
 
-    resetOwnerPasswordMutation.mutate({ userId: userToReset.id, ...values });
+    resetUserPasswordMutation.mutate({ userId: userToReset.id, ...values });
   };
 
   const renderStatusBadge = (user: UserWithOwner) => {
-    if (user.role !== "owner") {
+    if (user.role === "admin") {
       return <Badge variant="secondary">Admin</Badge>;
     }
 
@@ -465,14 +465,14 @@ export default function Users() {
                       {new Date(user.createdAt).toLocaleDateString()}
                     </TableCell>
                     <TableCell className="text-right">
-                      {user.role === "owner" ? (
+                      {user.role !== "admin" ? (
                         <div className="flex items-center justify-end space-x-2">
                           <Button
                             variant="outline"
                             size="sm"
                             type="button"
                             onClick={() => openResetDialog(user)}
-                            disabled={resetOwnerPasswordMutation.isPending}
+                            disabled={resetUserPasswordMutation.isPending}
                             data-testid={`reset-password-${user.id}`}
                           >
                             <KeyRound className="mr-1 h-3 w-3" /> Reset
@@ -501,14 +501,14 @@ export default function Users() {
       <Dialog open={isResetDialogOpen} onOpenChange={handleResetDialogChange}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Reset Owner Password</DialogTitle>
+            <DialogTitle>Reset User Password</DialogTitle>
             <DialogDescription>
-              Set a new password for {userToReset?.owner?.name ?? userToReset?.email ?? "this owner account"}.
+              Set a new password for {userToReset?.owner?.name ?? userToReset?.email ?? "this account"}.
             </DialogDescription>
           </DialogHeader>
           <Form {...resetPasswordForm}>
             <form
-              onSubmit={resetPasswordForm.handleSubmit(onResetOwnerPasswordSubmit)}
+              onSubmit={resetPasswordForm.handleSubmit(onResetUserPasswordSubmit)}
               className="space-y-4"
               data-testid="reset-owner-password-form"
             >
@@ -544,8 +544,8 @@ export default function Users() {
                 <Button type="button" variant="outline" onClick={() => handleResetDialogChange(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={resetOwnerPasswordMutation.isPending || !userToReset}>
-                  {resetOwnerPasswordMutation.isPending ? "Resetting..." : "Reset Password"}
+                <Button type="submit" disabled={resetUserPasswordMutation.isPending || !userToReset}>
+                  {resetUserPasswordMutation.isPending ? "Resetting..." : "Reset Password"}
                 </Button>
               </DialogFooter>
             </form>

@@ -320,8 +320,8 @@ export async function registerRoutes(app: Application): Promise<void> {
         }
       }
 
-      if (Object.prototype.hasOwnProperty.call(validatedData, "isActive") && user.role !== "owner") {
-        return res.status(400).json({ message: "Only owner accounts can be enabled or disabled" });
+      if (Object.prototype.hasOwnProperty.call(validatedData, "isActive") && user.role === "admin") {
+        return res.status(400).json({ message: "Admin accounts cannot be enabled or disabled" });
       }
 
       const updated = await storage.updateUser(user.id, validatedData);
@@ -352,8 +352,8 @@ export async function registerRoutes(app: Application): Promise<void> {
         return res.status(404).json({ message: "User not found" });
       }
 
-      if (user.role !== "owner") {
-        return res.status(400).json({ message: "Only owner accounts can have their password reset by an admin" });
+      if (user.role === "admin") {
+        return res.status(400).json({ message: "Admin passwords cannot be reset by another admin" });
       }
 
       const passwordHash = await hashPassword(validatedData.newPassword);
