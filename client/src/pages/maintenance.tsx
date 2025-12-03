@@ -195,7 +195,7 @@ export default function Maintenance() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card data-testid="maintenance-cost-card">
           <CardContent className="p-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Total Maintenance Cost</p>
                 <p className="text-2xl font-bold">{totalMaintenanceCost.toLocaleString()}</p>
@@ -209,7 +209,7 @@ export default function Maintenance() {
 
         <Card data-testid="maintenance-records-card">
           <CardContent className="p-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Total Records</p>
                 <p className="text-2xl font-bold">{filteredRecords?.length || 0}</p>
@@ -223,7 +223,7 @@ export default function Maintenance() {
 
         <Card data-testid="overdue-maintenance-card">
           <CardContent className="p-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Overdue Maintenance</p>
                 <p className="text-2xl font-bold text-red-600">{overdueRecords.length}</p>
@@ -238,7 +238,7 @@ export default function Maintenance() {
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="flex items-center space-x-2">
               <Wrench className="w-5 h-5" />
               <span>Maintenance Records</span>

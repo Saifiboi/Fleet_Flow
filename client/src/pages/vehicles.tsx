@@ -166,8 +166,8 @@ export default function Vehicles() {
     <div className="space-y-6" data-testid="vehicles-page">
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center space-x-2">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <CardTitle className="flex items-center gap-2">
               <Car className="w-5 h-5" />
               <span>Vehicles</span>
             </CardTitle>
@@ -196,8 +196,8 @@ export default function Vehicles() {
         </CardHeader>
         <CardContent>
           {/* Filters */}
-          <div className="flex items-center space-x-4 mb-6">
-            <div className="relative flex-1 max-w-sm">
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+            <div className="relative w-full sm:max-w-sm">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
               <Input
                 placeholder="Search vehicles..."
@@ -208,7 +208,7 @@ export default function Vehicles() {
               />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-40" data-testid="filter-status">
+              <SelectTrigger className="w-full sm:w-40" data-testid="filter-status">
                 <SelectValue placeholder="All Statuses" />
               </SelectTrigger>
               <SelectContent>

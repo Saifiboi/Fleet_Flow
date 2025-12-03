@@ -73,11 +73,11 @@ export default function Header({ onMenuClick }: HeaderProps) {
 
   return (
     <header
-      className="bg-card border-b border-border px-6 py-4"
+      className="bg-card border-b border-border px-4 py-3 sm:px-6 sm:py-4"
       data-testid="header"
     >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3 sm:gap-4">
           <Button
             variant="ghost"
             size="sm"
@@ -88,7 +88,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
             <Menu className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">
+            <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
               {pageInfo.title}
             </h1>
             <p className="text-sm text-muted-foreground">
@@ -96,8 +96,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
             </p>
           </div>
         </div>
-        <div className="flex items-center space-x-3">
-          <div className="hidden text-sm text-muted-foreground sm:block" title={user?.email}>
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <div className="hidden truncate text-sm text-muted-foreground sm:block" title={user?.email}>
             {user?.email}
           </div>
           <Button

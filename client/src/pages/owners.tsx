@@ -63,8 +63,8 @@ export default function Owners() {
     <div className="space-y-6" data-testid="owners-page">
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center space-x-2">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <CardTitle className="flex items-center gap-2">
               <Users className="w-5 h-5" />
               <span>Vehicle Owners</span>
             </CardTitle>
@@ -92,7 +92,7 @@ export default function Owners() {
         <CardContent>
           {/* Search */}
           <div className="mb-6">
-            <div className="relative max-w-sm">
+            <div className="relative w-full sm:max-w-sm">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
               <Input
                 placeholder="Search owners..."
