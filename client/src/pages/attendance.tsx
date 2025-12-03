@@ -66,8 +66,8 @@ export default function Attendance() {
   const [summaryEndDate, setSummaryEndDate] = useState<string>("");
   const { toast } = useToast();
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
-  const canManageAttendance = isAdmin;
+  const canManageAttendance =
+    user?.role === "admin" || (user?.role === "employee" && user.employeeAccess?.includes("attendance"));
   const today = useMemo(() => startOfToday(), []);
   const maxMonth = useMemo(() => startOfMonth(today), [today]);
 
@@ -718,7 +718,7 @@ export default function Attendance() {
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle>Vehicle Attendance</CardTitle>
-              {isAdmin ? (
+              {canManageAttendance ? (
                 <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                   <ConfirmDialog
                     title="Delete attendance?"
@@ -813,7 +813,7 @@ export default function Attendance() {
         <CardContent>
           {selectedAssignment ? (
             <div className="space-y-4">
-              {isAdmin ? (
+              {canManageAttendance ? (
                 <div className="flex flex-col gap-3 rounded-md border p-3">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-2">
@@ -924,8 +924,8 @@ export default function Attendance() {
                     <TableHead>Previous Status</TableHead>
                     <TableHead>Payment Status</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>{isAdmin ? "Note" : "Notes"}</TableHead>
-                    {isAdmin && <TableHead>Mark</TableHead>}
+                    <TableHead>{canManageAttendance ? "Note" : "Notes"}</TableHead>
+                    {canManageAttendance && <TableHead>Mark</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1015,7 +1015,7 @@ export default function Attendance() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {isAdmin ? (
+                          {canManageAttendance ? (
                             <UiSelect
                               value={state.status}
                               onValueChange={(v) => handleStatusChange(dateStr, v)}
@@ -1042,7 +1042,7 @@ export default function Attendance() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {isAdmin ? (
+                          {canManageAttendance ? (
                             state.status !== "present" && !isFutureDate && !isLocked && (
                               <Input
                                 value={state.note || ""}
@@ -1056,7 +1056,7 @@ export default function Attendance() {
                             <span className="text-xs text-muted-foreground">No notes</span>
                           )}
                         </TableCell>
-                        {isAdmin && (
+                        {canManageAttendance && (
                           <TableCell>
                             <Checkbox
                               checked={!!state.selected}

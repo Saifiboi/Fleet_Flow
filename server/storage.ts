@@ -205,7 +205,7 @@ export interface IStorage {
   getUsers(): Promise<UserWithOwner[]>;
   updateUser(
     id: string,
-    updates: Partial<Pick<User, "ownerId" | "isActive">>,
+    updates: Partial<Pick<User, "ownerId" | "isActive" | "employeeAccess">>,
   ): Promise<User>;
   updateUserPassword(id: string, passwordHash: string): Promise<User>;
 }
@@ -1908,6 +1908,7 @@ export class DatabaseStorage implements IStorage {
           ownerId: users.ownerId,
           createdAt: users.createdAt,
           isActive: users.isActive,
+          employeeAccess: users.employeeAccess,
           owner: owners,
         })
         .from(users)
@@ -1928,7 +1929,7 @@ export class DatabaseStorage implements IStorage {
 
   async updateUser(
     id: string,
-    updates: Partial<Pick<User, "ownerId" | "isActive">>,
+    updates: Partial<Pick<User, "ownerId" | "isActive" | "employeeAccess">>,
   ): Promise<User> {
     const updateData: Partial<InsertUser> = {};
 
@@ -1938,6 +1939,10 @@ export class DatabaseStorage implements IStorage {
 
     if (Object.prototype.hasOwnProperty.call(updates, "isActive")) {
       updateData.isActive = updates.isActive;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updates, "employeeAccess")) {
+      updateData.employeeAccess = updates.employeeAccess ?? [];
     }
 
     const [updated] = await withRetry(() =>

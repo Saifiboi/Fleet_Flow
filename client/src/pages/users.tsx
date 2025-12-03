@@ -36,6 +36,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -53,18 +54,53 @@ import {
   changePasswordSchema,
   createUserSchema,
   adminResetPasswordSchema,
+  employeeAccessAreas,
   type UserRole,
+  type EmployeeAccessArea,
   type UserWithOwner,
 } from "@shared/schema";
-import { Shield, UserPlus, Mail, UserX, UserCheck, KeyRound } from "lucide-react";
+import { Shield, UserPlus, Mail, UserX, UserCheck, KeyRound, Settings2 } from "lucide-react";
 
 const createUserFormSchema = createUserSchema;
 const changePasswordFormSchema = changePasswordSchema;
-const resetOwnerPasswordFormSchema = adminResetPasswordSchema;
+const resetUserPasswordFormSchema = adminResetPasswordSchema;
 
 type CreateUserFormValues = z.infer<typeof createUserFormSchema>;
 type ChangePasswordFormValues = z.infer<typeof changePasswordFormSchema>;
-type ResetOwnerPasswordFormValues = z.infer<typeof resetOwnerPasswordFormSchema>;
+type ResetUserPasswordFormValues = z.infer<typeof resetUserPasswordFormSchema>;
+
+const employeeAccessOptions: { value: EmployeeAccessArea; label: string; description: string }[] = [
+  {
+    value: "vehicles",
+    label: "Vehicles",
+    description: "Manage fleet inventory and vehicle details.",
+  },
+  {
+    value: "projects",
+    label: "Projects",
+    description: "Create and update project records.",
+  },
+  {
+    value: "assignments",
+    label: "Assignments",
+    description: "Control vehicle and project assignments.",
+  },
+  {
+    value: "attendance",
+    label: "Attendance",
+    description: "Track vehicle attendance and status logs.",
+  },
+  {
+    value: "maintenance",
+    label: "Maintenance",
+    description: "Record and edit maintenance activities.",
+  },
+  {
+    value: "payments",
+    label: "Payments",
+    description: "Create invoices, record transactions, and manage balances.",
+  },
+];
 
 export default function Users() {
   const { data: users = [], isLoading: isLoadingUsers } = useUsers();
@@ -73,6 +109,8 @@ export default function Users() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [userToReset, setUserToReset] = useState<UserWithOwner | null>(null);
+  const [isAccessDialogOpen, setIsAccessDialogOpen] = useState(false);
+  const [userToManageAccess, setUserToManageAccess] = useState<UserWithOwner | null>(null);
 
   const createForm = useForm<CreateUserFormValues>({
     resolver: zodResolver(createUserFormSchema),
@@ -81,6 +119,7 @@ export default function Users() {
       password: "",
       role: "owner",
       ownerId: undefined,
+      employeeAccess: [],
     },
   });
 
@@ -93,12 +132,16 @@ export default function Users() {
     },
   });
 
-  const resetPasswordForm = useForm<ResetOwnerPasswordFormValues>({
-    resolver: zodResolver(resetOwnerPasswordFormSchema),
+  const resetPasswordForm = useForm<ResetUserPasswordFormValues>({
+    resolver: zodResolver(resetUserPasswordFormSchema),
     defaultValues: {
       newPassword: "",
       confirmPassword: "",
     },
+  });
+
+  const accessForm = useForm<{ employeeAccess: EmployeeAccessArea[] }>({
+    defaultValues: { employeeAccess: [] },
   });
 
   const selectedRole = createForm.watch("role");
@@ -111,6 +154,15 @@ export default function Users() {
   useEffect(() => {
     if (selectedRole === "admin") {
       createForm.setValue("ownerId", null);
+      createForm.setValue("employeeAccess", []);
+      return;
+    }
+
+    if (selectedRole === "employee") {
+      createForm.setValue("ownerId", null);
+      if ((createForm.getValues("employeeAccess") ?? []).length === 0) {
+        createForm.setValue("employeeAccess", [...employeeAccessAreas]);
+      }
       return;
     }
 
@@ -118,6 +170,8 @@ export default function Users() {
     if (currentOwnerId && !availableOwners.some((owner) => owner.id === currentOwnerId)) {
       createForm.setValue("ownerId", undefined);
     }
+
+    createForm.setValue("employeeAccess", []);
   }, [availableOwners, createForm, selectedRole]);
 
   const handleDialogChange = (open: boolean) => {
@@ -128,6 +182,7 @@ export default function Users() {
         password: "",
         role: "owner",
         ownerId: undefined,
+        employeeAccess: [],
       });
     }
   };
@@ -143,6 +198,14 @@ export default function Users() {
     }
   };
 
+  const handleAccessDialogChange = (open: boolean) => {
+    setIsAccessDialogOpen(open);
+    if (!open) {
+      setUserToManageAccess(null);
+      accessForm.reset({ employeeAccess: [] });
+    }
+  };
+
   const openResetDialog = (user: UserWithOwner) => {
     setUserToReset(user);
     setIsResetDialogOpen(true);
@@ -152,11 +215,18 @@ export default function Users() {
     });
   };
 
+  const openAccessDialog = (user: UserWithOwner) => {
+    setUserToManageAccess(user);
+    setIsAccessDialogOpen(true);
+    accessForm.reset({ employeeAccess: user.employeeAccess ?? [] });
+  };
+
   const createUserMutation = useMutation({
     mutationFn: async (values: CreateUserFormValues) => {
       const payload = {
         ...values,
         ownerId: values.role === "owner" ? values.ownerId : null,
+        employeeAccess: values.role === "employee" ? values.employeeAccess ?? [] : [],
       };
       await apiRequest("POST", "/api/users", payload);
     },
@@ -184,10 +254,10 @@ export default function Users() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       toast({
-        title: variables.isActive ? "Owner enabled" : "Owner disabled",
+        title: variables.isActive ? "Account enabled" : "Account disabled",
         description: variables.isActive
-          ? "The owner can now access the system."
-          : "The owner has been prevented from accessing the system.",
+          ? "The user can now access the system."
+          : "The user has been prevented from accessing the system.",
       });
     },
     onError: (error: any) => {
@@ -219,8 +289,8 @@ export default function Users() {
     },
   });
 
-  const resetOwnerPasswordMutation = useMutation({
-    mutationFn: async ({ userId, ...values }: ResetOwnerPasswordFormValues & { userId: string }) => {
+  const resetUserPasswordMutation = useMutation({
+    mutationFn: async ({ userId, ...values }: ResetUserPasswordFormValues & { userId: string }) => {
       await apiRequest("POST", `/api/users/${userId}/reset-password`, values);
     },
     onSuccess: () => {
@@ -230,13 +300,35 @@ export default function Users() {
       });
       toast({
         title: "Password reset",
-        description: "A new password has been set for the owner account.",
+        description: "A new password has been set for the account.",
       });
       handleResetDialogChange(false);
     },
     onError: (error: any) => {
       toast({
         title: "Failed to reset password",
+        description: error?.message || "An unexpected error occurred.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateEmployeeAccessMutation = useMutation({
+    mutationFn: async ({ id, employeeAccess }: { id: string; employeeAccess: EmployeeAccessArea[] }) => {
+      await apiRequest("PATCH", `/api/users/${id}`, { employeeAccess });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({
+        title: "Access updated",
+        description: "Employee permissions have been saved.",
+      });
+      handleAccessDialogChange(false);
+      accessForm.reset({ employeeAccess: variables.employeeAccess });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to update access",
         description: error?.message || "An unexpected error occurred.",
         variant: "destructive",
       });
@@ -255,16 +347,27 @@ export default function Users() {
     changePasswordMutation.mutate(values);
   };
 
-  const onResetOwnerPasswordSubmit = (values: ResetOwnerPasswordFormValues) => {
+  const onResetUserPasswordSubmit = (values: ResetUserPasswordFormValues) => {
     if (!userToReset) {
       return;
     }
 
-    resetOwnerPasswordMutation.mutate({ userId: userToReset.id, ...values });
+    resetUserPasswordMutation.mutate({ userId: userToReset.id, ...values });
+  };
+
+  const onAccessSubmit = (values: { employeeAccess: EmployeeAccessArea[] }) => {
+    if (!userToManageAccess) {
+      return;
+    }
+
+    updateEmployeeAccessMutation.mutate({
+      id: userToManageAccess.id,
+      employeeAccess: values.employeeAccess ?? [],
+    });
   };
 
   const renderStatusBadge = (user: UserWithOwner) => {
-    if (user.role !== "owner") {
+    if (user.role === "admin") {
       return <Badge variant="secondary">Admin</Badge>;
     }
 
@@ -276,6 +379,28 @@ export default function Users() {
       <Badge variant="destructive" className="bg-rose-100 text-rose-700 hover:bg-rose-100">
         <UserX className="mr-1 h-3 w-3" /> Disabled
       </Badge>
+    );
+  };
+
+  const renderEmployeeAccess = (user: UserWithOwner) => {
+    if (user.role !== "employee") {
+      return <span className="text-muted-foreground">—</span>;
+    }
+
+    if (!user.employeeAccess || user.employeeAccess.length === 0) {
+      return <Badge variant="outline">No access</Badge>;
+    }
+
+    return (
+      <div className="flex flex-wrap gap-1">
+        {employeeAccessOptions
+          .filter((option) => user.employeeAccess?.includes(option.value))
+          .map((option) => (
+            <Badge key={option.value} variant="secondary" className="capitalize">
+              {option.label}
+            </Badge>
+          ))}
+      </div>
     );
   };
 
@@ -346,6 +471,7 @@ export default function Users() {
                             </FormControl>
                             <SelectContent>
                               <SelectItem value="owner">Owner</SelectItem>
+                              <SelectItem value="employee">Employee</SelectItem>
                               <SelectItem value="admin">Admin</SelectItem>
                             </SelectContent>
                           </Select>
@@ -353,6 +479,45 @@ export default function Users() {
                         </FormItem>
                       )}
                     />
+
+                    {selectedRole === "employee" && (
+                      <FormField
+                        control={createForm.control}
+                        name="employeeAccess"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Operational Access</FormLabel>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {employeeAccessOptions.map((option) => {
+                                const isChecked = field.value?.includes(option.value);
+
+                                return (
+                                  <label
+                                    key={option.value}
+                                    className="flex cursor-pointer items-start space-x-3 rounded-md border p-3"
+                                  >
+                                    <Checkbox
+                                      checked={isChecked}
+                                      onCheckedChange={(checked) => {
+                                        const next = checked
+                                          ? [...(field.value ?? []), option.value]
+                                          : (field.value ?? []).filter((value) => value !== option.value);
+                                        field.onChange(next);
+                                      }}
+                                    />
+                                    <div className="space-y-1">
+                                      <p className="font-medium leading-none">{option.label}</p>
+                                      <p className="text-xs text-muted-foreground">{option.description}</p>
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
 
                     {selectedRole === "owner" && (
                       <FormField
@@ -416,6 +581,7 @@ export default function Users() {
               <TableRow>
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
+                <TableHead>Access</TableHead>
                 <TableHead>Owner</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
@@ -426,7 +592,7 @@ export default function Users() {
               {isLoadingUsers ? (
                 Array.from({ length: 4 }).map((_, index) => (
                   <TableRow key={index}>
-                    {Array.from({ length: 6 }).map((__, cellIndex) => (
+                    {Array.from({ length: 7 }).map((__, cellIndex) => (
                       <TableCell key={cellIndex}>
                         <Skeleton className="h-4 w-full" />
                       </TableCell>
@@ -435,7 +601,7 @@ export default function Users() {
                 ))
               ) : sortedUsers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
                     No users found. Create your first account to get started.
                   </TableCell>
                 </TableRow>
@@ -449,6 +615,7 @@ export default function Users() {
                       </div>
                     </TableCell>
                     <TableCell className="capitalize">{user.role}</TableCell>
+                    <TableCell>{renderEmployeeAccess(user)}</TableCell>
                     <TableCell>
                       {user.owner ? (
                         <div>
@@ -464,14 +631,26 @@ export default function Users() {
                       {new Date(user.createdAt).toLocaleDateString()}
                     </TableCell>
                     <TableCell className="text-right">
-                      {user.role === "owner" ? (
+                      {user.role !== "admin" ? (
                         <div className="flex items-center justify-end space-x-2">
+                          {user.role === "employee" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              type="button"
+                              onClick={() => openAccessDialog(user)}
+                              disabled={updateEmployeeAccessMutation.isPending}
+                              data-testid={`access-${user.id}`}
+                            >
+                              <Settings2 className="mr-1 h-3 w-3" /> Access
+                            </Button>
+                          )}
                           <Button
                             variant="outline"
                             size="sm"
                             type="button"
                             onClick={() => openResetDialog(user)}
-                            disabled={resetOwnerPasswordMutation.isPending}
+                            disabled={resetUserPasswordMutation.isPending}
                             data-testid={`reset-password-${user.id}`}
                           >
                             <KeyRound className="mr-1 h-3 w-3" /> Reset
@@ -500,14 +679,14 @@ export default function Users() {
       <Dialog open={isResetDialogOpen} onOpenChange={handleResetDialogChange}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Reset Owner Password</DialogTitle>
+            <DialogTitle>Reset User Password</DialogTitle>
             <DialogDescription>
-              Set a new password for {userToReset?.owner?.name ?? userToReset?.email ?? "this owner account"}.
+              Set a new password for {userToReset?.owner?.name ?? userToReset?.email ?? "this account"}.
             </DialogDescription>
           </DialogHeader>
           <Form {...resetPasswordForm}>
             <form
-              onSubmit={resetPasswordForm.handleSubmit(onResetOwnerPasswordSubmit)}
+              onSubmit={resetPasswordForm.handleSubmit(onResetUserPasswordSubmit)}
               className="space-y-4"
               data-testid="reset-owner-password-form"
             >
@@ -543,8 +722,68 @@ export default function Users() {
                 <Button type="button" variant="outline" onClick={() => handleResetDialogChange(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={resetOwnerPasswordMutation.isPending || !userToReset}>
-                  {resetOwnerPasswordMutation.isPending ? "Resetting..." : "Reset Password"}
+                <Button type="submit" disabled={resetUserPasswordMutation.isPending || !userToReset}>
+                  {resetUserPasswordMutation.isPending ? "Resetting..." : "Reset Password"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isAccessDialogOpen} onOpenChange={handleAccessDialogChange}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Manage Employee Access</DialogTitle>
+            <DialogDescription>
+              Choose which operational areas {userToManageAccess?.email ?? "this employee"} can access.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...accessForm}>
+            <form onSubmit={accessForm.handleSubmit(onAccessSubmit)} className="space-y-4">
+              <FormField
+                control={accessForm.control}
+                name="employeeAccess"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Operational Access</FormLabel>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {employeeAccessOptions.map((option) => {
+                        const isChecked = field.value?.includes(option.value);
+
+                        return (
+                          <label
+                            key={option.value}
+                            className="flex cursor-pointer items-start space-x-3 rounded-md border p-3"
+                          >
+                            <Checkbox
+                              checked={isChecked}
+                              onCheckedChange={(checked) => {
+                                const next = checked
+                                  ? [...(field.value ?? []), option.value]
+                                  : (field.value ?? []).filter((value) => value !== option.value);
+                                field.onChange(next);
+                              }}
+                            />
+                            <div className="space-y-1">
+                              <p className="font-medium leading-none">{option.label}</p>
+                              <p className="text-xs text-muted-foreground">{option.description}</p>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <DialogFooter className="flex items-center justify-end space-x-2">
+                <Button type="button" variant="outline" onClick={() => handleAccessDialogChange(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={updateEmployeeAccessMutation.isPending || !userToManageAccess}>
+                  {updateEmployeeAccessMutation.isPending ? "Saving..." : "Save Access"}
                 </Button>
               </DialogFooter>
             </form>

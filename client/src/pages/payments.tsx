@@ -58,6 +58,8 @@ export default function Payments() {
   const { toast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const canManagePayments =
+    isAdmin || (user?.role === "employee" && user.employeeAccess?.includes("payments"));
 
   const transactionForm = useForm<CreatePaymentTransaction>({
     defaultValues: {
@@ -617,7 +619,7 @@ export default function Payments() {
                   </p>
                 )}
 
-                {isAdmin && (
+                {canManagePayments && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <h5 className="text-sm font-semibold text-foreground">Add transaction</h5>
@@ -827,7 +829,7 @@ export default function Payments() {
               <span>Payments</span>
             </CardTitle>
             <div className="flex flex-wrap items-center gap-3">
-              {isAdmin && (
+              {canManagePayments && (
                 <>
               <Dialog
                 open={isCalculationOpen}
@@ -1370,7 +1372,7 @@ export default function Payments() {
                 <p className="text-sm text-muted-foreground">
                   Total Outstanding: <span className="font-semibold text-destructive">${totalOutstanding.toLocaleString()}</span>
                 </p>
-                {isAdmin && overdueCount > 0 && (
+                {canManagePayments && overdueCount > 0 && (
                   <Button variant="outline" size="sm" data-testid="send-reminders">
                     Send Reminders ({overdueCount})
                   </Button>
