@@ -29,7 +29,8 @@ export default function Vehicles() {
   const [viewVehicle, setViewVehicle] = useState<VehicleWithOwner | null>(null);
   const { toast } = useToast();
   const { user } = useAuth();
-  const canManageVehicles = user?.role === "admin" || user?.role === "employee";
+  const canManageVehicles =
+    user?.role === "admin" || (user?.role === "employee" && user.employeeAccess?.includes("vehicles"));
 
   const { data: vehicles = [], isLoading } = useVehicles();
   const { data: ownershipHistory = [], isLoading: isOwnershipHistoryLoading } = useOwnershipHistoryByVehicle(

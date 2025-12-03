@@ -28,7 +28,8 @@ export default function Assignments() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
-  const canManageAssignments = user?.role === "admin" || user?.role === "employee";
+  const canManageAssignments =
+    user?.role === "admin" || (user?.role === "employee" && user.employeeAccess?.includes("assignments"));
 
   const { data: assignments = [], isLoading } = useAssignments();
 

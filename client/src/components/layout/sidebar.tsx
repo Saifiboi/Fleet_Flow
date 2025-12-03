@@ -13,7 +13,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
-import type { UserRole } from "@shared/schema";
+import type { EmployeeAccessArea, UserRole } from "@shared/schema";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -25,18 +25,19 @@ type NavigationItem = {
   label: string;
   icon: LucideIcon;
   roles?: readonly UserRole[];
+  employeeAccess?: EmployeeAccessArea;
 };
 
 const navigationItems: NavigationItem[] = [
   { path: "/", label: "Dashboard", icon: BarChart3, roles: ["admin"] },
   { path: "/users", label: "Users", icon: Shield, roles: ["admin"] },
   { path: "/owners", label: "Owners", icon: Users, roles: ["admin"] },
-  { path: "/vehicles", label: "Vehicles", icon: Car, roles: ["admin", "owner", "employee"] },
-  { path: "/projects", label: "Projects", icon: FolderKanban, roles: ["admin", "employee"] },
-  { path: "/assignments", label: "Assignments", icon: Calendar, roles: ["admin", "owner", "employee"] },
-  { path: "/attendance", label: "Attendance", icon: Calendar, roles: ["admin", "owner", "employee"] },
+  { path: "/vehicles", label: "Vehicles", icon: Car, roles: ["admin", "owner", "employee"], employeeAccess: "vehicles" },
+  { path: "/projects", label: "Projects", icon: FolderKanban, roles: ["admin", "employee"], employeeAccess: "projects" },
+  { path: "/assignments", label: "Assignments", icon: Calendar, roles: ["admin", "owner", "employee"], employeeAccess: "assignments" },
+  { path: "/attendance", label: "Attendance", icon: Calendar, roles: ["admin", "owner", "employee"], employeeAccess: "attendance" },
   { path: "/payments", label: "Payments", icon: CreditCard, roles: ["admin", "owner"] },
-  { path: "/maintenance", label: "Maintenance", icon: Wrench, roles: ["admin", "owner", "employee"] },
+  { path: "/maintenance", label: "Maintenance", icon: Wrench, roles: ["admin", "owner", "employee"], employeeAccess: "maintenance" },
 ] as const;
 
 export default function Sidebar({ isOpen }: SidebarProps) {
@@ -50,7 +51,15 @@ export default function Sidebar({ isOpen }: SidebarProps) {
 
     const role: UserRole = user?.role ?? "admin";
 
-    return item.roles.includes(role);
+    if (!item.roles.includes(role)) {
+      return false;
+    }
+
+    if (role === "employee" && item.employeeAccess) {
+      return user?.employeeAccess?.includes(item.employeeAccess);
+    }
+
+    return true;
   });
 
   return (

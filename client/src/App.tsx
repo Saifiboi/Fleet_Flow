@@ -18,30 +18,39 @@ import NotFound from "@/pages/not-found";
 import Login from "@/pages/login";
 import Forbidden from "@/pages/forbidden";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
-import type { UserRole } from "@shared/schema";
+import type { EmployeeAccessArea, UserRole } from "@shared/schema";
 
 interface ProtectedRoute {
   path: string;
   component: React.ComponentType;
   roles?: UserRole[];
+  employeeAccess?: EmployeeAccessArea;
 }
 
 const protectedRoutes: ProtectedRoute[] = [
   { path: "/", component: Dashboard, roles: ["admin"] },
   { path: "/users", component: Users, roles: ["admin"] },
   { path: "/owners", component: Owners, roles: ["admin"] },
-  { path: "/vehicles", component: Vehicles, roles: ["admin", "owner", "employee"] },
-  { path: "/projects", component: Projects, roles: ["admin", "employee"] },
-  { path: "/assignments", component: Assignments, roles: ["admin", "owner", "employee"] },
-  { path: "/attendance", component: Attendance, roles: ["admin", "owner", "employee"] },
+  { path: "/vehicles", component: Vehicles, roles: ["admin", "owner", "employee"], employeeAccess: "vehicles" },
+  { path: "/projects", component: Projects, roles: ["admin", "employee"], employeeAccess: "projects" },
+  { path: "/assignments", component: Assignments, roles: ["admin", "owner", "employee"], employeeAccess: "assignments" },
+  { path: "/attendance", component: Attendance, roles: ["admin", "owner", "employee"], employeeAccess: "attendance" },
   { path: "/payments", component: Payments, roles: ["admin", "owner"] },
-  { path: "/maintenance", component: Maintenance, roles: ["admin", "owner", "employee"] },
+  { path: "/maintenance", component: Maintenance, roles: ["admin", "owner", "employee"], employeeAccess: "maintenance" },
 ];
 
-function RequireRole({ roles, children }: { roles?: UserRole[]; children: React.ReactNode }) {
+function RequireRole({ route, children }: { route: ProtectedRoute; children: React.ReactNode }) {
   const { user } = useAuth();
 
-  if (roles && !roles.includes(user?.role ?? "admin")) {
+  if (route.roles && !route.roles.includes(user?.role ?? "admin")) {
+    return <Forbidden />;
+  }
+
+  if (
+    user?.role === "employee" &&
+    route.employeeAccess &&
+    !user.employeeAccess?.includes(route.employeeAccess)
+  ) {
     return <Forbidden />;
   }
 
@@ -60,11 +69,27 @@ function ProtectedApp() {
 
   useEffect(() => {
     if (!isLoading && user) {
-      if ((user.role === "owner" || user.role === "employee") && location === "/") {
+      const employeeHome =
+        user.role === "employee"
+          ? protectedRoutes.find(
+              (route) =>
+                route.roles?.includes("employee") &&
+                (!route.employeeAccess || user.employeeAccess?.includes(route.employeeAccess)),
+            )?.path ?? "/forbidden"
+          : "/vehicles";
+
+      if (user.role === "owner" && location === "/") {
         setLocation("/vehicles", { replace: true });
       }
+
+      if (user.role === "employee" && location === "/") {
+        setLocation(employeeHome, { replace: true });
+      }
+
       if (location === "/login") {
-        setLocation(user.role === "admin" ? "/" : "/vehicles", { replace: true });
+        const destination =
+          user.role === "admin" ? "/" : user.role === "owner" ? "/vehicles" : employeeHome;
+        setLocation(destination, { replace: true });
       }
     }
   }, [isLoading, user, location, setLocation]);
@@ -84,12 +109,12 @@ function ProtectedApp() {
   return (
     <Layout>
       <Switch>
-        {protectedRoutes.map(({ path, component: Component, roles }) => (
+        {protectedRoutes.map(({ path, component: Component, roles, employeeAccess }) => (
           <Route
             key={path}
             path={path}
             component={() => (
-              <RequireRole roles={roles}>
+              <RequireRole route={{ path, component: Component, roles, employeeAccess }}>
                 <Component />
               </RequireRole>
             )}

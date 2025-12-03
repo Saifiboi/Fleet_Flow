@@ -15,6 +15,7 @@ function toSessionUser(user: User): SessionUser {
     email: user.email,
     role: user.role,
     ownerId: user.ownerId ?? null,
+    employeeAccess: user.employeeAccess ?? [],
   };
 }
 
@@ -34,6 +35,7 @@ async function ensureDefaultAdminUser() {
     passwordHash,
     role: "admin",
     isActive: true,
+    employeeAccess: [],
   });
 
   console.warn(

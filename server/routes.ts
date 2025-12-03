@@ -23,6 +23,7 @@ import {
   updateUserSchema,
   changePasswordSchema,
   adminResetPasswordSchema,
+  type EmployeeAccessArea,
 } from "@shared/schema";
 import { passport } from "./auth";
 import { hashPassword, verifyPassword } from "./password";
@@ -47,6 +48,10 @@ function isEmployee(req: Request): boolean {
   return req.user?.role === "employee";
 }
 
+function hasEmployeeAccess(req: Request, area: EmployeeAccessArea): boolean {
+  return isEmployee(req) && req.user?.employeeAccess?.includes(area) === true;
+}
+
 function requireAdmin(req: Request, res: Response): boolean {
   if (!isAdmin(req)) {
     res.status(403).json({ message: "Admin access required" });
@@ -56,13 +61,26 @@ function requireAdmin(req: Request, res: Response): boolean {
   return true;
 }
 
-function requireAdminOrEmployee(req: Request, res: Response): boolean {
-  if (!(isAdmin(req) || isEmployee(req))) {
-    res.status(403).json({ message: "Admin or employee access required" });
-    return false;
+function requireAdminOrEmployee(
+  req: Request,
+  res: Response,
+  area?: EmployeeAccessArea,
+): boolean {
+  if (isAdmin(req)) {
+    return true;
   }
 
-  return true;
+  if (area && hasEmployeeAccess(req, area)) {
+    return true;
+  }
+
+  if (!area && isEmployee(req)) {
+    return true;
+  }
+
+  const areaMessage = area ? ` for ${area} operations` : "";
+  res.status(403).json({ message: `Admin or employee access${areaMessage} required` });
+  return false;
 }
 
 function ownerIdOrForbidden(req: Request, res: Response): string | undefined {
@@ -76,8 +94,17 @@ function ownerIdOrForbidden(req: Request, res: Response): string | undefined {
   return ownerId;
 }
 
-function ensureOwnerAccess(req: Request, res: Response, ownerId: string): boolean {
-  if (isAdmin(req) || isEmployee(req)) {
+function ensureOwnerAccess(
+  req: Request,
+  res: Response,
+  ownerId: string,
+  employeeArea?: EmployeeAccessArea,
+): boolean {
+  if (isAdmin(req)) {
+    return true;
+  }
+
+  if (employeeArea && hasEmployeeAccess(req, employeeArea)) {
     return true;
   }
 
@@ -278,6 +305,7 @@ export async function registerRoutes(app: Application): Promise<void> {
         role: validatedData.role,
         ownerId: validatedData.role === "owner" ? validatedData.ownerId : null,
         isActive: true,
+        employeeAccess: validatedData.role === "employee" ? validatedData.employeeAccess ?? [] : [],
       });
 
       const owner = created.ownerId ? await storage.getOwner(created.ownerId) : null;
@@ -322,6 +350,13 @@ export async function registerRoutes(app: Application): Promise<void> {
 
       if (Object.prototype.hasOwnProperty.call(validatedData, "isActive") && user.role === "admin") {
         return res.status(400).json({ message: "Admin accounts cannot be enabled or disabled" });
+      }
+
+      if (
+        Object.prototype.hasOwnProperty.call(validatedData, "employeeAccess") &&
+        user.role !== "employee"
+      ) {
+        return res.status(400).json({ message: "Only employee accounts can have page access configured" });
       }
 
       const updated = await storage.updateUser(user.id, validatedData);
@@ -405,7 +440,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   // Vehicle routes
   app.get("/api/vehicles", async (req, res) => {
     try {
-      if (isAdmin(req) || isEmployee(req)) {
+      if (isAdmin(req) || hasEmployeeAccess(req, "vehicles")) {
         const vehicles = await storage.getVehicles();
         return res.json(vehicles);
       }
@@ -431,7 +466,7 @@ export async function registerRoutes(app: Application): Promise<void> {
         return res.status(404).json({ message: "Vehicle not found" });
       }
 
-      if (!ensureOwnerAccess(req, res, vehicle.owner.id)) {
+      if (!ensureOwnerAccess(req, res, vehicle.owner.id, "vehicles")) {
         return;
       }
 
@@ -442,7 +477,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.get("/api/vehicles/owner/:ownerId", async (req, res) => {
-    if (!ensureOwnerAccess(req, res, req.params.ownerId)) {
+    if (!ensureOwnerAccess(req, res, req.params.ownerId, "vehicles")) {
       return;
     }
 
@@ -455,7 +490,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.post("/api/vehicles", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "vehicles")) {
       return;
     }
 
@@ -469,7 +504,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.put("/api/vehicles/:id", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "vehicles")) {
       return;
     }
 
@@ -483,7 +518,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.delete("/api/vehicles/:id", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "vehicles")) {
       return;
     }
 
@@ -497,7 +532,7 @@ export async function registerRoutes(app: Application): Promise<void> {
 
   // Project routes
   app.get("/api/projects", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "projects")) {
       return;
     }
 
@@ -510,7 +545,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.get("/api/projects/:id", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "projects")) {
       return;
     }
 
@@ -526,7 +561,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.post("/api/projects", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "projects")) {
       return;
     }
 
@@ -540,7 +575,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.put("/api/projects/:id", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "projects")) {
       return;
     }
 
@@ -554,7 +589,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.delete("/api/projects/:id", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "projects")) {
       return;
     }
 
@@ -569,7 +604,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   // Assignment routes
   app.get("/api/assignments", async (req, res) => {
     try {
-      if (isAdmin(req) || isEmployee(req)) {
+      if (isAdmin(req) || hasEmployeeAccess(req, "assignments")) {
         const assignments = await storage.getAssignments();
         return res.json(assignments);
       }
@@ -595,7 +630,7 @@ export async function registerRoutes(app: Application): Promise<void> {
         return res.status(404).json({ message: "Assignment not found" });
       }
 
-      if (!ensureOwnerAccess(req, res, assignment.vehicle.owner.id)) {
+      if (!ensureOwnerAccess(req, res, assignment.vehicle.owner.id, "assignments")) {
         return;
       }
 
@@ -608,7 +643,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   app.get("/api/assignments/project/:projectId", async (req, res) => {
     try {
       const assignments = await storage.getAssignmentsByProject(req.params.projectId);
-      if (isAdmin(req) || isEmployee(req)) {
+      if (isAdmin(req) || hasEmployeeAccess(req, "assignments")) {
         return res.json(assignments);
       }
 
@@ -638,7 +673,7 @@ export async function registerRoutes(app: Application): Promise<void> {
       }
 
       const assignments = await storage.getAssignmentsByVehicle(req.params.vehicleId);
-      if (isAdmin(req) || isEmployee(req)) {
+      if (isAdmin(req) || hasEmployeeAccess(req, "assignments")) {
         return res.json(assignments);
       }
 
@@ -654,7 +689,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.post("/api/assignments", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "assignments")) {
       return;
     }
 
@@ -668,7 +703,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.put("/api/assignments/:id", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "assignments")) {
       return;
     }
 
@@ -682,7 +717,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.delete("/api/assignments/:id", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "assignments")) {
       return;
     }
 
@@ -834,7 +869,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   // Maintenance Record routes
   app.get("/api/maintenance", async (req, res) => {
     try {
-      if (isAdmin(req) || isEmployee(req)) {
+      if (isAdmin(req) || hasEmployeeAccess(req, "maintenance")) {
         const records = await storage.getMaintenanceRecords();
         return res.json(records);
       }
@@ -866,7 +901,7 @@ export async function registerRoutes(app: Application): Promise<void> {
       }
 
       const records = await storage.getMaintenanceRecordsByVehicle(req.params.vehicleId);
-      if (isAdmin(req) || isEmployee(req)) {
+      if (isAdmin(req) || hasEmployeeAccess(req, "maintenance")) {
         return res.json(records);
       }
 
@@ -888,7 +923,7 @@ export async function registerRoutes(app: Application): Promise<void> {
         return res.status(404).json({ message: "Maintenance record not found" });
       }
 
-      if (!ensureOwnerAccess(req, res, record.vehicle.owner.id)) {
+      if (!ensureOwnerAccess(req, res, record.vehicle.owner.id, "maintenance")) {
         return;
       }
       res.json(record);
@@ -898,7 +933,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.post("/api/maintenance", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "maintenance")) {
       return;
     }
 
@@ -912,7 +947,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.put("/api/maintenance/:id", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "maintenance")) {
       return;
     }
 
@@ -926,7 +961,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.delete("/api/maintenance/:id", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "maintenance")) {
       return;
     }
 
@@ -1031,7 +1066,7 @@ export async function registerRoutes(app: Application): Promise<void> {
 
   // Vehicle ownership transfer route
   app.post("/api/vehicles/:vehicleId/transfer-ownership", async (req: Request, res: Response) => {
-    if (!requireAdminOrEmployee(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "vehicles")) {
       return;
     }
 
@@ -1078,7 +1113,7 @@ export async function registerRoutes(app: Application): Promise<void> {
         return res.json(attendance);
       }
 
-      if (isAdmin(req) || isEmployee(req)) {
+      if (isAdmin(req) || hasEmployeeAccess(req, "attendance")) {
         const attendance = await storage.getVehicleAttendance({ vehicleId, date, projectId });
         return res.json(attendance);
       }
@@ -1126,7 +1161,7 @@ export async function registerRoutes(app: Application): Promise<void> {
         return res.json(summary);
       }
 
-      if (isAdmin(req) || isEmployee(req)) {
+      if (isAdmin(req) || hasEmployeeAccess(req, "attendance")) {
         const summary = await storage.getVehicleAttendanceSummary({
           vehicleId,
           projectId: projectFilter,
@@ -1144,7 +1179,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.post("/api/vehicle-attendance", async (req: Request, res: Response) => {
-    if (!requireAdminOrEmployee(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "attendance")) {
       return;
     }
 
@@ -1159,7 +1194,7 @@ export async function registerRoutes(app: Application): Promise<void> {
 
   // Batch create attendance records
   app.post("/api/vehicle-attendance/batch", async (req: Request, res: Response) => {
-    if (!requireAdminOrEmployee(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "attendance")) {
       return;
     }
 
@@ -1181,7 +1216,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.post("/api/vehicle-attendance/delete", async (req: Request, res: Response) => {
-    if (!requireAdminOrEmployee(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "attendance")) {
       return;
     }
 
