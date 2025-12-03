@@ -25,6 +25,11 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   role: text("role").notNull(),
+  employeeAccess: text("employee_access")
+    .array()
+    .notNull()
+    .$type<EmployeeAccessArea[]>()
+    .default(sql`ARRAY[]::text[]`),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -215,17 +220,34 @@ export const vehicleAttendanceRelations = relations(vehicleAttendance, ({ one })
   }),
 }));
 
+export const employeeAccessAreas = [
+  "vehicles",
+  "projects",
+  "assignments",
+  "attendance",
+  "maintenance",
+  "payments",
+] as const;
+
+export type EmployeeAccessArea = (typeof employeeAccessAreas)[number];
+
 export const insertUserSchema = createInsertSchema(users, {
   email: z.string().email(),
-  role: z.enum(["admin", "owner"]),
+  role: z.enum(["admin", "owner", "employee"]),
+}).extend({
+  employeeAccess: z.array(z.enum(employeeAccessAreas)).default([]),
 });
 
 export const createUserSchema = z
   .object({
     email: z.string().email(),
     password: z.string().min(8, "Password must be at least 8 characters long"),
-    role: z.enum(["admin", "owner"]),
+    role: z.enum(["admin", "owner", "employee"]),
     ownerId: z.string().uuid().optional().nullable(),
+    employeeAccess: z
+      .array(z.enum(employeeAccessAreas))
+      .optional()
+      .default([]),
   })
   .superRefine((data, ctx) => {
     if (data.role === "owner" && !data.ownerId) {
@@ -242,12 +264,28 @@ export const createUserSchema = z
         message: "Admin accounts cannot be linked to an owner",
       });
     }
+    if (data.role === "employee" && data.ownerId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["ownerId"],
+        message: "Employee accounts cannot be linked to an owner",
+      });
+    }
+
+    if (data.role !== "employee" && data.employeeAccess && data.employeeAccess.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["employeeAccess"],
+        message: "Only employee accounts can have employee access configured",
+      });
+    }
   });
 
 export const updateUserSchema = z
   .object({
     ownerId: z.string().uuid().optional().nullable(),
     isActive: z.boolean().optional(),
+    employeeAccess: z.array(z.enum(employeeAccessAreas)).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one field must be provided",
@@ -282,7 +320,7 @@ export const loginSchema = z.object({
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type UserRole = User["role"];
-export type SessionUser = Pick<User, "id" | "email" | "role" | "ownerId">;
+export type SessionUser = Pick<User, "id" | "email" | "role" | "ownerId" | "employeeAccess">;
 export type PublicUser = Omit<User, "passwordHash">;
 export type UserWithOwner = PublicUser & { owner: Owner | null };
 

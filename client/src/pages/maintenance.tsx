@@ -30,7 +30,8 @@ export default function Maintenance() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const canManageMaintenance =
+    user?.role === "admin" || (user?.role === "employee" && user.employeeAccess?.includes("maintenance"));
 
   const { data: maintenanceRecords = [], isLoading } = useMaintenanceRecords();
   const { data: vehicles = [] } = useVehicles();
@@ -242,7 +243,7 @@ export default function Maintenance() {
               <Wrench className="w-5 h-5" />
               <span>Maintenance Records</span>
             </CardTitle>
-            {isAdmin && (
+            {canManageMaintenance && (
               <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
                 <DialogTrigger asChild>
                   <Button data-testid="add-maintenance-button">
@@ -426,7 +427,7 @@ export default function Maintenance() {
                       <TableHead>Cost (PKR)</TableHead>
                       <TableHead>Service Date</TableHead>
                       <TableHead>Status</TableHead>
-                      {isAdmin ? <TableHead>Actions</TableHead> : <TableHead>View</TableHead>}
+                      {canManageMaintenance ? <TableHead>Actions</TableHead> : <TableHead>View</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -462,7 +463,7 @@ export default function Maintenance() {
                               >
                                 <Eye className="w-4 h-4" />
                               </Button>
-                              {isAdmin && (
+                              {canManageMaintenance && (
                                 <>
                                   <Button
                                     variant="ghost"
