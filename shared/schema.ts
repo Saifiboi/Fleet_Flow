@@ -226,6 +226,7 @@ export const employeeAccessAreas = [
   "assignments",
   "attendance",
   "maintenance",
+  "payments",
 ] as const;
 
 export type EmployeeAccessArea = (typeof employeeAccessAreas)[number];

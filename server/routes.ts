@@ -732,7 +732,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   // Payment routes
   app.get("/api/payments", async (req, res) => {
     try {
-      if (isAdmin(req)) {
+      if (isAdmin(req) || hasEmployeeAccess(req, "payments")) {
         const payments = await storage.getPayments();
         return res.json(payments);
       }
@@ -753,7 +753,7 @@ export async function registerRoutes(app: Application): Promise<void> {
 
   app.get("/api/payments/outstanding", async (req, res) => {
     try {
-      if (isAdmin(req)) {
+      if (isAdmin(req) || hasEmployeeAccess(req, "payments")) {
         const payments = await storage.getOutstandingPayments();
         return res.json(payments);
       }
@@ -779,7 +779,7 @@ export async function registerRoutes(app: Application): Promise<void> {
         return res.status(404).json({ message: "Payment not found" });
       }
 
-      if (!ensureOwnerAccess(req, res, payment.paymentOwner?.id ?? payment.ownerId)) {
+      if (!ensureOwnerAccess(req, res, payment.paymentOwner?.id ?? payment.ownerId, "payments")) {
         return;
       }
       res.json(payment);
@@ -791,7 +791,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   app.get("/api/payments/assignment/:assignmentId", async (req, res) => {
     try {
       const payments = await storage.getPaymentsByAssignment(req.params.assignmentId);
-      if (isAdmin(req)) {
+      if (isAdmin(req) || hasEmployeeAccess(req, "payments")) {
         return res.json(payments);
       }
 
@@ -809,7 +809,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.post("/api/payments", async (req, res) => {
-    if (!requireAdmin(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "payments")) {
       return;
     }
 
@@ -828,7 +828,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.post("/api/payments/:id/transactions", async (req, res) => {
-    if (!requireAdmin(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "payments")) {
       return;
     }
 
@@ -844,7 +844,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.post("/api/payments/calculate", async (req, res) => {
-    if (!requireAdmin(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "payments")) {
       return;
     }
 

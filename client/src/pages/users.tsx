@@ -95,6 +95,11 @@ const employeeAccessOptions: { value: EmployeeAccessArea; label: string; descrip
     label: "Maintenance",
     description: "Record and edit maintenance activities.",
   },
+  {
+    value: "payments",
+    label: "Payments",
+    description: "Create invoices, record transactions, and manage balances.",
+  },
 ];
 
 export default function Users() {

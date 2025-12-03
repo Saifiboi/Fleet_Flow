@@ -35,7 +35,7 @@ const protectedRoutes: ProtectedRoute[] = [
   { path: "/projects", component: Projects, roles: ["admin", "employee"], employeeAccess: "projects" },
   { path: "/assignments", component: Assignments, roles: ["admin", "owner", "employee"], employeeAccess: "assignments" },
   { path: "/attendance", component: Attendance, roles: ["admin", "owner", "employee"], employeeAccess: "attendance" },
-  { path: "/payments", component: Payments, roles: ["admin", "owner"] },
+  { path: "/payments", component: Payments, roles: ["admin", "owner", "employee"], employeeAccess: "payments" },
   { path: "/maintenance", component: Maintenance, roles: ["admin", "owner", "employee"], employeeAccess: "maintenance" },
 ];
 
