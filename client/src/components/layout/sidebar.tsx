@@ -40,7 +40,7 @@ const navigationItems: NavigationItem[] = [
   { path: "/maintenance", label: "Maintenance", icon: Wrench, roles: ["admin", "owner", "employee"], employeeAccess: "maintenance" },
 ] as const;
 
-export default function Sidebar({ isOpen }: SidebarProps) {
+export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const [location] = useLocation();
   const { user } = useAuth();
 
@@ -65,31 +65,43 @@ export default function Sidebar({ isOpen }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "bg-card border-r border-border flex-shrink-0 sidebar-transition",
-        isOpen ? "w-64" : "w-16",
+        "fixed inset-y-0 left-0 z-40 flex h-full transform bg-card border-r border-border sidebar-transition transition-all duration-200 ease-in-out lg:relative lg:translate-x-0",
+        isOpen ? "translate-x-0 w-64" : "-translate-x-full w-64 lg:w-16",
       )}
       data-testid="sidebar"
+      aria-hidden={!isOpen}
     >
-      <div className="flex flex-col h-full">
+      <div className="flex h-full w-full flex-col">
         {/* Logo */}
-        <div className="p-6 border-b border-border">
-          <div className="flex items-center space-x-3">
-            <div className="bg-primary rounded-lg p-2">
-              <Truck className="text-primary-foreground w-6 h-6" />
-            </div>
-            {isOpen && (
-              <div>
-                <h1 className="text-xl font-bold text-foreground">FleetPro</h1>
-                <p className="text-sm text-muted-foreground">
-                  Vehicle Management ERP
-                </p>
+        <div className="border-b border-border p-6">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="bg-primary rounded-lg p-2">
+                <Truck className="text-primary-foreground w-6 h-6" />
               </div>
-            )}
+              {isOpen && (
+                <div>
+                  <h1 className="text-xl font-bold text-foreground">FleetPro</h1>
+                  <p className="text-sm text-muted-foreground">
+                    Vehicle Management ERP
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={onToggle}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground lg:hidden"
+              aria-label="Close navigation"
+            >
+              ×
+            </button>
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 space-y-2 overflow-y-auto p-4">
           {items.map((item) => {
             const Icon = item.icon;
             const isActive = location === item.path;
@@ -98,15 +110,15 @@ export default function Sidebar({ isOpen }: SidebarProps) {
               <Link key={item.path} href={item.path}>
                 <a
                   className={cn(
-                    "flex items-center space-x-3 px-3 py-2 rounded-md font-medium transition-colors",
+                    "flex items-center gap-3 rounded-md px-3 py-2 font-medium transition-colors",
                     isActive
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
                   )}
                   data-testid={`nav-${item.label.toLowerCase()}`}
                 >
-                  <Icon className="w-5 h-5" />
-                  {isOpen && <span>{item.label}</span>}
+                  <Icon className="h-5 w-5 flex-shrink-0" />
+                  {isOpen && <span className="truncate">{item.label}</span>}
                 </a>
               </Link>
             );
@@ -115,13 +127,13 @@ export default function Sidebar({ isOpen }: SidebarProps) {
 
         {/* User Profile */}
         {isOpen && (
-          <div className="p-4 border-t border-border">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center uppercase text-sm font-semibold text-primary-foreground">
+          <div className="border-t border-border p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-semibold uppercase text-primary-foreground">
                 {(user?.email?.[0] ?? "U").toUpperCase()}
               </div>
               <div className="flex-1">
-                <p className="text-sm font-medium text-foreground truncate" title={user?.email}>
+                <p className="truncate text-sm font-medium text-foreground" title={user?.email}>
                   {user?.email ?? "User"}
                 </p>
                 <p className="text-xs capitalize text-muted-foreground">{user?.role ?? ""}</p>

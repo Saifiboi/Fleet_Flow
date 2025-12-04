@@ -99,8 +99,8 @@ export default function Assignments() {
     <div className="space-y-6" data-testid="assignments-page">
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center space-x-2">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <CardTitle className="flex items-center gap-2">
               <Calendar className="w-5 h-5" />
               <span>Vehicle Assignments</span>
             </CardTitle>
@@ -129,8 +129,8 @@ export default function Assignments() {
         </CardHeader>
         <CardContent>
           {/* Filters */}
-          <div className="flex items-center space-x-4 mb-6">
-            <div className="relative flex-1 max-w-sm">
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+            <div className="relative w-full sm:max-w-sm">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
               <Input
                 placeholder="Search assignments..."
@@ -141,7 +141,7 @@ export default function Assignments() {
               />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-40" data-testid="filter-status">
+              <SelectTrigger className="w-full sm:w-40" data-testid="filter-status">
                 <SelectValue placeholder="All Statuses" />
               </SelectTrigger>
               <SelectContent>
@@ -151,8 +151,8 @@ export default function Assignments() {
                 <SelectItem value="cancelled">Cancelled</SelectItem>
               </SelectContent>
             </Select>
-                <Select value={projectFilter} onValueChange={setProjectFilter}>
-              <SelectTrigger className="w-48" data-testid="filter-project">
+            <Select value={projectFilter} onValueChange={setProjectFilter}>
+              <SelectTrigger className="w-full sm:w-48" data-testid="filter-project">
                 <SelectValue placeholder="All Projects" />
               </SelectTrigger>
               <SelectContent>
