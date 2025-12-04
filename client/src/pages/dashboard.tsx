@@ -187,10 +187,10 @@ export default function Dashboard() {
         <div className="lg:col-span-2">
           <Card data-testid="vehicle-status-overview">
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle>Vehicle Status Overview</CardTitle>
                 <Select defaultValue="30days">
-                  <SelectTrigger className="w-40">
+                  <SelectTrigger className="w-full sm:w-40">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -203,7 +203,7 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               {/* Quick status indicators */}
-              <div className="grid grid-cols-4 gap-4 mb-6">
+              <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <div className="text-center">
                   <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
                     <Check className="text-green-600 w-6 h-6" />
@@ -330,18 +330,18 @@ export default function Dashboard() {
       {/* Active Vehicle Assignments Table */}
       <Card data-testid="assignments-table">
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <CardTitle>Active Vehicle Assignments</CardTitle>
-            <div className="flex items-center space-x-3">
-              <div className="relative">
-                <Input 
-                  placeholder="Search assignments..." 
-                  className="w-64"
+            <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center md:space-x-3">
+              <div className="relative w-full md:w-64">
+                <Input
+                  placeholder="Search assignments..."
+                  className="w-full"
                   data-testid="search-assignments"
                 />
               </div>
               <Select>
-                <SelectTrigger className="w-40">
+                <SelectTrigger className="w-full md:w-40">
                   <SelectValue placeholder="All Projects" />
                 </SelectTrigger>
                 <SelectContent>
@@ -438,11 +438,11 @@ export default function Dashboard() {
       {/* Outstanding Payments Table */}
       <Card data-testid="payments-table">
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <CardTitle>Outstanding Payments</CardTitle>
-            <div className="flex items-center space-x-3">
+            <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center md:space-x-3">
               <Select>
-                <SelectTrigger className="w-40">
+                <SelectTrigger className="w-full md:w-40">
                   <SelectValue placeholder="All Statuses" />
                 </SelectTrigger>
                 <SelectContent>
@@ -452,7 +452,7 @@ export default function Dashboard() {
                   <SelectItem value="due_today">Due Today</SelectItem>
                 </SelectContent>
               </Select>
-              <Button data-testid="generate-invoices">
+              <Button className="w-full md:w-auto" data-testid="generate-invoices">
                 <FileText className="mr-2 w-4 h-4" />
                 Generate Invoices
               </Button>

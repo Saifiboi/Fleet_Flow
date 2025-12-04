@@ -416,7 +416,7 @@ export default function Payments() {
               <div className="rounded-lg border bg-muted/40 p-4">
                 <h4 className="text-sm font-semibold text-foreground">Payment summary</h4>
                 <dl className="mt-3 grid grid-cols-1 gap-y-2 text-sm md:grid-cols-2 md:gap-x-6">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Period</dt>
                     <dd className="font-medium text-foreground text-right">
                       {selectedPayment.periodStart
@@ -428,31 +428,31 @@ export default function Payments() {
                         : "-"}
                     </dd>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Attendance total</dt>
                     <dd className="font-medium text-foreground text-right">
                       ${formatCurrency(selectedPayment.attendanceTotal)}
                     </dd>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Maintenance deductions</dt>
                     <dd className="font-medium text-foreground text-right">
                       ${formatCurrency(selectedPayment.deductionTotal)}
                     </dd>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Net amount</dt>
                     <dd className="font-semibold text-foreground text-right">
                       ${formatCurrency(selectedPayment.amount)}
                     </dd>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Total received</dt>
                     <dd className="font-medium text-foreground text-right">
                       ${formatCurrency(selectedPayment.totalPaid)}
                     </dd>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Outstanding balance</dt>
                     <dd
                       className={`font-semibold text-right ${
@@ -462,25 +462,25 @@ export default function Payments() {
                       ${formatCurrency(selectedPayment.outstandingAmount)}
                     </dd>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Attendance days</dt>
                     <dd className="font-medium text-foreground text-right">
                       {selectedPayment.totalDays ?? 0}
                     </dd>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Maintenance records</dt>
                     <dd className="font-medium text-foreground text-right">
                       {selectedPayment.maintenanceCount ?? 0}
                     </dd>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Due date</dt>
                     <dd className="font-medium text-foreground text-right">
                       {format(new Date(selectedPayment.dueDate), "MMM dd, yyyy")}
                     </dd>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Paid date</dt>
                     <dd className="font-medium text-foreground text-right">
                       {selectedPayment.paidDate
@@ -488,25 +488,25 @@ export default function Payments() {
                         : "-"}
                     </dd>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Status</dt>
                     <dd className="font-medium text-foreground text-right capitalize">
                       {selectedPayment.status}
                     </dd>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Invoice</dt>
                     <dd className="font-medium text-foreground text-right">
                       {selectedPayment.invoiceNumber ?? "-"}
                     </dd>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Owner at payment</dt>
                     <dd className="font-medium text-foreground text-right">
                       {selectedPayment.paymentOwner?.name ?? "Unknown"}
                     </dd>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Transactions recorded</dt>
                     <dd className="font-medium text-foreground text-right">
                       {selectedPayment.transactions.length}
@@ -518,43 +518,43 @@ export default function Payments() {
               <div className="rounded-lg border bg-muted/40 p-4">
                 <h4 className="text-sm font-semibold text-foreground">Assignment details</h4>
                 <dl className="mt-3 grid grid-cols-1 gap-y-2 text-sm md:grid-cols-2 md:gap-x-6">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Project</dt>
                     <dd className="font-medium text-foreground text-right">
                       {selectedPayment.assignment.project.name}
                     </dd>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Assignment status</dt>
                     <dd className="font-medium text-foreground text-right capitalize">
                       {selectedPayment.assignment.status}
                     </dd>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Vehicle</dt>
                     <dd className="font-medium text-foreground text-right">
                       {selectedPayment.assignment.vehicle.make} {selectedPayment.assignment.vehicle.model}
                     </dd>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">License plate</dt>
                     <dd className="font-medium text-foreground text-right">
                       {selectedPayment.assignment.vehicle.licensePlate}
                     </dd>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Current owner</dt>
                     <dd className="font-medium text-foreground text-right">
                       {selectedPayment.assignment.vehicle.owner.name}
                     </dd>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Monthly rate</dt>
                     <dd className="font-medium text-foreground text-right">
                       ${formatCurrency(selectedPayment.assignment.monthlyRate)}
                     </dd>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Assignment period</dt>
                     <dd className="font-medium text-foreground text-right">
                       {format(new Date(selectedPayment.assignment.startDate), "MMM dd, yyyy")} –
@@ -621,7 +621,7 @@ export default function Payments() {
 
                 {canManagePayments && (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <h5 className="text-sm font-semibold text-foreground">Add transaction</h5>
                     {!canRecordTransaction && (
                       <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-200">
@@ -780,7 +780,7 @@ export default function Payments() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card data-testid="total-outstanding">
           <CardContent className="p-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Total Outstanding</p>
                 <p className="text-2xl font-bold text-foreground">${totalOutstanding.toLocaleString()}</p>
@@ -794,7 +794,7 @@ export default function Payments() {
 
         <Card data-testid="overdue-count">
           <CardContent className="p-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Overdue Payments</p>
                 <p className="text-2xl font-bold text-foreground">{overdueCount}</p>
@@ -808,7 +808,7 @@ export default function Payments() {
 
         <Card data-testid="total-payments">
           <CardContent className="p-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Total Payments</p>
                 <p className="text-2xl font-bold text-foreground">{payments?.length || 0}</p>
@@ -823,7 +823,7 @@ export default function Payments() {
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="flex items-center space-x-2">
               <CreditCard className="w-5 h-5" />
               <span>Payments</span>
@@ -1364,7 +1364,7 @@ export default function Payments() {
 
           {/* Summary */}
           {filteredPayments && filteredPayments.length > 0 && (
-            <div className="mt-4 flex items-center justify-between">
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-muted-foreground">
                 Showing {filteredPayments.length} of {payments?.length || 0} payments
               </p>
