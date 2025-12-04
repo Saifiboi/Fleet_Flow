@@ -67,7 +67,8 @@ export default function Attendance() {
   const { toast } = useToast();
   const { user } = useAuth();
   const canManageAttendance =
-    user?.role === "admin" || (user?.role === "employee" && user.employeeAccess?.includes("attendance"));
+    user?.role === "admin" ||
+    (user?.role === "employee" && user.employeeManageAccess?.includes("attendance"));
   const today = useMemo(() => startOfToday(), []);
   const maxMonth = useMemo(() => startOfMonth(today), [today]);
 

@@ -56,6 +56,10 @@ function hasEmployeeManageAccess(req: Request, area: EmployeeAccessArea): boolea
   return isEmployee(req) && req.user?.employeeManageAccess?.includes(area) === true;
 }
 
+function hasAnyEmployeeAccess(req: Request, ...areas: EmployeeAccessArea[]): boolean {
+  return areas.some((area) => hasEmployeeAccess(req, area) || hasEmployeeManageAccess(req, area));
+}
+
 function requireAdmin(req: Request, res: Response): boolean {
   if (!isAdmin(req)) {
     res.status(403).json({ message: "Admin access required" });
@@ -700,7 +704,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   // Assignment routes
   app.get("/api/assignments", async (req, res) => {
     try {
-      if (isAdmin(req) || hasEmployeeAccess(req, "assignments")) {
+      if (isAdmin(req) || hasAnyEmployeeAccess(req, "assignments", "attendance")) {
         const assignments = isEmployee(req)
           ? await storage.getAssignments({ projectIds: employeeProjectIds(req) })
           : await storage.getAssignments();
@@ -728,11 +732,23 @@ export async function registerRoutes(app: Application): Promise<void> {
         return res.status(404).json({ message: "Assignment not found" });
       }
 
-      if (!ensureOwnerAccess(req, res, assignment.vehicle.owner.id, "assignments")) {
-        return;
+      if (isAdmin(req)) {
+        return res.json(assignment);
       }
 
-      if (isEmployee(req) && !ensureProjectAccess(req, res, assignment.project.id)) {
+      if (isEmployee(req)) {
+        if (!hasAnyEmployeeAccess(req, "assignments", "attendance")) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+
+        if (!ensureProjectAccess(req, res, assignment.project.id)) {
+          return;
+        }
+
+        return res.json(assignment);
+      }
+
+      if (!ensureOwnerAccess(req, res, assignment.vehicle.owner.id, "assignments")) {
         return;
       }
 
@@ -745,7 +761,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   app.get("/api/assignments/project/:projectId", async (req, res) => {
     try {
       const assignments = await storage.getAssignmentsByProject(req.params.projectId);
-      if (isAdmin(req) || hasEmployeeAccess(req, "assignments")) {
+      if (isAdmin(req) || hasAnyEmployeeAccess(req, "assignments", "attendance")) {
         if (isEmployee(req) && !ensureProjectAccess(req, res, req.params.projectId)) {
           return;
         }
@@ -779,7 +795,7 @@ export async function registerRoutes(app: Application): Promise<void> {
       }
 
       const assignments = await storage.getAssignmentsByVehicle(req.params.vehicleId);
-      if (isAdmin(req) || hasEmployeeAccess(req, "assignments")) {
+      if (isAdmin(req) || hasAnyEmployeeAccess(req, "assignments", "attendance")) {
         if (
           isEmployee(req) &&
           assignments.every((assignment) => !employeeProjectIds(req).includes(assignment.project.id))
