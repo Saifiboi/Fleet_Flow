@@ -36,7 +36,7 @@ export default function VehicleForm({ vehicle, onSuccess }: VehicleFormProps) {
       transmissionType: vehicle?.transmissionType as any || undefined,
       category: vehicle?.category as any || undefined,
       passengerCapacity: vehicle?.passengerCapacity || undefined,
-      ownerId: isEditing ? undefined : (vehicle?.ownerId || ""),
+      ownerId: isEditing ? undefined : "",
       status: vehicle?.status || "available",
     },
   });

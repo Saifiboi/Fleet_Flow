@@ -49,7 +49,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useOwners, useUsers } from "@/lib/api";
+import { useOwners, useUsers, useProjects } from "@/lib/api";
 import {
   changePasswordSchema,
   createUserSchema,
@@ -58,6 +58,7 @@ import {
   type UserRole,
   type EmployeeAccessArea,
   type UserWithOwner,
+  type Project,
 } from "@shared/schema";
 import { Shield, UserPlus, Mail, UserX, UserCheck, KeyRound, Settings2 } from "lucide-react";
 
@@ -105,6 +106,7 @@ const employeeAccessOptions: { value: EmployeeAccessArea; label: string; descrip
 export default function Users() {
   const { data: users = [], isLoading: isLoadingUsers } = useUsers();
   const { data: owners = [], isLoading: isLoadingOwners } = useOwners();
+  const { data: projects = [] } = useProjects();
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
@@ -120,6 +122,8 @@ export default function Users() {
       role: "owner",
       ownerId: undefined,
       employeeAccess: [],
+      employeeManageAccess: [],
+      employeeProjectIds: [],
     },
   });
 
@@ -140,8 +144,8 @@ export default function Users() {
     },
   });
 
-  const accessForm = useForm<{ employeeAccess: EmployeeAccessArea[] }>({
-    defaultValues: { employeeAccess: [] },
+  const accessForm = useForm<{ employeeAccess: EmployeeAccessArea[]; employeeManageAccess: EmployeeAccessArea[]; employeeProjectIds: string[] }>({
+    defaultValues: { employeeAccess: [], employeeManageAccess: [], employeeProjectIds: [] },
   });
 
   const selectedRole = createForm.watch("role");
@@ -155,6 +159,8 @@ export default function Users() {
     if (selectedRole === "admin") {
       createForm.setValue("ownerId", null);
       createForm.setValue("employeeAccess", []);
+      createForm.setValue("employeeManageAccess", []);
+      createForm.setValue("employeeProjectIds", []);
       return;
     }
 
@@ -162,6 +168,9 @@ export default function Users() {
       createForm.setValue("ownerId", null);
       if ((createForm.getValues("employeeAccess") ?? []).length === 0) {
         createForm.setValue("employeeAccess", [...employeeAccessAreas]);
+      }
+      if ((createForm.getValues("employeeManageAccess") ?? []).length === 0) {
+        createForm.setValue("employeeManageAccess", []);
       }
       return;
     }
@@ -172,6 +181,8 @@ export default function Users() {
     }
 
     createForm.setValue("employeeAccess", []);
+    createForm.setValue("employeeManageAccess", []);
+    createForm.setValue("employeeProjectIds", []);
   }, [availableOwners, createForm, selectedRole]);
 
   const handleDialogChange = (open: boolean) => {
@@ -183,6 +194,8 @@ export default function Users() {
         role: "owner",
         ownerId: undefined,
         employeeAccess: [],
+        employeeManageAccess: [],
+        employeeProjectIds: [],
       });
     }
   };
@@ -202,7 +215,7 @@ export default function Users() {
     setIsAccessDialogOpen(open);
     if (!open) {
       setUserToManageAccess(null);
-      accessForm.reset({ employeeAccess: [] });
+      accessForm.reset({ employeeAccess: [], employeeManageAccess: [], employeeProjectIds: [] });
     }
   };
 
@@ -218,7 +231,11 @@ export default function Users() {
   const openAccessDialog = (user: UserWithOwner) => {
     setUserToManageAccess(user);
     setIsAccessDialogOpen(true);
-    accessForm.reset({ employeeAccess: user.employeeAccess ?? [] });
+    accessForm.reset({
+      employeeAccess: user.employeeAccess ?? [],
+      employeeManageAccess: user.employeeManageAccess ?? [],
+      employeeProjectIds: user.employeeProjects?.map((project) => project.id) ?? [],
+    });
   };
 
   const createUserMutation = useMutation({
@@ -227,6 +244,9 @@ export default function Users() {
         ...values,
         ownerId: values.role === "owner" ? values.ownerId : null,
         employeeAccess: values.role === "employee" ? values.employeeAccess ?? [] : [],
+        employeeManageAccess:
+          values.role === "employee" ? values.employeeManageAccess ?? [] : [],
+        employeeProjectIds: values.role === "employee" ? values.employeeProjectIds ?? [] : [],
       };
       await apiRequest("POST", "/api/users", payload);
     },
@@ -314,8 +334,22 @@ export default function Users() {
   });
 
   const updateEmployeeAccessMutation = useMutation({
-    mutationFn: async ({ id, employeeAccess }: { id: string; employeeAccess: EmployeeAccessArea[] }) => {
-      await apiRequest("PATCH", `/api/users/${id}`, { employeeAccess });
+    mutationFn: async ({
+      id,
+      employeeAccess,
+      employeeManageAccess,
+      employeeProjectIds,
+    }: {
+      id: string;
+      employeeAccess: EmployeeAccessArea[];
+      employeeManageAccess: EmployeeAccessArea[];
+      employeeProjectIds: string[];
+    }) => {
+      await apiRequest("PATCH", `/api/users/${id}`, {
+        employeeAccess,
+        employeeManageAccess,
+        employeeProjectIds,
+      });
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
@@ -324,7 +358,11 @@ export default function Users() {
         description: "Employee permissions have been saved.",
       });
       handleAccessDialogChange(false);
-      accessForm.reset({ employeeAccess: variables.employeeAccess });
+      accessForm.reset({
+        employeeAccess: variables.employeeAccess,
+        employeeManageAccess: variables.employeeManageAccess,
+        employeeProjectIds: variables.employeeProjectIds,
+      });
     },
     onError: (error: any) => {
       toast({
@@ -355,14 +393,22 @@ export default function Users() {
     resetUserPasswordMutation.mutate({ userId: userToReset.id, ...values });
   };
 
-  const onAccessSubmit = (values: { employeeAccess: EmployeeAccessArea[] }) => {
+  const onAccessSubmit = (values: {
+    employeeAccess: EmployeeAccessArea[];
+    employeeManageAccess: EmployeeAccessArea[];
+    employeeProjectIds: string[];
+  }) => {
     if (!userToManageAccess) {
       return;
     }
 
+    const employeeAccess = Array.from(new Set([...(values.employeeAccess ?? []), ...(values.employeeManageAccess ?? [])]));
+
     updateEmployeeAccessMutation.mutate({
       id: userToManageAccess.id,
-      employeeAccess: values.employeeAccess ?? [],
+      employeeAccess,
+      employeeManageAccess: values.employeeManageAccess ?? [],
+      employeeProjectIds: values.employeeProjectIds ?? [],
     });
   };
 
@@ -392,14 +438,38 @@ export default function Users() {
     }
 
     return (
-      <div className="flex flex-wrap gap-1">
-        {employeeAccessOptions
-          .filter((option) => user.employeeAccess?.includes(option.value))
-          .map((option) => (
-            <Badge key={option.value} variant="secondary" className="capitalize">
-              {option.label}
-            </Badge>
-          ))}
+      <div className="space-y-1">
+        <div className="flex flex-wrap gap-1">
+          {employeeAccessOptions
+            .filter((option) => user.employeeAccess?.includes(option.value))
+            .map((option) => (
+              <Badge key={option.value} variant="secondary" className="capitalize">
+                View: {option.label}
+              </Badge>
+            ))}
+        </div>
+        {user.employeeManageAccess && user.employeeManageAccess.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {employeeAccessOptions
+              .filter((option) => user.employeeManageAccess?.includes(option.value))
+              .map((option) => (
+                <Badge key={option.value} variant="outline" className="capitalize border-amber-200 text-amber-900">
+                  Manage: {option.label}
+                </Badge>
+              ))}
+          </div>
+        )}
+        <div className="flex flex-wrap gap-1">
+          {user.employeeProjects && user.employeeProjects.length > 0 ? (
+            user.employeeProjects.map((project: Project) => (
+              <Badge key={project.id} variant="outline" className="capitalize">
+                Project: {project.name}
+              </Badge>
+            ))
+          ) : (
+            <Badge variant="outline">No projects assigned</Badge>
+          )}
+        </div>
       </div>
     );
   };
@@ -512,6 +582,98 @@ export default function Users() {
                                   </label>
                                 );
                               })}
+                            </div>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+
+                    {selectedRole === "employee" && (
+                      <FormField
+                        control={createForm.control}
+                        name="employeeManageAccess"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Manage Permissions</FormLabel>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {employeeAccessOptions.map((option) => {
+                                const isChecked = field.value?.includes(option.value);
+
+                                return (
+                                  <label
+                                    key={option.value}
+                                    className="flex cursor-pointer items-start space-x-3 rounded-md border p-3"
+                                  >
+                                    <Checkbox
+                                      checked={isChecked}
+                                      onCheckedChange={(checked) => {
+                                        const currentManage = field.value ?? [];
+                                        const currentAccess = createForm.getValues("employeeAccess") ?? [];
+                                        const nextManage = checked
+                                          ? [...currentManage, option.value]
+                                          : currentManage.filter((value) => value !== option.value);
+
+                                        field.onChange(nextManage);
+
+                                        if (checked && !currentAccess.includes(option.value)) {
+                                          createForm.setValue("employeeAccess", [...currentAccess, option.value]);
+                                        }
+                                      }}
+                                    />
+                                    <div className="space-y-1">
+                                      <p className="font-medium leading-none">{option.label}</p>
+                                      <p className="text-xs text-muted-foreground">
+                                        Allow this employee to create or update data in {option.label}.
+                                      </p>
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+
+                    {selectedRole === "employee" && (
+                      <FormField
+                        control={createForm.control}
+                        name="employeeProjectIds"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Assigned Projects</FormLabel>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {projects.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">No projects available.</p>
+                              ) : (
+                                projects.map((project) => {
+                                  const isChecked = field.value?.includes(project.id);
+                                  return (
+                                    <label
+                                      key={project.id}
+                                      className="flex cursor-pointer items-start space-x-3 rounded-md border p-3"
+                                    >
+                                      <Checkbox
+                                        checked={isChecked}
+                                        onCheckedChange={(checked) => {
+                                          const next = checked
+                                            ? [...(field.value ?? []), project.id]
+                                            : (field.value ?? []).filter((value) => value !== project.id);
+                                          field.onChange(next);
+                                        }}
+                                      />
+                                      <div className="space-y-1">
+                                        <p className="font-medium leading-none">{project.name}</p>
+                                        {project.location && (
+                                          <p className="text-xs text-muted-foreground">{project.location}</p>
+                                        )}
+                                      </div>
+                                    </label>
+                                  );
+                                })
+                              )}
                             </div>
                             <FormMessage />
                           </FormItem>
@@ -772,6 +934,94 @@ export default function Users() {
                           </label>
                         );
                       })}
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={accessForm.control}
+                name="employeeManageAccess"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Manage Permissions</FormLabel>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {employeeAccessOptions.map((option) => {
+                        const isChecked = field.value?.includes(option.value);
+
+                        return (
+                          <label
+                            key={option.value}
+                            className="flex cursor-pointer items-start space-x-3 rounded-md border p-3"
+                          >
+                            <Checkbox
+                              checked={isChecked}
+                              onCheckedChange={(checked) => {
+                                const currentManage = field.value ?? [];
+                                const currentAccess = accessForm.getValues("employeeAccess") ?? [];
+                                const nextManage = checked
+                                  ? [...currentManage, option.value]
+                                  : currentManage.filter((value) => value !== option.value);
+
+                                field.onChange(nextManage);
+
+                                if (checked && !currentAccess.includes(option.value)) {
+                                  accessForm.setValue("employeeAccess", [...currentAccess, option.value]);
+                                }
+                              }}
+                            />
+                            <div className="space-y-1">
+                              <p className="font-medium leading-none">{option.label}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Allow this employee to create or update data in {option.label}.
+                              </p>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={accessForm.control}
+                name="employeeProjectIds"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Assigned Projects</FormLabel>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {projects.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No projects available.</p>
+                      ) : (
+                        projects.map((project) => {
+                          const isChecked = field.value?.includes(project.id);
+                          return (
+                            <label
+                              key={project.id}
+                              className="flex cursor-pointer items-start space-x-3 rounded-md border p-3"
+                            >
+                              <Checkbox
+                                checked={isChecked}
+                                onCheckedChange={(checked) => {
+                                  const next = checked
+                                    ? [...(field.value ?? []), project.id]
+                                    : (field.value ?? []).filter((value) => value !== project.id);
+                                  field.onChange(next);
+                                }}
+                              />
+                              <div className="space-y-1">
+                                <p className="font-medium leading-none">{project.name}</p>
+                                {project.location && (
+                                  <p className="text-xs text-muted-foreground">{project.location}</p>
+                                )}
+                              </div>
+                            </label>
+                          );
+                        })
+                      )}
                     </div>
                     <FormMessage />
                   </FormItem>

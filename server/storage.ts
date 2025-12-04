@@ -9,6 +9,7 @@ import {
   ownershipHistory,
   vehicleAttendance,
   users,
+  employeeProjects,
   type Owner,
   type InsertOwner,
   type UpdateOwner,
@@ -99,7 +100,7 @@ export interface IStorage {
   deleteOwner(id: string): Promise<void>;
 
   // Vehicles
-  getVehicles(filter?: { ownerId?: string }): Promise<VehicleWithOwner[]>;
+  getVehicles(filter?: { ownerId?: string; projectIds?: string[] }): Promise<VehicleWithOwner[]>;
   getVehicle(id: string): Promise<VehicleWithOwner | undefined>;
   getVehiclesByOwner(ownerId: string): Promise<VehicleWithOwner[]>;
   createVehicle(vehicle: InsertVehicle): Promise<Vehicle>;
@@ -107,14 +108,14 @@ export interface IStorage {
   deleteVehicle(id: string): Promise<void>;
 
   // Projects
-  getProjects(): Promise<Project[]>;
+  getProjects(filter?: { ids?: string[] }): Promise<Project[]>;
   getProject(id: string): Promise<Project | undefined>;
   createProject(project: InsertProject): Promise<Project>;
   updateProject(id: string, project: Partial<InsertProject>): Promise<Project>;
   deleteProject(id: string): Promise<void>;
 
   // Assignments
-  getAssignments(filter?: { ownerId?: string }): Promise<AssignmentWithDetails[]>;
+  getAssignments(filter?: { ownerId?: string; projectIds?: string[] }): Promise<AssignmentWithDetails[]>;
   getAssignment(id: string): Promise<AssignmentWithDetails | undefined>;
   getAssignmentsByProject(projectId: string): Promise<AssignmentWithDetails[]>;
   getAssignmentsByVehicle(vehicleId: string): Promise<AssignmentWithDetails[]>;
@@ -199,13 +200,14 @@ export interface IStorage {
   }>;
 
   // Users
-  findUserByEmail(email: string): Promise<User | undefined>;
-  findUserById(id: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  findUserByEmail(email: string): Promise<(User & { employeeProjectIds: string[] }) | undefined>;
+  findUserById(id: string): Promise<(User & { employeeProjectIds: string[] }) | undefined>;
+  createUser(user: InsertUser, projectIds?: string[]): Promise<User>;
   getUsers(): Promise<UserWithOwner[]>;
   updateUser(
     id: string,
-    updates: Partial<Pick<User, "ownerId" | "isActive" | "employeeAccess">>,
+    updates: Partial<Pick<User, "ownerId" | "isActive" | "employeeAccess" | "employeeManageAccess">>,
+    projectIds?: string[],
   ): Promise<User>;
   updateUserPassword(id: string, passwordHash: string): Promise<User>;
 }
@@ -315,22 +317,38 @@ export class DatabaseStorage implements IStorage {
     await db.delete(owners).where(eq(owners.id, id));
   }
 
-  async getVehicles(filter?: { ownerId?: string }): Promise<VehicleWithOwner[]> {
+  async getVehicles(filter?: { ownerId?: string; projectIds?: string[] }): Promise<VehicleWithOwner[]> {
     let query = db
       .select({ vehicle: vehicles, owner: owners })
       .from(vehicles)
       .leftJoin(owners, eq(vehicles.ownerId, owners.id))
       .$dynamic();
 
+    const conditions = [] as any[];
+
+    if (filter?.projectIds && filter.projectIds.length > 0) {
+      query = query.innerJoin(assignments, eq(assignments.vehicleId, vehicles.id));
+      conditions.push(inArray(assignments.projectId, filter.projectIds));
+    }
+
     if (filter?.ownerId) {
-      query = query.where(eq(vehicles.ownerId, filter.ownerId));
+      conditions.push(eq(vehicles.ownerId, filter.ownerId));
+    }
+
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
     }
 
     query = query.orderBy(desc(vehicles.createdAt));
 
     const rows = await withRetry(() => query);
 
-    return rows.map((row) => ({
+    const uniqueRows = new Map<string, typeof rows[number]>();
+    for (const row of rows) {
+      uniqueRows.set(row.vehicle.id, row);
+    }
+
+    return Array.from(uniqueRows.values()).map((row) => ({
       ...row.vehicle,
       owner: row.owner!,
     }));
@@ -397,8 +415,14 @@ export class DatabaseStorage implements IStorage {
     await db.delete(vehicles).where(eq(vehicles.id, id));
   }
 
-  async getProjects(): Promise<Project[]> {
-    return await db.select().from(projects).orderBy(desc(projects.createdAt));
+  async getProjects(filter?: { ids?: string[] }): Promise<Project[]> {
+    let query = db.select().from(projects).$dynamic();
+
+    if (filter?.ids && filter.ids.length > 0) {
+      query = query.where(inArray(projects.id, filter.ids));
+    }
+
+    return await withRetry(() => query.orderBy(desc(projects.createdAt)));
   }
 
   async getProject(id: string): Promise<Project | undefined> {
@@ -433,7 +457,7 @@ export class DatabaseStorage implements IStorage {
     await db.delete(projects).where(eq(projects.id, id));
   }
 
-  async getAssignments(filter?: { ownerId?: string }): Promise<AssignmentWithDetails[]> {
+  async getAssignments(filter?: { ownerId?: string; projectIds?: string[] }): Promise<AssignmentWithDetails[]> {
     let query = db
       .select()
       .from(assignments)
@@ -442,8 +466,18 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(projects, eq(assignments.projectId, projects.id))
       .$dynamic();
 
+    const conditions = [] as any[];
+
     if (filter?.ownerId) {
-      query = query.where(eq(vehicles.ownerId, filter.ownerId));
+      conditions.push(eq(vehicles.ownerId, filter.ownerId));
+    }
+
+    if (filter?.projectIds && filter.projectIds.length > 0) {
+      conditions.push(inArray(assignments.projectId, filter.projectIds));
+    }
+
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
     }
 
     query = query.orderBy(desc(assignments.createdAt));
@@ -1885,17 +1919,44 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async findUserByEmail(email: string): Promise<User | undefined> {
+  async findUserByEmail(email: string): Promise<(User & { employeeProjectIds: string[] }) | undefined> {
     const rows = await withRetry(() =>
-      db.select().from(users).where(eq(users.email, email)).limit(1)
+      db
+        .select({
+          user: users,
+          projectIds: sql<string[]>`coalesce(array_agg(${employeeProjects.projectId}) filter (where ${employeeProjects.projectId} is not null), '{}')`,
+        })
+        .from(users)
+        .leftJoin(employeeProjects, eq(employeeProjects.userId, users.id))
+        .where(eq(users.email, email))
+        .groupBy(users.id)
+        .limit(1)
     );
 
-    return rows[0] ?? undefined;
+    const row = rows[0];
+    if (!row) return undefined;
+
+    return { ...row.user, employeeProjectIds: row.projectIds };
   }
 
-  async findUserById(id: string): Promise<User | undefined> {
-    const rows = await withRetry(() => db.select().from(users).where(eq(users.id, id)).limit(1));
-    return rows[0] ?? undefined;
+  async findUserById(id: string): Promise<(User & { employeeProjectIds: string[] }) | undefined> {
+    const rows = await withRetry(() =>
+      db
+        .select({
+          user: users,
+          projectIds: sql<string[]>`coalesce(array_agg(${employeeProjects.projectId}) filter (where ${employeeProjects.projectId} is not null), '{}')`,
+        })
+        .from(users)
+        .leftJoin(employeeProjects, eq(employeeProjects.userId, users.id))
+        .where(eq(users.id, id))
+        .groupBy(users.id)
+        .limit(1)
+    );
+
+    const row = rows[0];
+    if (!row) return undefined;
+
+    return { ...row.user, employeeProjectIds: row.projectIds };
   }
 
   async getUsers(): Promise<UserWithOwner[]> {
@@ -1909,47 +1970,87 @@ export class DatabaseStorage implements IStorage {
           createdAt: users.createdAt,
           isActive: users.isActive,
           employeeAccess: users.employeeAccess,
+          employeeManageAccess: users.employeeManageAccess,
           owner: owners,
+          project: projects,
         })
         .from(users)
         .leftJoin(owners, eq(users.ownerId, owners.id))
+        .leftJoin(employeeProjects, eq(employeeProjects.userId, users.id))
+        .leftJoin(projects, eq(employeeProjects.projectId, projects.id))
         .orderBy(desc(users.createdAt))
     );
 
-    return rows.map(({ owner, ...user }) => ({
-      ...user,
-      owner: owner ?? null,
-    }));
+    const userMap = new Map<string, UserWithOwner>();
+
+    for (const { owner, project, ...user } of rows) {
+      const existing = userMap.get(user.id) ?? {
+        ...user,
+        owner: owner ?? null,
+        employeeProjects: [] as Project[],
+      };
+
+      if (project) {
+        existing.employeeProjects.push(project);
+      }
+
+      userMap.set(user.id, existing);
+    }
+
+    return Array.from(userMap.values());
   }
 
-  async createUser(user: InsertUser): Promise<User> {
-    const [created] = await withRetry(() => db.insert(users).values(user).returning());
-    return created;
+  async createUser(user: InsertUser, projectIds: string[] = []): Promise<User> {
+    return db.transaction(async (tx) => {
+      const [created] = await tx.insert(users).values(user).returning();
+
+      if (projectIds.length > 0) {
+        await tx
+          .insert(employeeProjects)
+          .values(projectIds.map((projectId) => ({ userId: created.id, projectId })));
+      }
+
+      return created;
+    });
   }
 
   async updateUser(
     id: string,
-    updates: Partial<Pick<User, "ownerId" | "isActive" | "employeeAccess">>,
+    updates: Partial<Pick<User, "ownerId" | "isActive" | "employeeAccess" | "employeeManageAccess">>,
+    projectIds?: string[],
   ): Promise<User> {
-    const updateData: Partial<InsertUser> = {};
+    return db.transaction(async (tx) => {
+      const updateData: Partial<InsertUser> = {};
 
-    if (Object.prototype.hasOwnProperty.call(updates, "ownerId")) {
-      updateData.ownerId = updates.ownerId ?? null;
-    }
+      if (Object.prototype.hasOwnProperty.call(updates, "ownerId")) {
+        updateData.ownerId = updates.ownerId ?? null;
+      }
 
-    if (Object.prototype.hasOwnProperty.call(updates, "isActive")) {
-      updateData.isActive = updates.isActive;
-    }
+      if (Object.prototype.hasOwnProperty.call(updates, "isActive")) {
+        updateData.isActive = updates.isActive;
+      }
 
-    if (Object.prototype.hasOwnProperty.call(updates, "employeeAccess")) {
-      updateData.employeeAccess = updates.employeeAccess ?? [];
-    }
+      if (Object.prototype.hasOwnProperty.call(updates, "employeeAccess")) {
+        updateData.employeeAccess = updates.employeeAccess ?? [];
+      }
 
-    const [updated] = await withRetry(() =>
-      db.update(users).set(updateData).where(eq(users.id, id)).returning()
-    );
+      if (Object.prototype.hasOwnProperty.call(updates, "employeeManageAccess")) {
+        updateData.employeeManageAccess = updates.employeeManageAccess ?? [];
+      }
 
-    return updated;
+      const [updated] = await tx.update(users).set(updateData).where(eq(users.id, id)).returning();
+
+      if (projectIds !== undefined) {
+        await tx.delete(employeeProjects).where(eq(employeeProjects.userId, id));
+        if (projectIds.length > 0) {
+          await tx
+            .insert(employeeProjects)
+            .values(projectIds.map((projectId) => ({ userId: id, projectId })));
+        }
+      }
+
+      return updated;
+    });
   }
 
   async updateUserPassword(id: string, passwordHash: string): Promise<User> {
