@@ -29,8 +29,12 @@ export default function Vehicles() {
   const [viewVehicle, setViewVehicle] = useState<VehicleWithOwner | null>(null);
   const { toast } = useToast();
   const { user } = useAuth();
-  const canManageVehicles =
+  const canViewVehicles =
     user?.role === "admin" || (user?.role === "employee" && user.employeeAccess?.includes("vehicles"));
+  const canManageVehicles =
+    user?.role === "admin" || (user?.role === "employee" && user.employeeManageAccess?.includes("vehicles"));
+  const canViewAssignments =
+    user?.role === "admin" || (user?.role === "employee" && user.employeeAccess?.includes("assignments"));
 
   const { data: vehicles = [], isLoading } = useVehicles();
   const { data: ownershipHistory = [], isLoading: isOwnershipHistoryLoading } = useOwnershipHistoryByVehicle(
@@ -39,7 +43,7 @@ export default function Vehicles() {
   );
   const { data: assignmentHistory = [], isLoading: isAssignmentHistoryLoading } = useAssignmentsByVehicle(
     viewVehicle?.id,
-    { enabled: !!viewVehicle }
+    { enabled: !!viewVehicle && canViewAssignments }
   );
 
   const deleteVehicleMutation = useMutation({
@@ -232,7 +236,7 @@ export default function Vehicles() {
                     <TableHead>License Plate</TableHead>
                     <TableHead>Year</TableHead>
                     <TableHead>Status</TableHead>
-                    {canManageVehicles && <TableHead>Actions</TableHead>}
+                    {canViewVehicles && <TableHead>Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -293,17 +297,19 @@ export default function Vehicles() {
                         <TableCell>
                           {getStatusBadge(vehicle.status)}
                         </TableCell>
-                        {canManageVehicles && (
+                        {canViewVehicles && (
                           <TableCell>
                             <div className="flex items-center space-x-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleEdit(vehicle)}
-                                data-testid={`edit-vehicle-${vehicle.id}`}
-                              >
-                                <Edit className="w-4 h-4" />
-                              </Button>
+                              {canManageVehicles && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleEdit(vehicle)}
+                                  data-testid={`edit-vehicle-${vehicle.id}`}
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </Button>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -312,14 +318,16 @@ export default function Vehicles() {
                               >
                                 <Eye className="w-4 h-4" />
                               </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setTransferVehicle(vehicle)}
-                                data-testid={`transfer-vehicle-${vehicle.id}`}
-                              >
-                                <ArrowLeftRight className="w-4 h-4" />
-                              </Button>
+                              {canManageVehicles && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setTransferVehicle(vehicle)}
+                                  data-testid={`transfer-vehicle-${vehicle.id}`}
+                                >
+                                  <ArrowLeftRight className="w-4 h-4" />
+                                </Button>
+                              )}
                               <ConfirmDialog
                                 title="Delete vehicle"
                                 description="Are you sure you want to delete this vehicle?"
@@ -329,7 +337,7 @@ export default function Vehicles() {
                                     variant="ghost"
                                     size="sm"
                                     className="text-red-500 hover:text-red-700"
-                                    disabled={deleteVehicleMutation.isPending}
+                                    disabled={deleteVehicleMutation.isPending || !canManageVehicles}
                                     data-testid={`delete-vehicle-${vehicle.id}`}
                                   >
                                     <Trash2 className="w-4 h-4" />
@@ -471,48 +479,50 @@ export default function Vehicles() {
                 )}
               </section>
 
-              <section className="space-y-3 pb-1">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                  Assignment History
-                </h3>
-                {isAssignmentHistoryLoading ? (
-                  <div className="space-y-3">
-                    {Array.from({ length: 3 }).map((_, index) => (
-                      <Skeleton key={index} className="h-12 w-full" />
-                    ))}
-                  </div>
-                ) : assignmentHistory.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No assignments recorded for this vehicle yet.</p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Project</TableHead>
-                        <TableHead>Assignment Period</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Monthly Rate</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {assignmentHistory.map((assignment) => (
-                        <TableRow key={assignment.id}>
-                          <TableCell>
-                            <div className="text-sm font-medium text-foreground">{assignment.project.name}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {assignment.project.location ?? "—"}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="text-sm font-medium text-foreground">{formatPeriod(assignment.startDate, assignment.endDate)}</div>
-                          </TableCell>
-                          <TableCell>{getAssignmentStatusBadge(assignment.status)}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(assignment.monthlyRate)}</TableCell>
-                        </TableRow>
+              {canViewAssignments && (
+                <section className="space-y-3 pb-1">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                    Assignment History
+                  </h3>
+                  {isAssignmentHistoryLoading ? (
+                    <div className="space-y-3">
+                      {Array.from({ length: 3 }).map((_, index) => (
+                        <Skeleton key={index} className="h-12 w-full" />
                       ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </section>
+                    </div>
+                  ) : assignmentHistory.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No assignments recorded for this vehicle yet.</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Project</TableHead>
+                          <TableHead>Assignment Period</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Monthly Rate</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {assignmentHistory.map((assignment) => (
+                          <TableRow key={assignment.id}>
+                            <TableCell>
+                              <div className="text-sm font-medium text-foreground">{assignment.project.name}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {assignment.project.location ?? "—"}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="text-sm font-medium text-foreground">{formatPeriod(assignment.startDate, assignment.endDate)}</div>
+                            </TableCell>
+                            <TableCell>{getAssignmentStatusBadge(assignment.status)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(assignment.monthlyRate)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </section>
+              )}
             </div>
           </DialogContent>
         )}
