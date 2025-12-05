@@ -129,6 +129,9 @@ export default function Maintenance() {
       repair: "destructive",
       inspection: "secondary",
       service: "outline",
+      bill_payment: "secondary",
+      advance: "secondary",
+      fuel: "secondary",
       driver_salary: "secondary",
     };
     const labels: Record<string, string> = {
@@ -136,6 +139,9 @@ export default function Maintenance() {
       repair: "Repair",
       inspection: "Inspection",
       service: "Service",
+      bill_payment: "Bill Payment",
+      advance: "Advance",
+      fuel: "Fuel",
       driver_salary: "Driver Salary",
     };
     return <Badge variant={variants[type] || "outline"}>{labels[type] || type}</Badge>;
@@ -306,6 +312,9 @@ export default function Maintenance() {
                 <option value="repair">Repair</option>
                 <option value="inspection">Inspection</option>
                 <option value="service">Service</option>
+                <option value="bill_payment">Bill Payment</option>
+                <option value="advance">Advance</option>
+                <option value="fuel">Fuel</option>
                 <option value="driver_salary">Driver Salary</option>
               </select>
               <select

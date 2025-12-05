@@ -126,7 +126,7 @@ export const paymentTransactions = pgTable("payment_transactions", {
 export const maintenanceRecords = pgTable("maintenance_records", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   vehicleId: varchar("vehicle_id").notNull().references(() => vehicles.id, { onDelete: "cascade" }),
-  type: text("type").notNull(), // scheduled, repair, inspection, service
+  type: text("type").notNull(), // scheduled, repair, inspection, service, bill_payment, advance, fuel, driver_salary
   description: text("description").notNull(),
   cost: decimal("cost", { precision: 10, scale: 2 }).notNull(),
   performedBy: text("performed_by").notNull(),
