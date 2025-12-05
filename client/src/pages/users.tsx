@@ -79,6 +79,11 @@ type ResetUserPasswordFormValues = z.infer<typeof resetUserPasswordFormSchema>;
 
 const employeeAccessOptions: { value: EmployeeAccessArea; label: string; description: string }[] = [
   {
+    value: "owners",
+    label: "Owners",
+    description: "Manage owner records and related information.",
+  },
+  {
     value: "vehicles",
     label: "Vehicles",
     description: "Manage fleet inventory and vehicle details.",

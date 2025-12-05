@@ -217,7 +217,7 @@ export async function registerRoutes(app: Application): Promise<void> {
 
   // Owner routes
   app.get("/api/owners", async (req, res) => {
-    if (!requireAdmin(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "owners")) {
       return;
     }
 
@@ -236,7 +236,7 @@ export async function registerRoutes(app: Application): Promise<void> {
         return res.status(404).json({ message: "Owner not found" });
       }
 
-      if (!ensureOwnerAccess(req, res, owner.id)) {
+      if (!ensureOwnerAccess(req, res, owner.id, "owners")) {
         return;
       }
 
@@ -247,7 +247,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.post("/api/owners", async (req, res) => {
-    if (!requireAdmin(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "owners", { manage: true })) {
       return;
     }
 
@@ -261,7 +261,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.put("/api/owners/:id", async (req, res) => {
-    if (!requireAdmin(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "owners", { manage: true })) {
       return;
     }
 
@@ -275,7 +275,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.delete("/api/owners/:id", async (req, res) => {
-    if (!requireAdmin(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "owners", { manage: true })) {
       return;
     }
 

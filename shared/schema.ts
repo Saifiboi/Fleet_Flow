@@ -252,6 +252,7 @@ export const vehicleAttendanceRelations = relations(vehicleAttendance, ({ one })
 }));
 
 export const employeeAccessAreas = [
+  "owners",
   "vehicles",
   "projects",
   "assignments",
