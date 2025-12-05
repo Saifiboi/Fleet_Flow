@@ -14,12 +14,21 @@ import OwnerForm from "@/components/forms/owner-form";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Users, Plus, Edit, Eye, Trash2, Search, Mail, Phone } from "lucide-react";
 import type { Owner } from "@shared/schema";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function Owners() {
   const [searchTerm, setSearchTerm] = useState("");
   const [editingOwner, setEditingOwner] = useState<Owner | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+  const canManageOwners =
+    isAdmin || (user?.role === "employee" && user.employeeManageAccess?.includes("owners"));
+  const canViewOwners =
+    isAdmin ||
+    user?.role === "owner" ||
+    (user?.role === "employee" && user.employeeAccess?.includes("owners"));
 
   const { data: owners = [], isLoading } = useOwners();
 
@@ -50,6 +59,7 @@ export default function Owners() {
   );
 
   const handleEdit = (owner: Owner) => {
+    if (!canManageOwners) return;
     setEditingOwner(owner);
     setIsFormOpen(true);
   };
@@ -68,25 +78,27 @@ export default function Owners() {
               <Users className="w-5 h-5" />
               <span>Vehicle Owners</span>
             </CardTitle>
-            <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-              <DialogTrigger asChild>
-                <Button data-testid="add-owner-button">
-                  <Plus className="mr-2 w-4 h-4" />
-                  Add Owner
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl">
-                <DialogHeader>
-                  <DialogTitle>
-                    {editingOwner ? "Edit Owner" : "Add New Owner"}
-                  </DialogTitle>
-                </DialogHeader>
-                <OwnerForm 
-                  owner={editingOwner} 
-                  onSuccess={handleFormClose}
-                />
-              </DialogContent>
-            </Dialog>
+            {canManageOwners && (
+              <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                <DialogTrigger asChild>
+                  <Button data-testid="add-owner-button">
+                    <Plus className="mr-2 w-4 h-4" />
+                    Add Owner
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>
+                      {editingOwner ? "Edit Owner" : "Add New Owner"}
+                    </DialogTitle>
+                  </DialogHeader>
+                  <OwnerForm
+                    owner={editingOwner}
+                    onSuccess={handleFormClose}
+                  />
+                </DialogContent>
+              </Dialog>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -178,37 +190,43 @@ export default function Owners() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center space-x-2">
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={() => handleEdit(owner)}
-                          data-testid={`edit-owner-${owner.id}`}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          data-testid={`view-owner-${owner.id}`}
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <ConfirmDialog
-                          title="Delete owner"
-                          description="Are you sure you want to delete this owner? This will also delete all their vehicles."
-                          onConfirm={() => deleteOwnerMutation.mutate(owner.id)}
-                          trigger={
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-red-500 hover:text-red-700"
-                              disabled={deleteOwnerMutation.isPending}
-                              data-testid={`delete-owner-${owner.id}`}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          }
-                        />
+                        {canManageOwners && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEdit(owner)}
+                            data-testid={`edit-owner-${owner.id}`}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {canViewOwners && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            data-testid={`view-owner-${owner.id}`}
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {canManageOwners && (
+                          <ConfirmDialog
+                            title="Delete owner"
+                            description="Are you sure you want to delete this owner? This will also delete all their vehicles."
+                            onConfirm={() => deleteOwnerMutation.mutate(owner.id)}
+                            trigger={
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-500 hover:text-red-700"
+                                disabled={deleteOwnerMutation.isPending}
+                                data-testid={`delete-owner-${owner.id}`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            }
+                          />
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
