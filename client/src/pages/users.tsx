@@ -563,7 +563,7 @@ export default function Users() {
                     />
 
                     {selectedRole === "employee" && (
-                      <ScrollArea className="max-h-[60vh] rounded-md border p-3 pr-2">
+                      <ScrollArea className="h-[60vh] max-h-[60vh] rounded-md border p-3 pr-2">
                         <Accordion
                           type="multiple"
                           defaultValue={["operational-access", "manage-permissions", "assigned-projects"]}
@@ -706,7 +706,6 @@ export default function Users() {
                             </AccordionContent>
                           </AccordionItem>
                         </Accordion>
-                        <ScrollBar orientation="vertical" />
                       </ScrollArea>
                     )}
 
