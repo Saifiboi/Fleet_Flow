@@ -31,7 +31,7 @@ type NavigationItem = {
 const navigationItems: NavigationItem[] = [
   { path: "/", label: "Dashboard", icon: BarChart3, roles: ["admin"] },
   { path: "/users", label: "Users", icon: Shield, roles: ["admin"] },
-  { path: "/owners", label: "Owners", icon: Users, roles: ["admin"] },
+  { path: "/owners", label: "Owners", icon: Users, roles: ["admin", "owner", "employee"], employeeAccess: "owners" },
   { path: "/vehicles", label: "Vehicles", icon: Car, roles: ["admin", "owner", "employee"], employeeAccess: "vehicles" },
   { path: "/projects", label: "Projects", icon: FolderKanban, roles: ["admin", "employee"], employeeAccess: "projects" },
   { path: "/assignments", label: "Assignments", icon: Calendar, roles: ["admin", "owner", "employee"], employeeAccess: "assignments" },
