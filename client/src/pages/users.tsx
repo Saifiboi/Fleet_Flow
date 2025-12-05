@@ -29,6 +29,12 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
   Form,
   FormControl,
   FormField,
@@ -894,150 +900,167 @@ export default function Users() {
       </Dialog>
 
       <Dialog open={isAccessDialogOpen} onOpenChange={handleAccessDialogChange}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-3xl w-[calc(100vw-2rem)]">
           <DialogHeader>
             <DialogTitle>Manage Employee Access</DialogTitle>
             <DialogDescription>
               Choose which operational areas {userToManageAccess?.email ?? "this employee"} can access.
             </DialogDescription>
           </DialogHeader>
-          <Form {...accessForm}>
-            <form onSubmit={accessForm.handleSubmit(onAccessSubmit)} className="space-y-4">
-              <FormField
-                control={accessForm.control}
-                name="employeeAccess"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Operational Access</FormLabel>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {employeeAccessOptions.map((option) => {
-                        const isChecked = field.value?.includes(option.value);
+          <ScrollArea className="max-h-[70vh] pr-1">
+            <Form {...accessForm}>
+              <form onSubmit={accessForm.handleSubmit(onAccessSubmit)} className="space-y-4 py-1">
+                <Accordion type="multiple" defaultValue={["operational-access", "manage-permissions", "assigned-projects"]} className="space-y-3">
+                  <AccordionItem value="operational-access">
+                    <AccordionTrigger className="text-base font-semibold">Operational Access</AccordionTrigger>
+                    <AccordionContent>
+                      <FormField
+                        control={accessForm.control}
+                        name="employeeAccess"
+                        render={({ field }) => (
+                          <FormItem className="space-y-3">
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {employeeAccessOptions.map((option) => {
+                                const isChecked = field.value?.includes(option.value);
 
-                        return (
-                          <label
-                            key={option.value}
-                            className="flex cursor-pointer items-start space-x-3 rounded-md border p-3"
-                          >
-                            <Checkbox
-                              checked={isChecked}
-                              onCheckedChange={(checked) => {
-                                const next = checked
-                                  ? [...(field.value ?? []), option.value]
-                                  : (field.value ?? []).filter((value) => value !== option.value);
-                                field.onChange(next);
-                              }}
-                            />
-                            <div className="space-y-1">
-                              <p className="font-medium leading-none">{option.label}</p>
-                              <p className="text-xs text-muted-foreground">{option.description}</p>
+                                return (
+                                  <label
+                                    key={option.value}
+                                    className="flex cursor-pointer items-start space-x-3 rounded-md border p-3"
+                                  >
+                                    <Checkbox
+                                      checked={isChecked}
+                                      onCheckedChange={(checked) => {
+                                        const next = checked
+                                          ? [...(field.value ?? []), option.value]
+                                          : (field.value ?? []).filter((value) => value !== option.value);
+                                        field.onChange(next);
+                                      }}
+                                    />
+                                    <div className="space-y-1">
+                                      <p className="font-medium leading-none">{option.label}</p>
+                                      <p className="text-xs text-muted-foreground">{option.description}</p>
+                                    </div>
+                                  </label>
+                                );
+                              })}
                             </div>
-                          </label>
-                        );
-                      })}
-                    </div>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </AccordionContent>
+                  </AccordionItem>
 
-              <FormField
-                control={accessForm.control}
-                name="employeeManageAccess"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Manage Permissions</FormLabel>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {employeeAccessOptions.map((option) => {
-                        const isChecked = field.value?.includes(option.value);
+                  <AccordionItem value="manage-permissions">
+                    <AccordionTrigger className="text-base font-semibold">Manage Permissions</AccordionTrigger>
+                    <AccordionContent>
+                      <FormField
+                        control={accessForm.control}
+                        name="employeeManageAccess"
+                        render={({ field }) => (
+                          <FormItem className="space-y-3">
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {employeeAccessOptions.map((option) => {
+                                const isChecked = field.value?.includes(option.value);
 
-                        return (
-                          <label
-                            key={option.value}
-                            className="flex cursor-pointer items-start space-x-3 rounded-md border p-3"
-                          >
-                            <Checkbox
-                              checked={isChecked}
-                              onCheckedChange={(checked) => {
-                                const currentManage = field.value ?? [];
-                                const currentAccess = accessForm.getValues("employeeAccess") ?? [];
-                                const nextManage = checked
-                                  ? [...currentManage, option.value]
-                                  : currentManage.filter((value) => value !== option.value);
+                                return (
+                                  <label
+                                    key={option.value}
+                                    className="flex cursor-pointer items-start space-x-3 rounded-md border p-3"
+                                  >
+                                    <Checkbox
+                                      checked={isChecked}
+                                      onCheckedChange={(checked) => {
+                                        const currentManage = field.value ?? [];
+                                        const currentAccess = accessForm.getValues("employeeAccess") ?? [];
+                                        const nextManage = checked
+                                          ? [...currentManage, option.value]
+                                          : currentManage.filter((value) => value !== option.value);
 
-                                field.onChange(nextManage);
+                                        field.onChange(nextManage);
 
-                                if (checked && !currentAccess.includes(option.value)) {
-                                  accessForm.setValue("employeeAccess", [...currentAccess, option.value]);
-                                }
-                              }}
-                            />
-                            <div className="space-y-1">
-                              <p className="font-medium leading-none">{option.label}</p>
-                              <p className="text-xs text-muted-foreground">
-                                Allow this employee to create or update data in {option.label}.
-                              </p>
+                                        if (checked && !currentAccess.includes(option.value)) {
+                                          accessForm.setValue("employeeAccess", [...currentAccess, option.value]);
+                                        }
+                                      }}
+                                    />
+                                    <div className="space-y-1">
+                                      <p className="font-medium leading-none">{option.label}</p>
+                                      <p className="text-xs text-muted-foreground">
+                                        Allow this employee to create or update data in {option.label}.
+                                      </p>
+                                    </div>
+                                  </label>
+                                );
+                              })}
                             </div>
-                          </label>
-                        );
-                      })}
-                    </div>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </AccordionContent>
+                  </AccordionItem>
 
-              <FormField
-                control={accessForm.control}
-                name="employeeProjectIds"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Assigned Projects</FormLabel>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {projects.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">No projects available.</p>
-                      ) : (
-                        projects.map((project) => {
-                          const isChecked = field.value?.includes(project.id);
-                          return (
-                            <label
-                              key={project.id}
-                              className="flex cursor-pointer items-start space-x-3 rounded-md border p-3"
-                            >
-                              <Checkbox
-                                checked={isChecked}
-                                onCheckedChange={(checked) => {
-                                  const next = checked
-                                    ? [...(field.value ?? []), project.id]
-                                    : (field.value ?? []).filter((value) => value !== project.id);
-                                  field.onChange(next);
-                                }}
-                              />
-                              <div className="space-y-1">
-                                <p className="font-medium leading-none">{project.name}</p>
-                                {project.location && (
-                                  <p className="text-xs text-muted-foreground">{project.location}</p>
-                                )}
-                              </div>
-                            </label>
-                          );
-                        })
-                      )}
-                    </div>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <AccordionItem value="assigned-projects">
+                    <AccordionTrigger className="text-base font-semibold">Assigned Projects</AccordionTrigger>
+                    <AccordionContent>
+                      <FormField
+                        control={accessForm.control}
+                        name="employeeProjectIds"
+                        render={({ field }) => (
+                          <FormItem className="space-y-3">
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {projects.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">No projects available.</p>
+                              ) : (
+                                projects.map((project) => {
+                                  const isChecked = field.value?.includes(project.id);
+                                  return (
+                                    <label
+                                      key={project.id}
+                                      className="flex cursor-pointer items-start space-x-3 rounded-md border p-3"
+                                    >
+                                      <Checkbox
+                                        checked={isChecked}
+                                        onCheckedChange={(checked) => {
+                                          const next = checked
+                                            ? [...(field.value ?? []), project.id]
+                                            : (field.value ?? []).filter((value) => value !== project.id);
+                                          field.onChange(next);
+                                        }}
+                                      />
+                                      <div className="space-y-1">
+                                        <p className="font-medium leading-none">{project.name}</p>
+                                        {project.location && (
+                                          <p className="text-xs text-muted-foreground">{project.location}</p>
+                                        )}
+                                      </div>
+                                    </label>
+                                  );
+                                })
+                              )}
+                            </div>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
 
-              <DialogFooter className="flex items-center justify-end space-x-2">
-                <Button type="button" variant="outline" onClick={() => handleAccessDialogChange(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={updateEmployeeAccessMutation.isPending || !userToManageAccess}>
-                  {updateEmployeeAccessMutation.isPending ? "Saving..." : "Save Access"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
+                <DialogFooter className="flex items-center justify-end space-x-2">
+                  <Button type="button" variant="outline" onClick={() => handleAccessDialogChange(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={updateEmployeeAccessMutation.isPending || !userToManageAccess}>
+                    {updateEmployeeAccessMutation.isPending ? "Saving..." : "Save Access"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </Form>
+            <ScrollBar orientation="vertical" />
+          </ScrollArea>
         </DialogContent>
       </Dialog>
 
