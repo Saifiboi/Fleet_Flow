@@ -198,7 +198,7 @@ export default function Maintenance() {
   return (
     <div className="space-y-6" data-testid="maintenance-page">
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="hidden md:grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card data-testid="maintenance-cost-card">
           <CardContent className="p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -423,8 +423,109 @@ export default function Maintenance() {
             </Card>
           )}
 
+          {/* Mobile Cards */}
+          <div className="grid gap-4 md:hidden">
+            {filteredRecords && filteredRecords.length > 0 ? (
+              filteredRecords.map((record) => (
+                <Card key={record.id} data-testid={`maintenance-card-${record.id}`}>
+                  <CardHeader className="flex flex-row items-start justify-between space-y-0">
+                    <div>
+                      <CardTitle className="text-lg">
+                        {record.vehicle.make} {record.vehicle.model}
+                      </CardTitle>
+                      <CardDescription>{record.vehicle.licensePlate}</CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {getTypeBadge(record.type)}
+                      {getStatusBadge(record.status)}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <p className="text-sm text-muted-foreground" title={record.description}>
+                      {record.description}
+                    </p>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">Cost</p>
+                        <p className="font-medium">{Number(record.cost).toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Service Date</p>
+                        <p className="font-medium">{new Date(record.serviceDate).toLocaleDateString()}</p>
+                      </div>
+                      {record.nextServiceDate && (
+                        <div>
+                          <p className="text-muted-foreground">Next Service</p>
+                          <p className="font-medium">{new Date(record.nextServiceDate).toLocaleDateString()}</p>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-muted-foreground">Performed By</p>
+                        <p className="font-medium">{record.performedBy}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleView(record)}
+                        data-testid={`view-maintenance-${record.id}`}
+                        className="flex-1"
+                      >
+                        <Eye className="w-4 h-4 mr-2" />
+                        View
+                      </Button>
+                      {canManageMaintenance && (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEdit(record)}
+                            data-testid={`edit-maintenance-${record.id}`}
+                            className="flex-1"
+                          >
+                            <Edit className="w-4 h-4 mr-2" />
+                            Edit
+                          </Button>
+                          <ConfirmDialog
+                            title="Delete maintenance record"
+                            description="Are you sure you want to delete this maintenance record?"
+                            onConfirm={() => handleDeleteRecord(record)}
+                            trigger={
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                disabled={deleteRecordMutation.isPending || record.status === "completed"}
+                                data-testid={`delete-maintenance-${record.id}`}
+                                className="flex-1"
+                                title={
+                                  record.status === "completed"
+                                    ? "Completed maintenance records cannot be deleted."
+                                    : undefined
+                                }
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete
+                              </Button>
+                            }
+                          />
+                        </>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            ) : (
+              <Card>
+                <CardContent className="py-6 text-center text-muted-foreground">
+                  No maintenance records found
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
           {/* Table */}
-          <div className="rounded-md border">
+          <div className="rounded-md border hidden md:block">
             <div className="overflow-x-auto">
               <ScrollArea className="h-[60vh]">
                 <Table className="min-w-full" data-testid="maintenance-records-table">
