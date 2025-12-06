@@ -407,14 +407,26 @@ export default function Payments() {
   return (
     <div className="space-y-6" data-testid="payments-page">
       <Dialog open={isViewOpen} onOpenChange={handleViewClose}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="w-[min(95vw,64rem)] max-h-[85vh] overflow-y-auto sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>Payment details</DialogTitle>
           </DialogHeader>
           {selectedPayment ? (
             <div className="space-y-6">
               <div className="rounded-lg border bg-muted/40 p-4">
-                <h4 className="text-sm font-semibold text-foreground">Payment summary</h4>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h4 className="text-sm font-semibold text-foreground">Payment summary</h4>
+                  <Badge
+                    variant="outline"
+                    className={
+                      selectedPayment.outstandingAmount > 0
+                        ? "border-destructive/40 text-destructive"
+                        : "border-green-200 text-green-700"
+                    }
+                  >
+                    {selectedPayment.outstandingAmount > 0 ? "Outstanding" : "Settled"}
+                  </Badge>
+                </div>
                 <dl className="mt-3 grid grid-cols-1 gap-y-2 text-sm md:grid-cols-2 md:gap-x-6">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Period</dt>
@@ -516,7 +528,10 @@ export default function Payments() {
               </div>
 
               <div className="rounded-lg border bg-muted/40 p-4">
-                <h4 className="text-sm font-semibold text-foreground">Assignment details</h4>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h4 className="text-sm font-semibold text-foreground">Assignment details</h4>
+                  <Badge variant="secondary" className="w-fit">{selectedPayment.assignment.project.name}</Badge>
+                </div>
                 <dl className="mt-3 grid grid-cols-1 gap-y-2 text-sm md:grid-cols-2 md:gap-x-6">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Project</dt>
@@ -583,35 +598,61 @@ export default function Payments() {
                 </div>
 
                 {selectedPayment.transactions.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Method</TableHead>
-                          <TableHead className="text-right">Amount</TableHead>
-                          <TableHead>Reference</TableHead>
-                          <TableHead>Notes</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {selectedPayment.transactions.map((transaction) => (
-                          <TableRow key={transaction.id}>
-                            <TableCell>{format(new Date(transaction.transactionDate), "MMM dd, yyyy")}</TableCell>
-                            <TableCell className="capitalize">{transaction.method.replace(/_/g, " ")}</TableCell>
-                            <TableCell className="text-right font-medium text-foreground">
-                              ${formatCurrency(transaction.amount)}
-                            </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
-                              {transaction.referenceNumber ?? "-"}
-                            </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
-                              {transaction.notes ?? "-"}
-                            </TableCell>
+                  <div className="space-y-3">
+                    <div className="hidden sm:block overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Method</TableHead>
+                            <TableHead className="text-right">Amount</TableHead>
+                            <TableHead>Reference</TableHead>
+                            <TableHead>Notes</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {selectedPayment.transactions.map((transaction) => (
+                            <TableRow key={transaction.id}>
+                              <TableCell>{format(new Date(transaction.transactionDate), "MMM dd, yyyy")}</TableCell>
+                              <TableCell className="capitalize">{transaction.method.replace(/_/g, " ")}</TableCell>
+                              <TableCell className="text-right font-medium text-foreground">
+                                ${formatCurrency(transaction.amount)}
+                              </TableCell>
+                              <TableCell className="text-sm text-muted-foreground">
+                                {transaction.referenceNumber ?? "-"}
+                              </TableCell>
+                              <TableCell className="text-sm text-muted-foreground">
+                                {transaction.notes ?? "-"}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    <div className="grid gap-3 sm:hidden">
+                      {selectedPayment.transactions.map((transaction) => (
+                        <Card key={transaction.id} className="border bg-background">
+                          <CardContent className="p-4 space-y-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <p className="text-sm font-semibold">{transaction.method.replace(/_/g, " ")}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {format(new Date(transaction.transactionDate), "MMM dd, yyyy")}
+                                </p>
+                              </div>
+                              <span className="text-sm font-medium text-foreground">
+                                ${formatCurrency(transaction.amount)}
+                              </span>
+                            </div>
+                            <div className="text-xs text-muted-foreground space-y-1">
+                              <p>Reference: {transaction.referenceNumber ?? "-"}</p>
+                              <p>Notes: {transaction.notes ?? "-"}</p>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">
