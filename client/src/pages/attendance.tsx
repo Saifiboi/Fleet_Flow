@@ -720,7 +720,9 @@ export default function Attendance() {
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle>Vehicle Attendance</CardTitle>
               {canManageAttendance ? (
-                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                <div
+                  className="sticky top-16 z-20 -mx-2 flex w-[calc(100%+1rem)] flex-col gap-2 bg-card/95 p-2 backdrop-blur supports-[backdrop-filter]:bg-card/80 sm:static sm:top-auto sm:z-auto sm:mx-0 sm:w-auto sm:flex-row sm:bg-transparent sm:p-0 sm:backdrop-blur-none"
+                >
                   <ConfirmDialog
                     title="Delete attendance?"
                     description="This will permanently remove the selected attendance records. This action cannot be undone."
