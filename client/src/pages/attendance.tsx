@@ -912,7 +912,7 @@ export default function Attendance() {
                   Review the attendance history for your assigned vehicle below. Contact an administrator for any updates.
                 </div>
               )}
-              <div className="max-h-[55vh] overflow-auto">
+              <div className="hidden md:block max-h-[55vh] overflow-auto">
                 {attendanceLoading && (
                   <div className="p-3 text-sm text-muted-foreground">Loading previous attendance...</div>
                 )}
@@ -1075,6 +1075,172 @@ export default function Attendance() {
                   })}
                 </TableBody>
                 </Table>
+              </div>
+
+              <div className="space-y-3 md:hidden">
+                {attendanceLoading && (
+                  <div className="p-3 text-sm text-muted-foreground">Loading previous attendance...</div>
+                )}
+                {days.map((d) => {
+                  const dateStr = format(d, "yyyy-MM-dd");
+                  const existingRecord = attendanceByDate[dateStr];
+                  const defaultState = defaultDayStates[dateStr];
+                  const state = dayStates[dateStr] ?? defaultState;
+                  const isFutureDate = isAfter(d, today);
+                  const isCurrentOrPastDate = !isFutureDate;
+                  const isLocked = state?.locked;
+                  const lockedReason = state?.lockedReason;
+                  const formatStatusLabel = (status: string) =>
+                    status ? status.charAt(0).toUpperCase() + status.slice(1) : status;
+
+                  const previousStatus = (() => {
+                    if (existingRecord && isCurrentOrPastDate) {
+                      return (
+                        <div className="space-y-1">
+                          <Badge variant="outline">{formatStatusLabel(existingRecord.status)}</Badge>
+                          {existingRecord.notes ? (
+                            <div className="text-xs text-muted-foreground">{existingRecord.notes}</div>
+                          ) : null}
+                          {existingRecord.isPaid ? (
+                            <div className="text-xs text-muted-foreground">Included in a payment.</div>
+                          ) : null}
+                        </div>
+                      );
+                    }
+
+                    if (isLocked && lockedReason === "cross-project" && isCurrentOrPastDate) {
+                      return (
+                        <div className="space-y-1">
+                          <Badge variant="outline">Reserved</Badge>
+                          <div className="text-xs text-muted-foreground">
+                            {state.lockedProjectName
+                              ? `Attendance already marked for ${state.lockedProjectName}.`
+                              : "Attendance already marked for another project."}
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return <span className="text-xs text-muted-foreground">{isCurrentOrPastDate ? "No record" : "Upcoming"}</span>;
+                  })();
+
+                  const paymentStatus = (() => {
+                    if (existingRecord && isCurrentOrPastDate) {
+                      return (
+                        <div className="space-y-1">
+                          <Badge variant="outline">{existingRecord.isPaid ? "Paid" : "Unpaid"}</Badge>
+                          <div className="text-xs text-muted-foreground">
+                            {existingRecord.isPaid ? "Paid attendance cannot be edited." : "Pending payment."}
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    if (isLocked && lockedReason === "cross-project" && isCurrentOrPastDate) {
+                      return (
+                        <div className="space-y-1">
+                          <Badge variant="outline">Reserved</Badge>
+                          <div className="text-xs text-muted-foreground">
+                            {state.lockedProjectName
+                              ? `Attendance already marked for ${state.lockedProjectName}.`
+                              : "Attendance already marked for another project."}
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return <span className="text-xs text-muted-foreground">{isCurrentOrPastDate ? "No record" : "Upcoming"}</span>;
+                  })();
+
+                  return (
+                    <Card key={dateStr} className="shadow-sm" data-testid={`attendance-card-${dateStr}`}>
+                      <CardContent className="p-4 space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold">{format(d, "MMM dd, yyyy")}</p>
+                            <p className="text-xs text-muted-foreground">{format(d, "EEEE")}</p>
+                          </div>
+                          <Badge>{selectedAssignment?.project?.name ?? "-"}</Badge>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-3 text-sm">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Previous status</p>
+                            {previousStatus}
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Payment status</p>
+                            {paymentStatus}
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <p className="text-xs text-muted-foreground">Status</p>
+                            {canManageAttendance ? (
+                              <UiSelect
+                                value={state.status}
+                                onValueChange={(v) => handleStatusChange(dateStr, v)}
+                                disabled={isFutureDate || isLocked}
+                              >
+                                <UiSelectTrigger disabled={isFutureDate || isLocked}>
+                                  <UiSelectValue />
+                                </UiSelectTrigger>
+                                <UiSelectContent>
+                                  <UiSelectItem value="present">Present</UiSelectItem>
+                                  <UiSelectItem value="off">Off</UiSelectItem>
+                                  <UiSelectItem value="standby">Standby</UiSelectItem>
+                                  <UiSelectItem value="maintenance">Maintenance</UiSelectItem>
+                                </UiSelectContent>
+                              </UiSelect>
+                            ) : (
+                              <span className="text-sm">
+                                {existingRecord
+                                  ? formatStatusLabel(existingRecord.status)
+                                  : isFutureDate
+                                    ? "Upcoming"
+                                    : "Not marked"}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <p className="text-xs text-muted-foreground">Notes</p>
+                            {canManageAttendance ? (
+                              state.status !== "present" && !isFutureDate && !isLocked ? (
+                                <Input
+                                  value={state.note || ""}
+                                  onChange={(e) => handleNoteChange(dateStr, e.target.value)}
+                                  placeholder="Note (optional)"
+                                />
+                              ) : (
+                                <span className="text-xs text-muted-foreground">{isFutureDate ? "Upcoming" : "No notes"}</span>
+                              )
+                            ) : existingRecord?.notes ? (
+                              <span className="text-sm">{existingRecord.notes}</span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">No notes</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {canManageAttendance && (
+                          <div className="flex items-center justify-between rounded-md border p-3">
+                            <div>
+                              <p className="text-sm font-medium">Mark this day</p>
+                              <p className="text-xs text-muted-foreground">Add or remove this date from the batch save.</p>
+                            </div>
+                            <Checkbox
+                              checked={!!state.selected}
+                              onCheckedChange={() => {
+                                if (!isFutureDate && !isLocked) {
+                                  handleToggleDay(dateStr);
+                                }
+                              }}
+                              disabled={isFutureDate || isLocked}
+                            />
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             </div>
           ) : (

@@ -226,7 +226,7 @@ export default function Vehicles() {
           </div>
 
           {/* Vehicles Table */}
-          <div className="rounded-md border">
+          <div className="hidden md:block rounded-md border">
             <ScrollArea className="h-[60vh]">
               <Table className="min-w-full">
                 <TableHeader>
@@ -353,6 +353,117 @@ export default function Vehicles() {
                 </TableBody>
               </Table>
             </ScrollArea>
+          </div>
+
+          {/* Mobile Cards */}
+          <div className="grid gap-3 md:hidden">
+            {isLoading ? (
+              Array.from({ length: 4 }).map((_, index) => (
+                <Card key={index} className="shadow-sm">
+                  <CardContent className="p-4 space-y-3">
+                    <Skeleton className="h-5 w-32" />
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-4 w-20" />
+                  </CardContent>
+                </Card>
+              ))
+            ) : filteredVehicles?.length === 0 ? (
+              <div className="rounded-md border border-dashed p-6 text-center text-muted-foreground">
+                <div className="flex flex-col items-center space-y-2">
+                  <Car className="w-12 h-12" />
+                  <p>No vehicles found</p>
+                  {searchTerm || statusFilter !== "all" ? (
+                    <p className="text-sm">Try adjusting your filters</p>
+                  ) : (
+                    <p className="text-sm">Get started by adding your first vehicle</p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              filteredVehicles?.map((vehicle: VehicleWithOwner) => (
+                <Card key={vehicle.id} className="shadow-sm" data-testid={`vehicle-card-${vehicle.id}`}>
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+                          <Car className="text-primary w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">
+                            {vehicle.make} {vehicle.model}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{vehicle.licensePlate}</p>
+                        </div>
+                      </div>
+                      {getStatusBadge(vehicle.status)}
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-sm text-foreground">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Owner</p>
+                        <p className="font-medium">{vehicle.owner.name}</p>
+                        <p className="text-xs text-muted-foreground">{vehicle.owner.phone}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Year</p>
+                        <p className="font-medium">{vehicle.year}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Added {new Date(vehicle.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    {canViewVehicles && (
+                      <div className="flex flex-wrap gap-2">
+                        {canManageVehicles && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEdit(vehicle)}
+                            data-testid={`edit-vehicle-${vehicle.id}-mobile`}
+                          >
+                            <Edit className="w-4 h-4 mr-1" /> Edit
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setViewVehicle(vehicle)}
+                          data-testid={`view-vehicle-${vehicle.id}-mobile`}
+                        >
+                          <Eye className="w-4 h-4 mr-1" /> View
+                        </Button>
+                        {canManageVehicles && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setTransferVehicle(vehicle)}
+                            data-testid={`transfer-vehicle-${vehicle.id}-mobile`}
+                          >
+                            <ArrowLeftRight className="w-4 h-4 mr-1" /> Transfer
+                          </Button>
+                        )}
+                        {canManageVehicles && (
+                          <ConfirmDialog
+                            title="Delete vehicle"
+                            description="Are you sure you want to delete this vehicle?"
+                            onConfirm={() => deleteVehicleMutation.mutate(vehicle.id)}
+                            trigger={
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                disabled={deleteVehicleMutation.isPending}
+                                data-testid={`delete-vehicle-${vehicle.id}-mobile`}
+                              >
+                                <Trash2 className="w-4 h-4 mr-1" /> Delete
+                              </Button>
+                            }
+                          />
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))
+            )}
           </div>
 
           {/* Summary */}
