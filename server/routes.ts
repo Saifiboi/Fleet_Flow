@@ -1374,6 +1374,27 @@ export async function registerRoutes(app: Application): Promise<void> {
 
     try {
       const validated = insertVehicleAttendanceSchema.parse(req.body);
+
+      if (isEmployee(req)) {
+        if (!validated.projectId) {
+          return res
+            .status(400)
+            .json({ message: "projectId is required when recording attendance as an employee" });
+        }
+
+        const allowedProjects = new Set(employeeProjectIds(req));
+        if (!allowedProjects.has(validated.projectId)) {
+          return res.status(403).json({ message: "You cannot manage attendance for this project" });
+        }
+
+        const vehicleAssignments = await storage.getAssignmentsByVehicle(validated.vehicleId);
+        if (!vehicleAssignments.some((assignment) => assignment.project.id === validated.projectId)) {
+          return res
+            .status(403)
+            .json({ message: "Vehicle is not assigned to one of your projects" });
+        }
+      }
+
       const created = await storage.createVehicleAttendance(validated);
       res.status(201).json(created);
     } catch (error: any) {
@@ -1395,6 +1416,36 @@ export async function registerRoutes(app: Application): Promise<void> {
 
       console.log('[vehicle-attendance/batch] received', { count: body.length });
       const validatedRecords = body.map((b) => insertVehicleAttendanceSchema.parse(b));
+
+      if (isEmployee(req)) {
+        const allowedProjects = new Set(employeeProjectIds(req));
+        const assignmentCache = new Map<string, Awaited<ReturnType<typeof storage.getAssignmentsByVehicle>>>();
+
+        for (const record of validatedRecords) {
+          if (!record.projectId) {
+            return res.status(400).json({ message: "projectId is required for employee attendance" });
+          }
+
+          if (!allowedProjects.has(record.projectId)) {
+            return res.status(403).json({ message: "You cannot manage attendance for this project" });
+          }
+
+          if (!assignmentCache.has(record.vehicleId)) {
+            assignmentCache.set(
+              record.vehicleId,
+              await storage.getAssignmentsByVehicle(record.vehicleId),
+            );
+          }
+
+          const assignments = assignmentCache.get(record.vehicleId)!;
+          if (!assignments.some((assignment) => assignment.project.id === record.projectId)) {
+            return res
+              .status(403)
+              .json({ message: "Vehicle is not assigned to one of your projects" });
+          }
+        }
+      }
+
       const created = await storage.createVehicleAttendanceBatch(validatedRecords);
       console.log('[vehicle-attendance/batch] created', { createdCount: created.length });
       res.status(201).json(created);
