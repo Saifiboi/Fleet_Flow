@@ -29,6 +29,13 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import {
   Form,
   FormControl,
   FormField,
@@ -49,7 +56,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useOwners, useUsers } from "@/lib/api";
+import { useOwners, useUsers, useProjects } from "@/lib/api";
 import {
   changePasswordSchema,
   createUserSchema,
@@ -58,6 +65,7 @@ import {
   type UserRole,
   type EmployeeAccessArea,
   type UserWithOwner,
+  type Project,
 } from "@shared/schema";
 import { Shield, UserPlus, Mail, UserX, UserCheck, KeyRound, Settings2 } from "lucide-react";
 
@@ -70,6 +78,11 @@ type ChangePasswordFormValues = z.infer<typeof changePasswordFormSchema>;
 type ResetUserPasswordFormValues = z.infer<typeof resetUserPasswordFormSchema>;
 
 const employeeAccessOptions: { value: EmployeeAccessArea; label: string; description: string }[] = [
+  {
+    value: "owners",
+    label: "Owners",
+    description: "Manage owner records and related information.",
+  },
   {
     value: "vehicles",
     label: "Vehicles",
@@ -105,6 +118,7 @@ const employeeAccessOptions: { value: EmployeeAccessArea; label: string; descrip
 export default function Users() {
   const { data: users = [], isLoading: isLoadingUsers } = useUsers();
   const { data: owners = [], isLoading: isLoadingOwners } = useOwners();
+  const { data: projects = [] } = useProjects();
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
@@ -120,6 +134,8 @@ export default function Users() {
       role: "owner",
       ownerId: undefined,
       employeeAccess: [],
+      employeeManageAccess: [],
+      employeeProjectIds: [],
     },
   });
 
@@ -140,8 +156,8 @@ export default function Users() {
     },
   });
 
-  const accessForm = useForm<{ employeeAccess: EmployeeAccessArea[] }>({
-    defaultValues: { employeeAccess: [] },
+  const accessForm = useForm<{ employeeAccess: EmployeeAccessArea[]; employeeManageAccess: EmployeeAccessArea[]; employeeProjectIds: string[] }>({
+    defaultValues: { employeeAccess: [], employeeManageAccess: [], employeeProjectIds: [] },
   });
 
   const selectedRole = createForm.watch("role");
@@ -155,6 +171,8 @@ export default function Users() {
     if (selectedRole === "admin") {
       createForm.setValue("ownerId", null);
       createForm.setValue("employeeAccess", []);
+      createForm.setValue("employeeManageAccess", []);
+      createForm.setValue("employeeProjectIds", []);
       return;
     }
 
@@ -162,6 +180,9 @@ export default function Users() {
       createForm.setValue("ownerId", null);
       if ((createForm.getValues("employeeAccess") ?? []).length === 0) {
         createForm.setValue("employeeAccess", [...employeeAccessAreas]);
+      }
+      if ((createForm.getValues("employeeManageAccess") ?? []).length === 0) {
+        createForm.setValue("employeeManageAccess", []);
       }
       return;
     }
@@ -172,6 +193,8 @@ export default function Users() {
     }
 
     createForm.setValue("employeeAccess", []);
+    createForm.setValue("employeeManageAccess", []);
+    createForm.setValue("employeeProjectIds", []);
   }, [availableOwners, createForm, selectedRole]);
 
   const handleDialogChange = (open: boolean) => {
@@ -183,6 +206,8 @@ export default function Users() {
         role: "owner",
         ownerId: undefined,
         employeeAccess: [],
+        employeeManageAccess: [],
+        employeeProjectIds: [],
       });
     }
   };
@@ -202,7 +227,7 @@ export default function Users() {
     setIsAccessDialogOpen(open);
     if (!open) {
       setUserToManageAccess(null);
-      accessForm.reset({ employeeAccess: [] });
+      accessForm.reset({ employeeAccess: [], employeeManageAccess: [], employeeProjectIds: [] });
     }
   };
 
@@ -218,7 +243,11 @@ export default function Users() {
   const openAccessDialog = (user: UserWithOwner) => {
     setUserToManageAccess(user);
     setIsAccessDialogOpen(true);
-    accessForm.reset({ employeeAccess: user.employeeAccess ?? [] });
+    accessForm.reset({
+      employeeAccess: user.employeeAccess ?? [],
+      employeeManageAccess: user.employeeManageAccess ?? [],
+      employeeProjectIds: user.employeeProjects?.map((project) => project.id) ?? [],
+    });
   };
 
   const createUserMutation = useMutation({
@@ -227,6 +256,9 @@ export default function Users() {
         ...values,
         ownerId: values.role === "owner" ? values.ownerId : null,
         employeeAccess: values.role === "employee" ? values.employeeAccess ?? [] : [],
+        employeeManageAccess:
+          values.role === "employee" ? values.employeeManageAccess ?? [] : [],
+        employeeProjectIds: values.role === "employee" ? values.employeeProjectIds ?? [] : [],
       };
       await apiRequest("POST", "/api/users", payload);
     },
@@ -314,8 +346,22 @@ export default function Users() {
   });
 
   const updateEmployeeAccessMutation = useMutation({
-    mutationFn: async ({ id, employeeAccess }: { id: string; employeeAccess: EmployeeAccessArea[] }) => {
-      await apiRequest("PATCH", `/api/users/${id}`, { employeeAccess });
+    mutationFn: async ({
+      id,
+      employeeAccess,
+      employeeManageAccess,
+      employeeProjectIds,
+    }: {
+      id: string;
+      employeeAccess: EmployeeAccessArea[];
+      employeeManageAccess: EmployeeAccessArea[];
+      employeeProjectIds: string[];
+    }) => {
+      await apiRequest("PATCH", `/api/users/${id}`, {
+        employeeAccess,
+        employeeManageAccess,
+        employeeProjectIds,
+      });
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
@@ -324,7 +370,11 @@ export default function Users() {
         description: "Employee permissions have been saved.",
       });
       handleAccessDialogChange(false);
-      accessForm.reset({ employeeAccess: variables.employeeAccess });
+      accessForm.reset({
+        employeeAccess: variables.employeeAccess,
+        employeeManageAccess: variables.employeeManageAccess,
+        employeeProjectIds: variables.employeeProjectIds,
+      });
     },
     onError: (error: any) => {
       toast({
@@ -355,14 +405,22 @@ export default function Users() {
     resetUserPasswordMutation.mutate({ userId: userToReset.id, ...values });
   };
 
-  const onAccessSubmit = (values: { employeeAccess: EmployeeAccessArea[] }) => {
+  const onAccessSubmit = (values: {
+    employeeAccess: EmployeeAccessArea[];
+    employeeManageAccess: EmployeeAccessArea[];
+    employeeProjectIds: string[];
+  }) => {
     if (!userToManageAccess) {
       return;
     }
 
+    const employeeAccess = Array.from(new Set([...(values.employeeAccess ?? []), ...(values.employeeManageAccess ?? [])]));
+
     updateEmployeeAccessMutation.mutate({
       id: userToManageAccess.id,
-      employeeAccess: values.employeeAccess ?? [],
+      employeeAccess,
+      employeeManageAccess: values.employeeManageAccess ?? [],
+      employeeProjectIds: values.employeeProjectIds ?? [],
     });
   };
 
@@ -392,14 +450,38 @@ export default function Users() {
     }
 
     return (
-      <div className="flex flex-wrap gap-1">
-        {employeeAccessOptions
-          .filter((option) => user.employeeAccess?.includes(option.value))
-          .map((option) => (
-            <Badge key={option.value} variant="secondary" className="capitalize">
-              {option.label}
-            </Badge>
-          ))}
+      <div className="space-y-1">
+        <div className="flex flex-wrap gap-1">
+          {employeeAccessOptions
+            .filter((option) => user.employeeAccess?.includes(option.value))
+            .map((option) => (
+              <Badge key={option.value} variant="secondary" className="capitalize">
+                View: {option.label}
+              </Badge>
+            ))}
+        </div>
+        {user.employeeManageAccess && user.employeeManageAccess.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {employeeAccessOptions
+              .filter((option) => user.employeeManageAccess?.includes(option.value))
+              .map((option) => (
+                <Badge key={option.value} variant="outline" className="capitalize border-amber-200 text-amber-900">
+                  Manage: {option.label}
+                </Badge>
+              ))}
+          </div>
+        )}
+        <div className="flex flex-wrap gap-1">
+          {user.employeeProjects && user.employeeProjects.length > 0 ? (
+            user.employeeProjects.map((project: Project) => (
+              <Badge key={project.id} variant="outline" className="capitalize">
+                Project: {project.name}
+              </Badge>
+            ))
+          ) : (
+            <Badge variant="outline">No projects assigned</Badge>
+          )}
+        </div>
       </div>
     );
   };
@@ -420,7 +502,7 @@ export default function Users() {
                   Add User
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-lg">
+              <DialogContent className="max-w-3xl w-[calc(100vw-2rem)]">
                 <DialogHeader>
                   <DialogTitle>Create User Account</DialogTitle>
                 </DialogHeader>
@@ -481,42 +563,150 @@ export default function Users() {
                     />
 
                     {selectedRole === "employee" && (
-                      <FormField
-                        control={createForm.control}
-                        name="employeeAccess"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Operational Access</FormLabel>
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              {employeeAccessOptions.map((option) => {
-                                const isChecked = field.value?.includes(option.value);
+                      <ScrollArea className="h-[60vh] max-h-[60vh] rounded-md border p-3 pr-2">
+                        <Accordion
+                          type="multiple"
+                          defaultValue={["operational-access", "manage-permissions", "assigned-projects"]}
+                          className="space-y-3"
+                        >
+                          <AccordionItem value="operational-access">
+                            <AccordionTrigger className="text-base font-semibold">Operational Access</AccordionTrigger>
+                            <AccordionContent>
+                              <FormField
+                                control={createForm.control}
+                                name="employeeAccess"
+                                render={({ field }) => (
+                                  <FormItem className="space-y-3">
+                                    <div className="grid gap-2 sm:grid-cols-2">
+                                      {employeeAccessOptions.map((option) => {
+                                        const isChecked = field.value?.includes(option.value);
 
-                                return (
-                                  <label
-                                    key={option.value}
-                                    className="flex cursor-pointer items-start space-x-3 rounded-md border p-3"
-                                  >
-                                    <Checkbox
-                                      checked={isChecked}
-                                      onCheckedChange={(checked) => {
-                                        const next = checked
-                                          ? [...(field.value ?? []), option.value]
-                                          : (field.value ?? []).filter((value) => value !== option.value);
-                                        field.onChange(next);
-                                      }}
-                                    />
-                                    <div className="space-y-1">
-                                      <p className="font-medium leading-none">{option.label}</p>
-                                      <p className="text-xs text-muted-foreground">{option.description}</p>
+                                        return (
+                                          <label
+                                            key={option.value}
+                                            className="flex cursor-pointer items-start space-x-3 rounded-md border p-3"
+                                          >
+                                            <Checkbox
+                                              checked={isChecked}
+                                              onCheckedChange={(checked) => {
+                                                const next = checked
+                                                  ? [...(field.value ?? []), option.value]
+                                                  : (field.value ?? []).filter((value) => value !== option.value);
+                                                field.onChange(next);
+                                              }}
+                                            />
+                                            <div className="space-y-1">
+                                              <p className="font-medium leading-none">{option.label}</p>
+                                              <p className="text-xs text-muted-foreground">{option.description}</p>
+                                            </div>
+                                          </label>
+                                        );
+                                      })}
                                     </div>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            </AccordionContent>
+                          </AccordionItem>
+
+                          <AccordionItem value="manage-permissions">
+                            <AccordionTrigger className="text-base font-semibold">Manage Permissions</AccordionTrigger>
+                            <AccordionContent>
+                              <FormField
+                                control={createForm.control}
+                                name="employeeManageAccess"
+                                render={({ field }) => (
+                                  <FormItem className="space-y-3">
+                                    <div className="grid gap-2 sm:grid-cols-2">
+                                      {employeeAccessOptions.map((option) => {
+                                        const isChecked = field.value?.includes(option.value);
+
+                                        return (
+                                          <label
+                                            key={option.value}
+                                            className="flex cursor-pointer items-start space-x-3 rounded-md border p-3"
+                                          >
+                                            <Checkbox
+                                              checked={isChecked}
+                                              onCheckedChange={(checked) => {
+                                                const currentManage = field.value ?? [];
+                                                const currentAccess = createForm.getValues("employeeAccess") ?? [];
+                                                const nextManage = checked
+                                                  ? [...currentManage, option.value]
+                                                  : currentManage.filter((value) => value !== option.value);
+
+                                                field.onChange(nextManage);
+
+                                                if (checked && !currentAccess.includes(option.value)) {
+                                                  createForm.setValue("employeeAccess", [...currentAccess, option.value]);
+                                                }
+                                              }}
+                                            />
+                                            <div className="space-y-1">
+                                              <p className="font-medium leading-none">{option.label}</p>
+                                              <p className="text-xs text-muted-foreground">
+                                                Allow this employee to create or update data in {option.label}.
+                                              </p>
+                                            </div>
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            </AccordionContent>
+                          </AccordionItem>
+
+                          <AccordionItem value="assigned-projects">
+                            <AccordionTrigger className="text-base font-semibold">Assigned Projects</AccordionTrigger>
+                            <AccordionContent>
+                              <FormField
+                                control={createForm.control}
+                                name="employeeProjectIds"
+                                render={({ field }) => (
+                                  <FormItem className="space-y-3">
+                                    <div className="grid gap-2 sm:grid-cols-2">
+                                      {projects.length === 0 ? (
+                                        <p className="text-sm text-muted-foreground">No projects available.</p>
+                                      ) : (
+                                        projects.map((project) => {
+                                          const isChecked = field.value?.includes(project.id);
+                                          return (
+                                            <label
+                                              key={project.id}
+                                              className="flex cursor-pointer items-start space-x-3 rounded-md border p-3"
+                                            >
+                                              <Checkbox
+                                                checked={isChecked}
+                                                onCheckedChange={(checked) => {
+                                                  const next = checked
+                                                    ? [...(field.value ?? []), project.id]
+                                                    : (field.value ?? []).filter((value) => value !== project.id);
+                                                  field.onChange(next);
+                                                }}
+                                              />
+                                              <div className="space-y-1">
+                                                <p className="font-medium leading-none">{project.name}</p>
+                                                {project.location && (
+                                                  <p className="text-xs text-muted-foreground">{project.location}</p>
+                                                )}
+                                              </div>
+                                            </label>
+                                          );
+                                        })
+                                      )}
+                                    </div>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            </AccordionContent>
+                          </AccordionItem>
+                        </Accordion>
+                      </ScrollArea>
                     )}
 
                     {selectedRole === "owner" && (
@@ -576,103 +766,197 @@ export default function Users() {
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Email</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Access</TableHead>
-                <TableHead>Owner</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoadingUsers ? (
-                Array.from({ length: 4 }).map((_, index) => (
-                  <TableRow key={index}>
-                    {Array.from({ length: 7 }).map((__, cellIndex) => (
-                      <TableCell key={cellIndex}>
-                        <Skeleton className="h-4 w-full" />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : sortedUsers.length === 0 ? (
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
-                    No users found. Create your first account to get started.
-                  </TableCell>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Access</TableHead>
+                  <TableHead>Owner</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
-              ) : (
-                sortedUsers.map((user) => (
-                  <TableRow key={user.id} data-testid={`user-row-${user.id}`}>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <Mail className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium text-foreground">{user.email}</span>
-                      </div>
+              </TableHeader>
+              <TableBody>
+                {isLoadingUsers ? (
+                  Array.from({ length: 4 }).map((_, index) => (
+                    <TableRow key={index}>
+                      {Array.from({ length: 7 }).map((__, cellIndex) => (
+                        <TableCell key={cellIndex}>
+                          <Skeleton className="h-4 w-full" />
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : sortedUsers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                      No users found. Create your first account to get started.
                     </TableCell>
-                    <TableCell className="capitalize">{user.role}</TableCell>
-                    <TableCell>{renderEmployeeAccess(user)}</TableCell>
-                    <TableCell>
-                      {user.owner ? (
-                        <div>
-                          <p className="font-medium text-foreground">{user.owner.name}</p>
-                          <p className="text-xs text-muted-foreground">{user.owner.email}</p>
+                  </TableRow>
+                ) : (
+                  sortedUsers.map((user) => (
+                    <TableRow key={user.id} data-testid={`user-row-${user.id}`}>
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          <Mail className="h-4 w-4 text-muted-foreground" />
+                          <span className="font-medium text-foreground">{user.email}</span>
                         </div>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>{renderStatusBadge(user)}</TableCell>
-                    <TableCell>
-                      {new Date(user.createdAt).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {user.role !== "admin" ? (
-                        <div className="flex items-center justify-end space-x-2">
-                          {user.role === "employee" && (
+                      </TableCell>
+                      <TableCell className="capitalize">{user.role}</TableCell>
+                      <TableCell>{renderEmployeeAccess(user)}</TableCell>
+                      <TableCell>
+                        {user.owner ? (
+                          <div>
+                            <p className="font-medium text-foreground">{user.owner.name}</p>
+                            <p className="text-xs text-muted-foreground">{user.owner.email}</p>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>{renderStatusBadge(user)}</TableCell>
+                      <TableCell>
+                        {new Date(user.createdAt).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {user.role !== "admin" ? (
+                          <div className="flex items-center justify-end space-x-2">
+                            {user.role === "employee" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                type="button"
+                                onClick={() => openAccessDialog(user)}
+                                disabled={updateEmployeeAccessMutation.isPending}
+                                data-testid={`access-${user.id}`}
+                              >
+                                <Settings2 className="mr-1 h-3 w-3" /> Access
+                              </Button>
+                            )}
                             <Button
                               variant="outline"
                               size="sm"
                               type="button"
-                              onClick={() => openAccessDialog(user)}
-                              disabled={updateEmployeeAccessMutation.isPending}
-                              data-testid={`access-${user.id}`}
+                              onClick={() => openResetDialog(user)}
+                              disabled={resetUserPasswordMutation.isPending}
+                              data-testid={`reset-password-${user.id}`}
                             >
-                              <Settings2 className="mr-1 h-3 w-3" /> Access
+                              <KeyRound className="mr-1 h-3 w-3" /> Reset
                             </Button>
-                          )}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            type="button"
-                            onClick={() => openResetDialog(user)}
-                            disabled={resetUserPasswordMutation.isPending}
-                            data-testid={`reset-password-${user.id}`}
-                          >
-                            <KeyRound className="mr-1 h-3 w-3" /> Reset
-                          </Button>
-                          <Switch
-                            checked={user.isActive}
-                            onCheckedChange={(checked) =>
-                              updateStatusMutation.mutate({ id: user.id, isActive: checked })
-                            }
-                            disabled={updateStatusMutation.isPending}
-                            data-testid={`user-status-${user.id}`}
-                          />
+                            <Switch
+                              checked={user.isActive}
+                              onCheckedChange={(checked) =>
+                                updateStatusMutation.mutate({ id: user.id, isActive: checked })
+                              }
+                              disabled={updateStatusMutation.isPending}
+                              data-testid={`user-status-${user.id}`}
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Cannot disable admins</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="space-y-3 md:hidden">
+            {isLoadingUsers
+              ? Array.from({ length: 3 }).map((_, index) => (
+                  <Card key={index}>
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <Skeleton className="h-9 w-9 rounded-full" />
+                          <div className="space-y-2">
+                            <Skeleton className="h-4 w-44" />
+                            <Skeleton className="h-3 w-28" />
+                          </div>
                         </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">Cannot disable admins</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
+                        <Skeleton className="h-8 w-16" />
+                      </div>
+                      <Skeleton className="h-3 w-24" />
+                    </CardContent>
+                  </Card>
                 ))
-              )}
-            </TableBody>
-          </Table>
+              : sortedUsers.length === 0
+                ? (
+                    <Card>
+                      <CardContent className="p-6 text-center text-muted-foreground">
+                        No users found. Create your first account to get started.
+                      </CardContent>
+                    </Card>
+                  )
+                : sortedUsers.map((user) => (
+                    <Card key={user.id} data-testid={`user-card-${user.id}`}>
+                      <CardContent className="p-4 space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-1">
+                            <div className="flex items-center space-x-2">
+                              <Mail className="h-4 w-4 text-muted-foreground" />
+                              <span className="font-medium text-foreground">{user.email}</span>
+                            </div>
+                            <p className="text-xs capitalize text-muted-foreground">{user.role}</p>
+                            <div className="text-xs">{renderStatusBadge(user)}</div>
+                            <p className="text-xs text-muted-foreground">
+                              Created {new Date(user.createdAt).toLocaleDateString()}
+                            </p>
+                            <div className="text-sm text-foreground">{renderEmployeeAccess(user)}</div>
+                            {user.owner ? (
+                              <div className="text-xs text-muted-foreground">
+                                Owner: {user.owner.name}
+                              </div>
+                            ) : null}
+                          </div>
+                          <div className="flex flex-col items-end space-y-2">
+                            {user.role !== "admin" ? (
+                              <>
+                                {user.role === "employee" && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    type="button"
+                                    onClick={() => openAccessDialog(user)}
+                                    disabled={updateEmployeeAccessMutation.isPending}
+                                    data-testid={`access-${user.id}`}
+                                  >
+                                    <Settings2 className="mr-1 h-3 w-3" /> Access
+                                  </Button>
+                                )}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  type="button"
+                                  onClick={() => openResetDialog(user)}
+                                  disabled={resetUserPasswordMutation.isPending}
+                                  data-testid={`reset-password-${user.id}`}
+                                >
+                                  <KeyRound className="mr-1 h-3 w-3" /> Reset
+                                </Button>
+                                <Switch
+                                  checked={user.isActive}
+                                  onCheckedChange={(checked) =>
+                                    updateStatusMutation.mutate({ id: user.id, isActive: checked })
+                                  }
+                                  disabled={updateStatusMutation.isPending}
+                                  data-testid={`user-status-${user.id}`}
+                                />
+                              </>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Cannot disable admins</span>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+          </div>
         </CardContent>
       </Card>
 
@@ -732,62 +1016,167 @@ export default function Users() {
       </Dialog>
 
       <Dialog open={isAccessDialogOpen} onOpenChange={handleAccessDialogChange}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-3xl w-[calc(100vw-2rem)]">
           <DialogHeader>
             <DialogTitle>Manage Employee Access</DialogTitle>
             <DialogDescription>
               Choose which operational areas {userToManageAccess?.email ?? "this employee"} can access.
             </DialogDescription>
           </DialogHeader>
-          <Form {...accessForm}>
-            <form onSubmit={accessForm.handleSubmit(onAccessSubmit)} className="space-y-4">
-              <FormField
-                control={accessForm.control}
-                name="employeeAccess"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Operational Access</FormLabel>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {employeeAccessOptions.map((option) => {
-                        const isChecked = field.value?.includes(option.value);
+          <ScrollArea className="max-h-[70vh] pr-1">
+            <Form {...accessForm}>
+              <form onSubmit={accessForm.handleSubmit(onAccessSubmit)} className="space-y-4 py-1">
+                <Accordion type="multiple" defaultValue={["operational-access", "manage-permissions", "assigned-projects"]} className="space-y-3">
+                  <AccordionItem value="operational-access">
+                    <AccordionTrigger className="text-base font-semibold">Operational Access</AccordionTrigger>
+                    <AccordionContent>
+                      <FormField
+                        control={accessForm.control}
+                        name="employeeAccess"
+                        render={({ field }) => (
+                          <FormItem className="space-y-3">
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {employeeAccessOptions.map((option) => {
+                                const isChecked = field.value?.includes(option.value);
 
-                        return (
-                          <label
-                            key={option.value}
-                            className="flex cursor-pointer items-start space-x-3 rounded-md border p-3"
-                          >
-                            <Checkbox
-                              checked={isChecked}
-                              onCheckedChange={(checked) => {
-                                const next = checked
-                                  ? [...(field.value ?? []), option.value]
-                                  : (field.value ?? []).filter((value) => value !== option.value);
-                                field.onChange(next);
-                              }}
-                            />
-                            <div className="space-y-1">
-                              <p className="font-medium leading-none">{option.label}</p>
-                              <p className="text-xs text-muted-foreground">{option.description}</p>
+                                return (
+                                  <label
+                                    key={option.value}
+                                    className="flex cursor-pointer items-start space-x-3 rounded-md border p-3"
+                                  >
+                                    <Checkbox
+                                      checked={isChecked}
+                                      onCheckedChange={(checked) => {
+                                        const next = checked
+                                          ? [...(field.value ?? []), option.value]
+                                          : (field.value ?? []).filter((value) => value !== option.value);
+                                        field.onChange(next);
+                                      }}
+                                    />
+                                    <div className="space-y-1">
+                                      <p className="font-medium leading-none">{option.label}</p>
+                                      <p className="text-xs text-muted-foreground">{option.description}</p>
+                                    </div>
+                                  </label>
+                                );
+                              })}
                             </div>
-                          </label>
-                        );
-                      })}
-                    </div>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </AccordionContent>
+                  </AccordionItem>
 
-              <DialogFooter className="flex items-center justify-end space-x-2">
-                <Button type="button" variant="outline" onClick={() => handleAccessDialogChange(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={updateEmployeeAccessMutation.isPending || !userToManageAccess}>
-                  {updateEmployeeAccessMutation.isPending ? "Saving..." : "Save Access"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
+                  <AccordionItem value="manage-permissions">
+                    <AccordionTrigger className="text-base font-semibold">Manage Permissions</AccordionTrigger>
+                    <AccordionContent>
+                      <FormField
+                        control={accessForm.control}
+                        name="employeeManageAccess"
+                        render={({ field }) => (
+                          <FormItem className="space-y-3">
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {employeeAccessOptions.map((option) => {
+                                const isChecked = field.value?.includes(option.value);
+
+                                return (
+                                  <label
+                                    key={option.value}
+                                    className="flex cursor-pointer items-start space-x-3 rounded-md border p-3"
+                                  >
+                                    <Checkbox
+                                      checked={isChecked}
+                                      onCheckedChange={(checked) => {
+                                        const currentManage = field.value ?? [];
+                                        const currentAccess = accessForm.getValues("employeeAccess") ?? [];
+                                        const nextManage = checked
+                                          ? [...currentManage, option.value]
+                                          : currentManage.filter((value) => value !== option.value);
+
+                                        field.onChange(nextManage);
+
+                                        if (checked && !currentAccess.includes(option.value)) {
+                                          accessForm.setValue("employeeAccess", [...currentAccess, option.value]);
+                                        }
+                                      }}
+                                    />
+                                    <div className="space-y-1">
+                                      <p className="font-medium leading-none">{option.label}</p>
+                                      <p className="text-xs text-muted-foreground">
+                                        Allow this employee to create or update data in {option.label}.
+                                      </p>
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </AccordionContent>
+                  </AccordionItem>
+
+                  <AccordionItem value="assigned-projects">
+                    <AccordionTrigger className="text-base font-semibold">Assigned Projects</AccordionTrigger>
+                    <AccordionContent>
+                      <FormField
+                        control={accessForm.control}
+                        name="employeeProjectIds"
+                        render={({ field }) => (
+                          <FormItem className="space-y-3">
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {projects.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">No projects available.</p>
+                              ) : (
+                                projects.map((project) => {
+                                  const isChecked = field.value?.includes(project.id);
+                                  return (
+                                    <label
+                                      key={project.id}
+                                      className="flex cursor-pointer items-start space-x-3 rounded-md border p-3"
+                                    >
+                                      <Checkbox
+                                        checked={isChecked}
+                                        onCheckedChange={(checked) => {
+                                          const next = checked
+                                            ? [...(field.value ?? []), project.id]
+                                            : (field.value ?? []).filter((value) => value !== project.id);
+                                          field.onChange(next);
+                                        }}
+                                      />
+                                      <div className="space-y-1">
+                                        <p className="font-medium leading-none">{project.name}</p>
+                                        {project.location && (
+                                          <p className="text-xs text-muted-foreground">{project.location}</p>
+                                        )}
+                                      </div>
+                                    </label>
+                                  );
+                                })
+                              )}
+                            </div>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
+
+                <DialogFooter className="flex items-center justify-end space-x-2">
+                  <Button type="button" variant="outline" onClick={() => handleAccessDialogChange(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={updateEmployeeAccessMutation.isPending || !userToManageAccess}>
+                    {updateEmployeeAccessMutation.isPending ? "Saving..." : "Save Access"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </Form>
+            <ScrollBar orientation="vertical" />
+          </ScrollArea>
         </DialogContent>
       </Dialog>
 

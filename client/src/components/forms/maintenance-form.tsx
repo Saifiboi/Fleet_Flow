@@ -156,6 +156,9 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
                     <SelectItem value="repair">Repair</SelectItem>
                     <SelectItem value="inspection">Inspection</SelectItem>
                     <SelectItem value="service">Service</SelectItem>
+                    <SelectItem value="bill_payment">Bill Payment</SelectItem>
+                    <SelectItem value="advance">Advance</SelectItem>
+                    <SelectItem value="fuel">Fuel</SelectItem>
                     <SelectItem value="driver_salary">Driver Salary</SelectItem>
                   </SelectContent>
                 </Select>

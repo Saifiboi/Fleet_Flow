@@ -407,14 +407,26 @@ export default function Payments() {
   return (
     <div className="space-y-6" data-testid="payments-page">
       <Dialog open={isViewOpen} onOpenChange={handleViewClose}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="w-[min(95vw,64rem)] max-h-[85vh] overflow-y-auto sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>Payment details</DialogTitle>
           </DialogHeader>
           {selectedPayment ? (
             <div className="space-y-6">
               <div className="rounded-lg border bg-muted/40 p-4">
-                <h4 className="text-sm font-semibold text-foreground">Payment summary</h4>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h4 className="text-sm font-semibold text-foreground">Payment summary</h4>
+                  <Badge
+                    variant="outline"
+                    className={
+                      selectedPayment.outstandingAmount > 0
+                        ? "border-destructive/40 text-destructive"
+                        : "border-green-200 text-green-700"
+                    }
+                  >
+                    {selectedPayment.outstandingAmount > 0 ? "Outstanding" : "Settled"}
+                  </Badge>
+                </div>
                 <dl className="mt-3 grid grid-cols-1 gap-y-2 text-sm md:grid-cols-2 md:gap-x-6">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Period</dt>
@@ -516,7 +528,10 @@ export default function Payments() {
               </div>
 
               <div className="rounded-lg border bg-muted/40 p-4">
-                <h4 className="text-sm font-semibold text-foreground">Assignment details</h4>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h4 className="text-sm font-semibold text-foreground">Assignment details</h4>
+                  <Badge variant="secondary" className="w-fit">{selectedPayment.assignment.project.name}</Badge>
+                </div>
                 <dl className="mt-3 grid grid-cols-1 gap-y-2 text-sm md:grid-cols-2 md:gap-x-6">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Project</dt>
@@ -583,35 +598,61 @@ export default function Payments() {
                 </div>
 
                 {selectedPayment.transactions.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Method</TableHead>
-                          <TableHead className="text-right">Amount</TableHead>
-                          <TableHead>Reference</TableHead>
-                          <TableHead>Notes</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {selectedPayment.transactions.map((transaction) => (
-                          <TableRow key={transaction.id}>
-                            <TableCell>{format(new Date(transaction.transactionDate), "MMM dd, yyyy")}</TableCell>
-                            <TableCell className="capitalize">{transaction.method.replace(/_/g, " ")}</TableCell>
-                            <TableCell className="text-right font-medium text-foreground">
-                              ${formatCurrency(transaction.amount)}
-                            </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
-                              {transaction.referenceNumber ?? "-"}
-                            </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
-                              {transaction.notes ?? "-"}
-                            </TableCell>
+                  <div className="space-y-3">
+                    <div className="hidden sm:block overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Method</TableHead>
+                            <TableHead className="text-right">Amount</TableHead>
+                            <TableHead>Reference</TableHead>
+                            <TableHead>Notes</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {selectedPayment.transactions.map((transaction) => (
+                            <TableRow key={transaction.id}>
+                              <TableCell>{format(new Date(transaction.transactionDate), "MMM dd, yyyy")}</TableCell>
+                              <TableCell className="capitalize">{transaction.method.replace(/_/g, " ")}</TableCell>
+                              <TableCell className="text-right font-medium text-foreground">
+                                ${formatCurrency(transaction.amount)}
+                              </TableCell>
+                              <TableCell className="text-sm text-muted-foreground">
+                                {transaction.referenceNumber ?? "-"}
+                              </TableCell>
+                              <TableCell className="text-sm text-muted-foreground">
+                                {transaction.notes ?? "-"}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    <div className="grid gap-3 sm:hidden">
+                      {selectedPayment.transactions.map((transaction) => (
+                        <Card key={transaction.id} className="border bg-background">
+                          <CardContent className="p-4 space-y-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <p className="text-sm font-semibold">{transaction.method.replace(/_/g, " ")}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {format(new Date(transaction.transactionDate), "MMM dd, yyyy")}
+                                </p>
+                              </div>
+                              <span className="text-sm font-medium text-foreground">
+                                ${formatCurrency(transaction.amount)}
+                              </span>
+                            </div>
+                            <div className="text-xs text-muted-foreground space-y-1">
+                              <p>Reference: {transaction.referenceNumber ?? "-"}</p>
+                              <p>Notes: {transaction.notes ?? "-"}</p>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">
@@ -1211,156 +1252,249 @@ export default function Payments() {
           </div>
 
           {/* Payments Table */}
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Project</TableHead>
-                <TableHead>Vehicle</TableHead>
-                <TableHead>Period</TableHead>
-                <TableHead>Amounts</TableHead>
-                <TableHead>Due Date</TableHead>
-                <TableHead>Paid Date</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Details</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={i}>
-                    {Array.from({ length: 7 }).map((_, j) => (
-                      <TableCell key={j}>
-                        <Skeleton className="h-4 w-full" />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : filteredPayments?.length === 0 ? (
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8">
-                    <div className="flex flex-col items-center space-y-2">
-                      <CreditCard className="w-12 h-12 text-muted-foreground" />
-                      <p className="text-muted-foreground">No payments found</p>
-                      {searchTerm || statusFilter !== "all" ? (
-                        <p className="text-sm text-muted-foreground">Try adjusting your filters</p>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">Payment records will appear here</p>
-                      )}
-                    </div>
-                  </TableCell>
+                  <TableHead>Project</TableHead>
+                  <TableHead>Vehicle</TableHead>
+                  <TableHead>Period</TableHead>
+                  <TableHead>Amounts</TableHead>
+                  <TableHead>Due Date</TableHead>
+                  <TableHead>Paid Date</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Details</TableHead>
                 </TableRow>
-              ) : (
-                filteredPayments?.map((payment: PaymentWithDetails) => {
-                  const attendanceTotalRaw = Number(payment.attendanceTotal ?? 0);
-                  const attendanceTotal = Number.isNaN(attendanceTotalRaw) ? 0 : attendanceTotalRaw;
-                  const deductionTotalRaw = Number(payment.deductionTotal ?? 0);
-                  const deductionTotal = Number.isNaN(deductionTotalRaw) ? 0 : deductionTotalRaw;
-                  const totalDays = payment.totalDays ?? 0;
-                  const maintenanceCount = payment.maintenanceCount ?? 0;
-                  const periodStart = payment.periodStart
-                    ? format(new Date(payment.periodStart), "MMM dd, yyyy")
-                    : "-";
-                  const periodEnd = payment.periodEnd
-                    ? format(new Date(payment.periodEnd), "MMM dd, yyyy")
-                    : "-";
-                  const netAmountRaw = Number(payment.amount ?? 0);
-                  const netAmount = Number.isNaN(netAmountRaw) ? 0 : netAmountRaw;
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <TableRow key={i}>
+                      {Array.from({ length: 7 }).map((_, j) => (
+                        <TableCell key={j}>
+                          <Skeleton className="h-4 w-full" />
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : filteredPayments?.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-8">
+                      <div className="flex flex-col items-center space-y-2">
+                        <CreditCard className="w-12 h-12 text-muted-foreground" />
+                        <p className="text-muted-foreground">No payments found</p>
+                        {searchTerm || statusFilter !== "all" ? (
+                          <p className="text-sm text-muted-foreground">Try adjusting your filters</p>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">Payment records will appear here</p>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredPayments?.map((payment: PaymentWithDetails) => {
+                    const attendanceTotalRaw = Number(payment.attendanceTotal ?? 0);
+                    const attendanceTotal = Number.isNaN(attendanceTotalRaw) ? 0 : attendanceTotalRaw;
+                    const deductionTotalRaw = Number(payment.deductionTotal ?? 0);
+                    const deductionTotal = Number.isNaN(deductionTotalRaw) ? 0 : deductionTotalRaw;
+                    const totalDays = payment.totalDays ?? 0;
+                    const maintenanceCount = payment.maintenanceCount ?? 0;
+                    const periodStart = payment.periodStart
+                      ? format(new Date(payment.periodStart), "MMM dd, yyyy")
+                      : "-";
+                    const periodEnd = payment.periodEnd
+                      ? format(new Date(payment.periodEnd), "MMM dd, yyyy")
+                      : "-";
+                    const netAmountRaw = Number(payment.amount ?? 0);
+                    const netAmount = Number.isNaN(netAmountRaw) ? 0 : netAmountRaw;
 
-                  return (
-                    <TableRow key={payment.id} data-testid={`payment-row-${payment.id}`}>
-                      <TableCell>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{payment.assignment.project.name}</p>
-                          {payment.invoiceNumber && (
-                            <p className="text-xs text-muted-foreground">Invoice #{payment.invoiceNumber}</p>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">
-                            {payment.assignment.vehicle.make} {payment.assignment.vehicle.model}
-                          </p>
-                          <p className="text-xs text-muted-foreground">{payment.assignment.vehicle.licensePlate}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium text-foreground">
-                            {periodStart} – {periodEnd}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {totalDays} {totalDays === 1 ? "day" : "days"} billed
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <div className="flex items-center space-x-2">
-                            <DollarSign className="w-3 h-3 text-muted-foreground" />
-                            <p className="text-sm font-semibold text-foreground">
-                              ${formatCurrency(netAmount)}
+                    return (
+                      <TableRow key={payment.id} data-testid={`payment-row-${payment.id}`}>
+                        <TableCell>
+                          <div>
+                            <p className="text-sm font-medium text-foreground">{payment.assignment.project.name}</p>
+                            {payment.invoiceNumber && (
+                              <p className="text-xs text-muted-foreground">Invoice #{payment.invoiceNumber}</p>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="text-sm font-medium text-foreground">
+                              {payment.assignment.vehicle.make} {payment.assignment.vehicle.model}
+                            </p>
+                            <p className="text-xs text-muted-foreground">{payment.assignment.vehicle.licensePlate}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="text-sm font-medium text-foreground">
+                              {periodStart} – {periodEnd}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {totalDays} {totalDays === 1 ? "day" : "days"} billed
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-1">
+                            <div className="flex items-center space-x-2">
+                              <DollarSign className="w-3 h-3 text-muted-foreground" />
+                              <p className="text-sm font-semibold text-foreground">
+                                ${formatCurrency(netAmount)}
+                              </p>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Received: ${formatCurrency(payment.totalPaid)} ·
+                              <span
+                                className={
+                                  payment.outstandingAmount > 0
+                                    ? "text-destructive font-semibold"
+                                    : "text-muted-foreground"
+                                }
+                              >
+                                {" "}Outstanding: ${formatCurrency(payment.outstandingAmount)}
+                              </span>
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Attendance: ${formatCurrency(attendanceTotal)} · Deductions: ${formatCurrency(
+                                deductionTotal
+                              )} ·
+                              Maintenance items: {maintenanceCount}
                             </p>
                           </div>
-                          <p className="text-xs text-muted-foreground">
-                            Received: ${formatCurrency(payment.totalPaid)} ·
-                            <span
-                              className={
-                                payment.outstandingAmount > 0
-                                  ? "text-destructive font-semibold"
-                                  : "text-muted-foreground"
-                              }
-                            >
-                              {" "}Outstanding: ${formatCurrency(payment.outstandingAmount)}
-                            </span>
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Attendance: ${formatCurrency(attendanceTotal)} · Deductions: ${formatCurrency(
-                              deductionTotal
-                            )} ·
-                            Maintenance items: {maintenanceCount}
-                          </p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <p className="text-sm text-foreground">
-                          {format(new Date(payment.dueDate), "MMM dd, yyyy")}
-                        </p>
-                      </TableCell>
-                      <TableCell>
-                        {payment.paidDate ? (
+                        </TableCell>
+                        <TableCell>
                           <p className="text-sm text-foreground">
-                            {format(new Date(payment.paidDate), "MMM dd, yyyy")}
+                            {format(new Date(payment.dueDate), "MMM dd, yyyy")}
                           </p>
-                        ) : (
-                          <p className="text-sm text-muted-foreground">-</p>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {getStatusBadge(
-                          payment.status,
-                          payment.dueDate,
-                          payment.outstandingAmount,
-                          payment.paidDate
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleViewPayment(payment)}
-                          data-testid={`view-payment-${payment.id}`}
-                        >
-                          <Eye className="w-4 h-4 mr-1" />
-                          View
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
+                        </TableCell>
+                        <TableCell>
+                          {payment.paidDate ? (
+                            <p className="text-sm text-foreground">
+                              {format(new Date(payment.paidDate), "MMM dd, yyyy")}
+                            </p>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">-</p>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {getStatusBadge(
+                            payment.status,
+                            payment.dueDate,
+                            payment.outstandingAmount,
+                            payment.paidDate
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleViewPayment(payment)}
+                            data-testid={`view-payment-${payment.id}`}
+                          >
+                            <Eye className="w-4 h-4 mr-1" />
+                            View
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="space-y-3 md:hidden">
+            {isLoading
+              ? Array.from({ length: 3 }).map((_, index) => (
+                  <Card key={index}>
+                    <CardContent className="p-4 space-y-2">
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-48" />
+                        <Skeleton className="h-3 w-32" />
+                      </div>
+                      <Skeleton className="h-3 w-24" />
+                      <Skeleton className="h-3 w-28" />
+                    </CardContent>
+                  </Card>
+                ))
+              : filteredPayments?.length === 0
+                ? (
+                    <Card>
+                      <CardContent className="p-6 text-center space-y-2">
+                        <CreditCard className="w-10 h-10 text-muted-foreground mx-auto" />
+                        <p className="text-muted-foreground">No payments found</p>
+                        <p className="text-sm text-muted-foreground">
+                          {searchTerm || statusFilter !== "all"
+                            ? "Try adjusting your filters"
+                            : "Payment records will appear here"}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  )
+                : filteredPayments?.map((payment: PaymentWithDetails) => {
+                    const attendanceTotalRaw = Number(payment.attendanceTotal ?? 0);
+                    const attendanceTotal = Number.isNaN(attendanceTotalRaw) ? 0 : attendanceTotalRaw;
+                    const deductionTotalRaw = Number(payment.deductionTotal ?? 0);
+                    const deductionTotal = Number.isNaN(deductionTotalRaw) ? 0 : deductionTotalRaw;
+                    const totalDays = payment.totalDays ?? 0;
+                    const maintenanceCount = payment.maintenanceCount ?? 0;
+                    const periodStart = payment.periodStart
+                      ? format(new Date(payment.periodStart), "MMM dd, yyyy")
+                      : "-";
+                    const periodEnd = payment.periodEnd
+                      ? format(new Date(payment.periodEnd), "MMM dd, yyyy")
+                      : "-";
+                    const netAmountRaw = Number(payment.amount ?? 0);
+                    const netAmount = Number.isNaN(netAmountRaw) ? 0 : netAmountRaw;
+
+                    return (
+                      <Card key={payment.id} data-testid={`payment-card-${payment.id}`}>
+                        <CardContent className="p-4 space-y-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="space-y-1">
+                              <p className="text-sm font-medium text-foreground">{payment.assignment.project.name}</p>
+                              {payment.invoiceNumber && (
+                                <p className="text-xs text-muted-foreground">Invoice #{payment.invoiceNumber}</p>
+                              )}
+                              <p className="text-xs text-muted-foreground">
+                                {payment.assignment.vehicle.make} {payment.assignment.vehicle.model} · {payment.assignment.vehicle.licensePlate}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {periodStart} – {periodEnd} ({totalDays} {totalDays === 1 ? "day" : "days"} billed)
+                              </p>
+                              <div className="text-sm font-semibold text-foreground flex items-center space-x-2">
+                                <DollarSign className="w-4 h-4" />
+                                <span>${formatCurrency(netAmount)}</span>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                Received: ${formatCurrency(payment.totalPaid)} · Outstanding: ${formatCurrency(payment.outstandingAmount)}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Attendance: ${formatCurrency(attendanceTotal)} · Deductions: ${formatCurrency(deductionTotal)} · Maintenance items: {maintenanceCount}
+                              </p>
+                              <div className="text-xs text-muted-foreground">Due {format(new Date(payment.dueDate), "MMM dd, yyyy")}</div>
+                              <div className="text-xs text-muted-foreground">
+                                Paid {payment.paidDate ? format(new Date(payment.paidDate), "MMM dd, yyyy") : "-"}
+                              </div>
+                              <div className="text-sm">{getStatusBadge(payment.status, payment.dueDate, payment.outstandingAmount, payment.paidDate)}</div>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleViewPayment(payment)}
+                              data-testid={`view-payment-${payment.id}`}
+                            >
+                              <Eye className="w-4 h-4 mr-1" />
+                              View
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+          </div>
 
           {/* Summary */}
           {filteredPayments && filteredPayments.length > 0 && (

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, decimal, date, timestamp, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, decimal, date, timestamp, integer, boolean, primaryKey } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -30,9 +30,29 @@ export const users = pgTable("users", {
     .notNull()
     .$type<EmployeeAccessArea[]>()
     .default(sql`ARRAY[]::text[]`),
+  employeeManageAccess: text("employee_manage_access")
+    .array()
+    .notNull()
+    .$type<EmployeeAccessArea[]>()
+    .default(sql`ARRAY[]::text[]`),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const employeeProjects = pgTable(
+  "employee_projects",
+  {
+    userId: varchar("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: varchar("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.userId, table.projectId] }),
+  }),
+);
 
 export const vehicles = pgTable("vehicles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -106,7 +126,7 @@ export const paymentTransactions = pgTable("payment_transactions", {
 export const maintenanceRecords = pgTable("maintenance_records", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   vehicleId: varchar("vehicle_id").notNull().references(() => vehicles.id, { onDelete: "cascade" }),
-  type: text("type").notNull(), // scheduled, repair, inspection, service
+  type: text("type").notNull(), // scheduled, repair, inspection, service, bill_payment, advance, fuel, driver_salary
   description: text("description").notNull(),
   cost: decimal("cost", { precision: 10, scale: 2 }).notNull(),
   performedBy: text("performed_by").notNull(),
@@ -152,6 +172,17 @@ export const usersRelations = relations(users, ({ one }) => ({
   owner: one(owners, {
     fields: [users.ownerId],
     references: [owners.id],
+  }),
+}));
+
+export const employeeProjectsRelations = relations(employeeProjects, ({ one }) => ({
+  user: one(users, {
+    fields: [employeeProjects.userId],
+    references: [users.id],
+  }),
+  project: one(projects, {
+    fields: [employeeProjects.projectId],
+    references: [projects.id],
   }),
 }));
 
@@ -221,6 +252,7 @@ export const vehicleAttendanceRelations = relations(vehicleAttendance, ({ one })
 }));
 
 export const employeeAccessAreas = [
+  "owners",
   "vehicles",
   "projects",
   "assignments",
@@ -230,12 +262,15 @@ export const employeeAccessAreas = [
 ] as const;
 
 export type EmployeeAccessArea = (typeof employeeAccessAreas)[number];
+export type EmployeeProject = typeof employeeProjects.$inferSelect;
 
 export const insertUserSchema = createInsertSchema(users, {
   email: z.string().email(),
   role: z.enum(["admin", "owner", "employee"]),
 }).extend({
   employeeAccess: z.array(z.enum(employeeAccessAreas)).default([]),
+  employeeManageAccess: z.array(z.enum(employeeAccessAreas)).default([]),
+  employeeProjectIds: z.array(z.string().uuid()).default([]),
 });
 
 export const createUserSchema = z
@@ -248,6 +283,11 @@ export const createUserSchema = z
       .array(z.enum(employeeAccessAreas))
       .optional()
       .default([]),
+    employeeManageAccess: z
+      .array(z.enum(employeeAccessAreas))
+      .optional()
+      .default([]),
+    employeeProjectIds: z.array(z.string().uuid()).optional().default([]),
   })
   .superRefine((data, ctx) => {
     if (data.role === "owner" && !data.ownerId) {
@@ -279,6 +319,35 @@ export const createUserSchema = z
         message: "Only employee accounts can have employee access configured",
       });
     }
+
+    if (data.role !== "employee" && data.employeeManageAccess && data.employeeManageAccess.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["employeeManageAccess"],
+        message: "Only employee accounts can have employee access configured",
+      });
+    }
+
+    if (data.role !== "employee" && data.employeeProjectIds && data.employeeProjectIds.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["employeeProjectIds"],
+        message: "Only employee accounts can have project assignments configured",
+      });
+    }
+
+    if (data.employeeManageAccess && data.employeeAccess) {
+      const missingBaseAccess = data.employeeManageAccess.filter(
+        (area) => !data.employeeAccess?.includes(area),
+      );
+      if (missingBaseAccess.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["employeeManageAccess"],
+          message: "Manage access requires view access for the same area",
+        });
+      }
+    }
   });
 
 export const updateUserSchema = z
@@ -286,6 +355,8 @@ export const updateUserSchema = z
     ownerId: z.string().uuid().optional().nullable(),
     isActive: z.boolean().optional(),
     employeeAccess: z.array(z.enum(employeeAccessAreas)).optional(),
+    employeeManageAccess: z.array(z.enum(employeeAccessAreas)).optional(),
+    employeeProjectIds: z.array(z.string().uuid()).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one field must be provided",
@@ -320,9 +391,12 @@ export const loginSchema = z.object({
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type UserRole = User["role"];
-export type SessionUser = Pick<User, "id" | "email" | "role" | "ownerId" | "employeeAccess">;
+export type SessionUser = Pick<
+  User,
+  "id" | "email" | "role" | "ownerId" | "employeeAccess" | "employeeManageAccess"
+> & { employeeProjectIds: string[] };
 export type PublicUser = Omit<User, "passwordHash">;
-export type UserWithOwner = PublicUser & { owner: Owner | null };
+export type UserWithOwner = PublicUser & { owner: Owner | null; employeeProjects: Project[] };
 
 export const ownershipHistoryRelations = relations(ownershipHistory, ({ one }) => ({
   vehicle: one(vehicles, {

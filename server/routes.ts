@@ -52,6 +52,14 @@ function hasEmployeeAccess(req: Request, area: EmployeeAccessArea): boolean {
   return isEmployee(req) && req.user?.employeeAccess?.includes(area) === true;
 }
 
+function hasEmployeeManageAccess(req: Request, area: EmployeeAccessArea): boolean {
+  return isEmployee(req) && req.user?.employeeManageAccess?.includes(area) === true;
+}
+
+function hasAnyEmployeeAccess(req: Request, ...areas: EmployeeAccessArea[]): boolean {
+  return areas.some((area) => hasEmployeeAccess(req, area) || hasEmployeeManageAccess(req, area));
+}
+
 function requireAdmin(req: Request, res: Response): boolean {
   if (!isAdmin(req)) {
     res.status(403).json({ message: "Admin access required" });
@@ -65,8 +73,13 @@ function requireAdminOrEmployee(
   req: Request,
   res: Response,
   area?: EmployeeAccessArea,
+  options?: { manage?: boolean },
 ): boolean {
   if (isAdmin(req)) {
+    return true;
+  }
+
+  if (area && options?.manage && hasEmployeeManageAccess(req, area)) {
     return true;
   }
 
@@ -109,6 +122,23 @@ function ensureOwnerAccess(
   }
 
   if (isOwner(req) && req.user?.ownerId === ownerId) {
+    return true;
+  }
+
+  res.status(403).json({ message: "Access denied" });
+  return false;
+}
+
+function employeeProjectIds(req: Request): string[] {
+  return req.user?.employeeProjectIds ?? [];
+}
+
+function ensureProjectAccess(req: Request, res: Response, projectId: string): boolean {
+  if (isAdmin(req)) {
+    return true;
+  }
+
+  if (isEmployee(req) && employeeProjectIds(req).includes(projectId)) {
     return true;
   }
 
@@ -187,7 +217,7 @@ export async function registerRoutes(app: Application): Promise<void> {
 
   // Owner routes
   app.get("/api/owners", async (req, res) => {
-    if (!requireAdmin(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "owners")) {
       return;
     }
 
@@ -206,7 +236,7 @@ export async function registerRoutes(app: Application): Promise<void> {
         return res.status(404).json({ message: "Owner not found" });
       }
 
-      if (!ensureOwnerAccess(req, res, owner.id)) {
+      if (!ensureOwnerAccess(req, res, owner.id, "owners")) {
         return;
       }
 
@@ -217,7 +247,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.post("/api/owners", async (req, res) => {
-    if (!requireAdmin(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "owners", { manage: true })) {
       return;
     }
 
@@ -231,7 +261,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.put("/api/owners/:id", async (req, res) => {
-    if (!requireAdmin(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "owners", { manage: true })) {
       return;
     }
 
@@ -245,7 +275,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.delete("/api/owners/:id", async (req, res) => {
-    if (!requireAdmin(req, res)) {
+    if (!requireAdminOrEmployee(req, res, "owners", { manage: true })) {
       return;
     }
 
@@ -298,15 +328,27 @@ export async function registerRoutes(app: Application): Promise<void> {
         }
       }
 
+      if (validatedData.role === "employee" && validatedData.employeeProjectIds?.length) {
+        const projects = await storage.getProjects({ ids: validatedData.employeeProjectIds });
+        if (projects.length !== validatedData.employeeProjectIds.length) {
+          return res.status(400).json({ message: "One or more selected projects were not found" });
+        }
+      }
+
       const passwordHash = await hashPassword(validatedData.password);
-      const created = await storage.createUser({
-        email,
-        passwordHash,
-        role: validatedData.role,
-        ownerId: validatedData.role === "owner" ? validatedData.ownerId : null,
-        isActive: true,
-        employeeAccess: validatedData.role === "employee" ? validatedData.employeeAccess ?? [] : [],
-      });
+      const created = await storage.createUser(
+        {
+          email,
+          passwordHash,
+          role: validatedData.role,
+          ownerId: validatedData.role === "owner" ? validatedData.ownerId : null,
+          isActive: true,
+          employeeAccess: validatedData.role === "employee" ? validatedData.employeeAccess ?? [] : [],
+          employeeManageAccess:
+            validatedData.role === "employee" ? validatedData.employeeManageAccess ?? [] : [],
+        },
+        validatedData.role === "employee" ? validatedData.employeeProjectIds ?? [] : [],
+      );
 
       const owner = created.ownerId ? await storage.getOwner(created.ownerId) : null;
       const { passwordHash: _ph, ...user } = created;
@@ -352,14 +394,36 @@ export async function registerRoutes(app: Application): Promise<void> {
         return res.status(400).json({ message: "Admin accounts cannot be enabled or disabled" });
       }
 
-      if (
-        Object.prototype.hasOwnProperty.call(validatedData, "employeeAccess") &&
-        user.role !== "employee"
-      ) {
+      const hasEmployeeAccessUpdate = Object.prototype.hasOwnProperty.call(validatedData, "employeeAccess");
+      const hasEmployeeManageUpdate = Object.prototype.hasOwnProperty.call(
+        validatedData,
+        "employeeManageAccess",
+      );
+      const hasProjectUpdate = Object.prototype.hasOwnProperty.call(validatedData, "employeeProjectIds");
+
+      if ((hasEmployeeAccessUpdate || hasEmployeeManageUpdate || hasProjectUpdate) && user.role !== "employee") {
         return res.status(400).json({ message: "Only employee accounts can have page access configured" });
       }
 
-      const updated = await storage.updateUser(user.id, validatedData);
+      if (hasEmployeeManageUpdate && validatedData.employeeManageAccess) {
+        const baseAccess = validatedData.employeeAccess ?? user.employeeAccess;
+        if (validatedData.employeeManageAccess.some((area) => !baseAccess.includes(area))) {
+          return res
+            .status(400)
+            .json({ message: "Manage access requires view access for the same area" });
+        }
+      }
+
+      if (hasProjectUpdate && validatedData.employeeProjectIds) {
+        const projects = await storage.getProjects({ ids: validatedData.employeeProjectIds });
+        if (projects.length !== validatedData.employeeProjectIds.length) {
+          return res.status(400).json({ message: "One or more selected projects were not found" });
+        }
+      }
+
+      const { employeeProjectIds, ...updateFields } = validatedData;
+
+      const updated = await storage.updateUser(user.id, updateFields, employeeProjectIds);
       const owner = updated.ownerId ? await storage.getOwner(updated.ownerId) : null;
       const { passwordHash: _ph, ...safeUser } = updated;
 
@@ -441,6 +505,12 @@ export async function registerRoutes(app: Application): Promise<void> {
   app.get("/api/vehicles", async (req, res) => {
     try {
       if (isAdmin(req) || hasEmployeeAccess(req, "vehicles")) {
+        if (isEmployee(req)) {
+          const projects = employeeProjectIds(req);
+          const vehicles = projects.length > 0 ? await storage.getVehicles({ projectIds: projects }) : [];
+          return res.json(vehicles);
+        }
+
         const vehicles = await storage.getVehicles();
         return res.json(vehicles);
       }
@@ -470,6 +540,18 @@ export async function registerRoutes(app: Application): Promise<void> {
         return;
       }
 
+      if (isEmployee(req)) {
+        const allowedProjects = employeeProjectIds(req);
+        const assignmentsForVehicle = await storage.getAssignmentsByVehicle(vehicle.id);
+        const isLinked = assignmentsForVehicle.some((assignment) =>
+          allowedProjects.includes(assignment.project.id),
+        );
+
+        if (!isLinked) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
+
       res.json(vehicle);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -490,7 +572,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.post("/api/vehicles", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res, "vehicles")) {
+    if (!requireAdminOrEmployee(req, res, "vehicles", { manage: true })) {
       return;
     }
 
@@ -504,7 +586,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.put("/api/vehicles/:id", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res, "vehicles")) {
+    if (!requireAdminOrEmployee(req, res, "vehicles", { manage: true })) {
       return;
     }
 
@@ -518,7 +600,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.delete("/api/vehicles/:id", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res, "vehicles")) {
+    if (!requireAdminOrEmployee(req, res, "vehicles", { manage: true })) {
       return;
     }
 
@@ -537,6 +619,12 @@ export async function registerRoutes(app: Application): Promise<void> {
     }
 
     try {
+      if (isEmployee(req)) {
+        const projects = employeeProjectIds(req);
+        const results = projects.length > 0 ? await storage.getProjects({ ids: projects }) : [];
+        return res.json(results);
+      }
+
       const projects = await storage.getProjects();
       res.json(projects);
     } catch (error: any) {
@@ -546,6 +634,10 @@ export async function registerRoutes(app: Application): Promise<void> {
 
   app.get("/api/projects/:id", async (req, res) => {
     if (!requireAdminOrEmployee(req, res, "projects")) {
+      return;
+    }
+
+    if (isEmployee(req) && !ensureProjectAccess(req, res, req.params.id)) {
       return;
     }
 
@@ -561,7 +653,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.post("/api/projects", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res, "projects")) {
+    if (!requireAdminOrEmployee(req, res, "projects", { manage: true })) {
       return;
     }
 
@@ -575,7 +667,11 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.put("/api/projects/:id", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res, "projects")) {
+    if (!requireAdminOrEmployee(req, res, "projects", { manage: true })) {
+      return;
+    }
+
+    if (isEmployee(req) && !ensureProjectAccess(req, res, req.params.id)) {
       return;
     }
 
@@ -589,7 +685,11 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.delete("/api/projects/:id", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res, "projects")) {
+    if (!requireAdminOrEmployee(req, res, "projects", { manage: true })) {
+      return;
+    }
+
+    if (isEmployee(req) && !ensureProjectAccess(req, res, req.params.id)) {
       return;
     }
 
@@ -604,8 +704,10 @@ export async function registerRoutes(app: Application): Promise<void> {
   // Assignment routes
   app.get("/api/assignments", async (req, res) => {
     try {
-      if (isAdmin(req) || hasEmployeeAccess(req, "assignments")) {
-        const assignments = await storage.getAssignments();
+      if (isAdmin(req) || hasAnyEmployeeAccess(req, "assignments", "attendance")) {
+        const assignments = isEmployee(req)
+          ? await storage.getAssignments({ projectIds: employeeProjectIds(req) })
+          : await storage.getAssignments();
         return res.json(assignments);
       }
 
@@ -630,6 +732,22 @@ export async function registerRoutes(app: Application): Promise<void> {
         return res.status(404).json({ message: "Assignment not found" });
       }
 
+      if (isAdmin(req)) {
+        return res.json(assignment);
+      }
+
+      if (isEmployee(req)) {
+        if (!hasAnyEmployeeAccess(req, "assignments", "attendance")) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+
+        if (!ensureProjectAccess(req, res, assignment.project.id)) {
+          return;
+        }
+
+        return res.json(assignment);
+      }
+
       if (!ensureOwnerAccess(req, res, assignment.vehicle.owner.id, "assignments")) {
         return;
       }
@@ -643,7 +761,11 @@ export async function registerRoutes(app: Application): Promise<void> {
   app.get("/api/assignments/project/:projectId", async (req, res) => {
     try {
       const assignments = await storage.getAssignmentsByProject(req.params.projectId);
-      if (isAdmin(req) || hasEmployeeAccess(req, "assignments")) {
+      if (isAdmin(req) || hasAnyEmployeeAccess(req, "assignments", "attendance")) {
+        if (isEmployee(req) && !ensureProjectAccess(req, res, req.params.projectId)) {
+          return;
+        }
+
         return res.json(assignments);
       }
 
@@ -673,7 +795,14 @@ export async function registerRoutes(app: Application): Promise<void> {
       }
 
       const assignments = await storage.getAssignmentsByVehicle(req.params.vehicleId);
-      if (isAdmin(req) || hasEmployeeAccess(req, "assignments")) {
+      if (isAdmin(req) || hasAnyEmployeeAccess(req, "assignments", "attendance")) {
+        if (
+          isEmployee(req) &&
+          assignments.every((assignment) => !employeeProjectIds(req).includes(assignment.project.id))
+        ) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+
         return res.json(assignments);
       }
 
@@ -689,12 +818,15 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.post("/api/assignments", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res, "assignments")) {
+    if (!requireAdminOrEmployee(req, res, "assignments", { manage: true })) {
       return;
     }
 
     try {
       const validatedData = insertAssignmentSchema.parse(req.body);
+      if (isEmployee(req) && !employeeProjectIds(req).includes(validatedData.projectId)) {
+        return res.status(403).json({ message: "You cannot manage assignments for this project" });
+      }
       const assignment = await storage.createAssignment(validatedData);
       res.status(201).json(assignment);
     } catch (error: any) {
@@ -703,12 +835,19 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.put("/api/assignments/:id", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res, "assignments")) {
+    if (!requireAdminOrEmployee(req, res, "assignments", { manage: true })) {
       return;
     }
 
     try {
       const validatedData = insertAssignmentSchema.partial().parse(req.body);
+      if (
+        isEmployee(req) &&
+        validatedData.projectId &&
+        !employeeProjectIds(req).includes(validatedData.projectId)
+      ) {
+        return res.status(403).json({ message: "You cannot manage assignments for this project" });
+      }
       const assignment = await storage.updateAssignment(req.params.id, validatedData);
       res.json(assignment);
     } catch (error: any) {
@@ -717,11 +856,22 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.delete("/api/assignments/:id", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res, "assignments")) {
+    if (!requireAdminOrEmployee(req, res, "assignments", { manage: true })) {
       return;
     }
 
     try {
+      if (isEmployee(req)) {
+        const assignment = await storage.getAssignment(req.params.id);
+        if (!assignment) {
+          return res.status(404).json({ message: "Assignment not found" });
+        }
+
+        if (!employeeProjectIds(req).includes(assignment.project.id)) {
+          return res.status(403).json({ message: "You cannot manage assignments for this project" });
+        }
+      }
+
       await storage.deleteAssignment(req.params.id);
       res.status(204).send();
     } catch (error: any) {
@@ -734,6 +884,13 @@ export async function registerRoutes(app: Application): Promise<void> {
     try {
       if (isAdmin(req) || hasEmployeeAccess(req, "payments")) {
         const payments = await storage.getPayments();
+        if (isEmployee(req)) {
+          const allowedProjects = new Set(employeeProjectIds(req));
+          return res.json(
+            payments.filter((payment) => allowedProjects.has(payment.assignment.project.id)),
+          );
+        }
+
         return res.json(payments);
       }
 
@@ -755,6 +912,13 @@ export async function registerRoutes(app: Application): Promise<void> {
     try {
       if (isAdmin(req) || hasEmployeeAccess(req, "payments")) {
         const payments = await storage.getOutstandingPayments();
+        if (isEmployee(req)) {
+          const allowedProjects = new Set(employeeProjectIds(req));
+          return res.json(
+            payments.filter((payment) => allowedProjects.has(payment.assignment.project.id)),
+          );
+        }
+
         return res.json(payments);
       }
 
@@ -782,6 +946,13 @@ export async function registerRoutes(app: Application): Promise<void> {
       if (!ensureOwnerAccess(req, res, payment.paymentOwner?.id ?? payment.ownerId, "payments")) {
         return;
       }
+
+      if (
+        isEmployee(req) &&
+        !employeeProjectIds(req).includes(payment.assignment.project.id)
+      ) {
+        return res.status(403).json({ message: "Access denied" });
+      }
       res.json(payment);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -792,6 +963,12 @@ export async function registerRoutes(app: Application): Promise<void> {
     try {
       const payments = await storage.getPaymentsByAssignment(req.params.assignmentId);
       if (isAdmin(req) || hasEmployeeAccess(req, "payments")) {
+        if (
+          isEmployee(req) &&
+          payments.every((payment) => !employeeProjectIds(req).includes(payment.assignment.project.id))
+        ) {
+          return res.status(403).json({ message: "Access denied" });
+        }
         return res.json(payments);
       }
 
@@ -809,12 +986,18 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.post("/api/payments", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res, "payments")) {
+    if (!requireAdminOrEmployee(req, res, "payments", { manage: true })) {
       return;
     }
 
     try {
       const parsedData = createPaymentRequestSchema.parse(req.body);
+      if (isEmployee(req)) {
+        const assignment = await storage.getAssignment(parsedData.assignmentId);
+        if (!assignment || !employeeProjectIds(req).includes(assignment.project.id)) {
+          return res.status(403).json({ message: "You cannot manage payments for this project" });
+        }
+      }
       const { attendanceDates, maintenanceRecordIds, ...paymentValues } = parsedData;
       const payment = await storage.createPayment(
         paymentValues,
@@ -828,11 +1011,17 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.post("/api/payments/:id/transactions", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res, "payments")) {
+    if (!requireAdminOrEmployee(req, res, "payments", { manage: true })) {
       return;
     }
 
     try {
+      if (isEmployee(req)) {
+        const payment = await storage.getPayment(req.params.id);
+        if (!payment || !employeeProjectIds(req).includes(payment.assignment.project.id)) {
+          return res.status(403).json({ message: "You cannot manage payments for this project" });
+        }
+      }
       const validatedData = createPaymentTransactionSchema.parse(req.body);
       const transaction = await storage.createPaymentTransaction(req.params.id, validatedData);
       const payment = await storage.getPayment(req.params.id);
@@ -844,7 +1033,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.post("/api/payments/calculate", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res, "payments")) {
+    if (!requireAdminOrEmployee(req, res, "payments", { manage: true })) {
       return;
     }
 
@@ -933,7 +1122,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.post("/api/maintenance", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res, "maintenance")) {
+    if (!requireAdminOrEmployee(req, res, "maintenance", { manage: true })) {
       return;
     }
 
@@ -947,7 +1136,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.put("/api/maintenance/:id", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res, "maintenance")) {
+    if (!requireAdminOrEmployee(req, res, "maintenance", { manage: true })) {
       return;
     }
 
@@ -961,7 +1150,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.delete("/api/maintenance/:id", async (req, res) => {
-    if (!requireAdminOrEmployee(req, res, "maintenance")) {
+    if (!requireAdminOrEmployee(req, res, "maintenance", { manage: true })) {
       return;
     }
 
@@ -1066,7 +1255,7 @@ export async function registerRoutes(app: Application): Promise<void> {
 
   // Vehicle ownership transfer route
   app.post("/api/vehicles/:vehicleId/transfer-ownership", async (req: Request, res: Response) => {
-    if (!requireAdminOrEmployee(req, res, "vehicles")) {
+    if (!requireAdminOrEmployee(req, res, "vehicles", { manage: true })) {
       return;
     }
 
@@ -1179,12 +1368,33 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.post("/api/vehicle-attendance", async (req: Request, res: Response) => {
-    if (!requireAdminOrEmployee(req, res, "attendance")) {
+    if (!requireAdminOrEmployee(req, res, "attendance", { manage: true })) {
       return;
     }
 
     try {
       const validated = insertVehicleAttendanceSchema.parse(req.body);
+
+      if (isEmployee(req)) {
+        if (!validated.projectId) {
+          return res
+            .status(400)
+            .json({ message: "projectId is required when recording attendance as an employee" });
+        }
+
+        const allowedProjects = new Set(employeeProjectIds(req));
+        if (!allowedProjects.has(validated.projectId)) {
+          return res.status(403).json({ message: "You cannot manage attendance for this project" });
+        }
+
+        const vehicleAssignments = await storage.getAssignmentsByVehicle(validated.vehicleId);
+        if (!vehicleAssignments.some((assignment) => assignment.project.id === validated.projectId)) {
+          return res
+            .status(403)
+            .json({ message: "Vehicle is not assigned to one of your projects" });
+        }
+      }
+
       const created = await storage.createVehicleAttendance(validated);
       res.status(201).json(created);
     } catch (error: any) {
@@ -1194,7 +1404,7 @@ export async function registerRoutes(app: Application): Promise<void> {
 
   // Batch create attendance records
   app.post("/api/vehicle-attendance/batch", async (req: Request, res: Response) => {
-    if (!requireAdminOrEmployee(req, res, "attendance")) {
+    if (!requireAdminOrEmployee(req, res, "attendance", { manage: true })) {
       return;
     }
 
@@ -1206,6 +1416,36 @@ export async function registerRoutes(app: Application): Promise<void> {
 
       console.log('[vehicle-attendance/batch] received', { count: body.length });
       const validatedRecords = body.map((b) => insertVehicleAttendanceSchema.parse(b));
+
+      if (isEmployee(req)) {
+        const allowedProjects = new Set(employeeProjectIds(req));
+        const assignmentCache = new Map<string, Awaited<ReturnType<typeof storage.getAssignmentsByVehicle>>>();
+
+        for (const record of validatedRecords) {
+          if (!record.projectId) {
+            return res.status(400).json({ message: "projectId is required for employee attendance" });
+          }
+
+          if (!allowedProjects.has(record.projectId)) {
+            return res.status(403).json({ message: "You cannot manage attendance for this project" });
+          }
+
+          if (!assignmentCache.has(record.vehicleId)) {
+            assignmentCache.set(
+              record.vehicleId,
+              await storage.getAssignmentsByVehicle(record.vehicleId),
+            );
+          }
+
+          const assignments = assignmentCache.get(record.vehicleId)!;
+          if (!assignments.some((assignment) => assignment.project.id === record.projectId)) {
+            return res
+              .status(403)
+              .json({ message: "Vehicle is not assigned to one of your projects" });
+          }
+        }
+      }
+
       const created = await storage.createVehicleAttendanceBatch(validatedRecords);
       console.log('[vehicle-attendance/batch] created', { createdCount: created.length });
       res.status(201).json(created);
@@ -1216,7 +1456,7 @@ export async function registerRoutes(app: Application): Promise<void> {
   });
 
   app.post("/api/vehicle-attendance/delete", async (req: Request, res: Response) => {
-    if (!requireAdminOrEmployee(req, res, "attendance")) {
+    if (!requireAdminOrEmployee(req, res, "attendance", { manage: true })) {
       return;
     }
 
