@@ -166,7 +166,7 @@ export default function Assignments() {
             </Select>
           </div>
 
-          <div className="rounded-md border">
+          <div className="rounded-md border hidden md:block">
             <ScrollArea className="h-[60vh]">
               <Table className="min-w-full">
                 <TableHeader>
@@ -305,6 +305,111 @@ e again."
                 </TableBody>
               </Table>
             </ScrollArea>
+          </div>
+
+          <div className="space-y-3 md:hidden">
+            {isLoading
+              ? Array.from({ length: 3 }).map((_, index) => (
+                  <Card key={index}>
+                    <CardContent className="p-4 space-y-2">
+                      <div className="flex items-center space-x-3">
+                        <Skeleton className="h-10 w-10 rounded-full" />
+                        <div className="space-y-2">
+                          <Skeleton className="h-4 w-44" />
+                          <Skeleton className="h-3 w-32" />
+                        </div>
+                      </div>
+                      <Skeleton className="h-3 w-24" />
+                      <Skeleton className="h-3 w-16" />
+                    </CardContent>
+                  </Card>
+                ))
+              : filteredAssignments?.length === 0
+                ? (
+                    <Card>
+                      <CardContent className="p-6 text-center space-y-2">
+                        <Calendar className="w-10 h-10 text-muted-foreground mx-auto" />
+                        <p className="text-muted-foreground">No assignments found</p>
+                        <p className="text-sm text-muted-foreground">
+                          {searchTerm || statusFilter !== "all" || projectFilter !== "all"
+                            ? "Try adjusting your filters"
+                            : "Get started by assigning vehicles to projects"}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  )
+                : filteredAssignments?.map((assignment: AssignmentWithDetails) => (
+                    <Card key={assignment.id} data-testid={`assignment-card-${assignment.id}`}>
+                      <CardContent className="p-4 space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+                              <Car className="text-primary w-5 h-5" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-foreground">
+                                {assignment.vehicle.make} {assignment.vehicle.model} {assignment.vehicle.year}
+                              </p>
+                              <p className="text-xs text-muted-foreground">License: {assignment.vehicle.licensePlate}</p>
+                              <p className="text-xs text-muted-foreground">Owner: {assignment.vehicle.owner.name}</p>
+                            </div>
+                          </div>
+                          {canManageAssignments && (
+                            <div className="flex items-center space-x-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleEdit(assignment)}
+                                data-testid={`edit-assignment-${assignment.id}`}
+                              >
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                data-testid={`view-assignment-${assignment.id}`}
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                              <ConfirmDialog
+                                title="Delete assignment"
+                                description="Are you sure you want to delete this assignment? This will make the vehicle available again."
+                                onConfirm={() => deleteAssignmentMutation.mutate(assignment.id)}
+                                trigger={
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-red-500 hover:text-red-700"
+                                    disabled={deleteAssignmentMutation.isPending}
+                                    data-testid={`delete-assignment-${assignment.id}`}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                }
+                              />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <div className="flex items-center space-x-1">
+                            <MapPin className="w-3 h-3" />
+                            <span>{assignment.project.name}</span>
+                          </div>
+                          <div className="flex items-center space-x-1">
+                            <DollarSign className="w-3 h-3" />
+                            <span>{assignment.monthlyRate}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>{format(new Date(assignment.startDate), "MMM dd, yyyy")}</span>
+                          <span>
+                            {assignment.endDate ? format(new Date(assignment.endDate), "MMM dd, yyyy") : "Ongoing"}
+                          </span>
+                        </div>
+                        <div className="text-sm">{getStatusBadge(assignment.status)}</div>
+                      </CardContent>
+                    </Card>
+                  ))}
           </div>
 
           {/* Summary */}

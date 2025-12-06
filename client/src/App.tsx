@@ -30,7 +30,7 @@ interface ProtectedRoute {
 const protectedRoutes: ProtectedRoute[] = [
   { path: "/", component: Dashboard, roles: ["admin"] },
   { path: "/users", component: Users, roles: ["admin"] },
-  { path: "/owners", component: Owners, roles: ["admin"] },
+  { path: "/owners", component: Owners, roles: ["admin", "owner", "employee"], employeeAccess: "owners" },
   { path: "/vehicles", component: Vehicles, roles: ["admin", "owner", "employee"], employeeAccess: "vehicles" },
   { path: "/projects", component: Projects, roles: ["admin", "employee"], employeeAccess: "projects" },
   { path: "/assignments", component: Assignments, roles: ["admin", "owner", "employee"], employeeAccess: "assignments" },

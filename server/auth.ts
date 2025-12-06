@@ -9,13 +9,15 @@ import type { SessionUser, User } from "@shared/schema";
 
 const MemoryStore = connectMemory(session);
 
-function toSessionUser(user: User): SessionUser {
+function toSessionUser(user: User & { employeeProjectIds?: string[] }): SessionUser {
   return {
     id: user.id,
     email: user.email,
     role: user.role,
     ownerId: user.ownerId ?? null,
     employeeAccess: user.employeeAccess ?? [],
+    employeeManageAccess: user.employeeManageAccess ?? [],
+    employeeProjectIds: user.employeeProjectIds ?? [],
   };
 }
 
@@ -36,6 +38,7 @@ async function ensureDefaultAdminUser() {
     role: "admin",
     isActive: true,
     employeeAccess: [],
+    employeeManageAccess: [],
   });
 
   console.warn(

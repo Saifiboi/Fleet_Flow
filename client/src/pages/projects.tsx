@@ -139,7 +139,7 @@ export default function Projects() {
               </Select>
             </div>
 
-          <div className="rounded-md border">
+          <div className="rounded-md border hidden md:block">
             <ScrollArea className="h-[60vh]">
               <Table className="min-w-full">
                 <TableHeader>
@@ -265,6 +265,104 @@ export default function Projects() {
                 </TableBody>
               </Table>
             </ScrollArea>
+          </div>
+
+          <div className="space-y-3 md:hidden">
+            {isLoading
+              ? Array.from({ length: 3 }).map((_, i) => (
+                  <Card key={i}>
+                    <CardContent className="p-4 space-y-2">
+                      <div className="flex items-center space-x-3">
+                        <Skeleton className="h-10 w-10 rounded-full" />
+                        <div className="space-y-2">
+                          <Skeleton className="h-4 w-40" />
+                          <Skeleton className="h-3 w-28" />
+                        </div>
+                      </div>
+                      <Skeleton className="h-3 w-20" />
+                      <Skeleton className="h-3 w-16" />
+                    </CardContent>
+                  </Card>
+                ))
+              : filteredProjects?.length === 0
+                ? (
+                    <Card>
+                      <CardContent className="p-6 text-center space-y-2">
+                        <FolderKanban className="w-10 h-10 text-muted-foreground mx-auto" />
+                        <p className="text-muted-foreground">No projects found</p>
+                        <p className="text-sm text-muted-foreground">
+                          {searchTerm || statusFilter !== "all"
+                            ? "Try adjusting your filters"
+                            : "Get started by adding your first project"}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  )
+                : filteredProjects?.map((project: Project) => (
+                    <Card key={project.id} data-testid={`project-card-${project.id}`}>
+                      <CardContent className="p-4 space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+                              <FolderKanban className="text-primary w-5 h-5" />
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-sm font-medium text-foreground">{project.name}</p>
+                              {project.description && (
+                                <p className="text-xs text-muted-foreground line-clamp-2">{project.description}</p>
+                              )}
+                              <div className="text-xs text-muted-foreground flex items-center space-x-1">
+                                <MapPin className="w-3 h-3" />
+                                <span>{project.location}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEdit(project)}
+                              data-testid={`edit-project-${project.id}`}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button variant="ghost" size="sm" data-testid={`view-project-${project.id}`}>
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            <ConfirmDialog
+                              title="Delete project"
+                              description="Are you sure you want to delete this project? This will also delete all its assignments."
+                              onConfirm={() => deleteProjectMutation.mutate(project.id)}
+                              trigger={
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-red-500 hover:text-red-700"
+                                  disabled={deleteProjectMutation.isPending}
+                                  data-testid={`delete-project-${project.id}`}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              }
+                            />
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <div className="flex items-center space-x-1">
+                            <Calendar className="w-3 h-3" />
+                            <span>{format(new Date(project.startDate), "MMM dd, yyyy")}</span>
+                          </div>
+                          <div className="flex items-center space-x-1">
+                            <Calendar className="w-3 h-3" />
+                            <span>
+                              {project.endDate ? format(new Date(project.endDate), "MMM dd, yyyy") : "Ongoing"}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-sm">{getStatusBadge(project.status)}</div>
+                      </CardContent>
+                    </Card>
+                  ))}
           </div>
 
           {/* Summary */}

@@ -31,7 +31,7 @@ type NavigationItem = {
 const navigationItems: NavigationItem[] = [
   { path: "/", label: "Dashboard", icon: BarChart3, roles: ["admin"] },
   { path: "/users", label: "Users", icon: Shield, roles: ["admin"] },
-  { path: "/owners", label: "Owners", icon: Users, roles: ["admin"] },
+  { path: "/owners", label: "Owners", icon: Users, roles: ["admin", "owner", "employee"], employeeAccess: "owners" },
   { path: "/vehicles", label: "Vehicles", icon: Car, roles: ["admin", "owner", "employee"], employeeAccess: "vehicles" },
   { path: "/projects", label: "Projects", icon: FolderKanban, roles: ["admin", "employee"], employeeAccess: "projects" },
   { path: "/assignments", label: "Assignments", icon: Calendar, roles: ["admin", "owner", "employee"], employeeAccess: "assignments" },
@@ -43,6 +43,12 @@ const navigationItems: NavigationItem[] = [
 export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const [location] = useLocation();
   const { user } = useAuth();
+
+  const handleNavClick = () => {
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      onToggle();
+    }
+  };
 
   const items = navigationItems.filter((item) => {
     if (!item.roles) {
@@ -116,6 +122,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
                       : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
                   )}
                   data-testid={`nav-${item.label.toLowerCase()}`}
+                  onClick={handleNavClick}
                 >
                   <Icon className="h-5 w-5 flex-shrink-0" />
                   {isOpen && <span className="truncate">{item.label}</span>}
