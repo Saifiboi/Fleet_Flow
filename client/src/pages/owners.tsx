@@ -117,123 +117,229 @@ export default function Owners() {
           </div>
 
           {/* Owners Table */}
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Contact</TableHead>
-                <TableHead>Address</TableHead>
-                <TableHead>Joined</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={i}>
-                    {Array.from({ length: 5 }).map((_, j) => (
-                      <TableCell key={j}>
-                        <Skeleton className="h-4 w-full" />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : filteredOwners?.length === 0 ? (
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8">
-                    <div className="flex flex-col items-center space-y-2">
-                      <Users className="w-12 h-12 text-muted-foreground" />
-                      <p className="text-muted-foreground">No owners found</p>
-                      {searchTerm ? (
-                        <p className="text-sm text-muted-foreground">Try adjusting your search</p>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">Get started by adding your first owner</p>
-                      )}
-                    </div>
-                  </TableCell>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Contact</TableHead>
+                  <TableHead>Address</TableHead>
+                  <TableHead>Joined</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
-              ) : (
-                filteredOwners?.map((owner: Owner) => (
-                  <TableRow key={owner.id} data-testid={`owner-row-${owner.id}`}>
-                    <TableCell>
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                          <Users className="text-primary w-5 h-5" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{owner.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Joined {new Date(owner.createdAt).toLocaleDateString()}
-                          </p>
-                        </div>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <TableRow key={i}>
+                      {Array.from({ length: 5 }).map((_, j) => (
+                        <TableCell key={j}>
+                          <Skeleton className="h-4 w-full" />
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : filteredOwners?.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-8">
+                      <div className="flex flex-col items-center space-y-2">
+                        <Users className="w-12 h-12 text-muted-foreground" />
+                        <p className="text-muted-foreground">No owners found</p>
+                        {searchTerm ? (
+                          <p className="text-sm text-muted-foreground">Try adjusting your search</p>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">Get started by adding your first owner</p>
+                        )}
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <div className="flex items-center space-x-2">
-                          <Mail className="w-3 h-3 text-muted-foreground" />
-                          <p className="text-sm text-foreground">{owner.email}</p>
+                  </TableRow>
+                ) : (
+                  filteredOwners?.map((owner: Owner) => (
+                    <TableRow key={owner.id} data-testid={`owner-row-${owner.id}`}>
+                      <TableCell>
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+                            <Users className="text-primary w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-foreground">{owner.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Joined {new Date(owner.createdAt).toLocaleDateString()}
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex items-center space-x-2">
-                          <Phone className="w-3 h-3 text-muted-foreground" />
-                          <p className="text-sm text-foreground">{owner.phone}</p>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="flex items-center space-x-2">
+                            <Mail className="w-3 h-3 text-muted-foreground" />
+                            <p className="text-sm text-foreground">{owner.email}</p>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Phone className="w-3 h-3 text-muted-foreground" />
+                            <p className="text-sm text-foreground">{owner.phone}</p>
+                          </div>
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <p className="text-sm text-foreground">{owner.address}</p>
+                      </TableCell>
+                      <TableCell>
+                        <p className="text-sm text-foreground">
+                          {new Date(owner.createdAt).toLocaleDateString()}
+                        </p>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          {canManageOwners && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEdit(owner)}
+                              data-testid={`edit-owner-${owner.id}`}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                          )}
+                          {canViewOwners && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              data-testid={`view-owner-${owner.id}`}
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                          )}
+                          {canManageOwners && (
+                            <ConfirmDialog
+                              title="Delete owner"
+                              description="Are you sure you want to delete this owner? This will also delete all their vehicles."
+                              onConfirm={() => deleteOwnerMutation.mutate(owner.id)}
+                              trigger={
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-red-500 hover:text-red-700"
+                                  disabled={deleteOwnerMutation.isPending}
+                                  data-testid={`delete-owner-${owner.id}`}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              }
+                            />
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Owners Cards (Mobile) */}
+          <div className="space-y-3 md:hidden">
+            {isLoading
+              ? Array.from({ length: 3 }).map((_, index) => (
+                  <Card key={index}>
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <Skeleton className="h-10 w-10 rounded-full" />
+                          <div className="space-y-1">
+                            <Skeleton className="h-4 w-40" />
+                            <Skeleton className="h-3 w-24" />
+                          </div>
+                        </div>
+                        <Skeleton className="h-8 w-20" />
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-sm text-foreground">{owner.address}</p>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-sm text-foreground">
-                        {new Date(owner.createdAt).toLocaleDateString()}
-                      </p>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        {canManageOwners && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEdit(owner)}
-                            data-testid={`edit-owner-${owner.id}`}
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                        )}
-                        {canViewOwners && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            data-testid={`view-owner-${owner.id}`}
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                        )}
-                        {canManageOwners && (
-                          <ConfirmDialog
-                            title="Delete owner"
-                            description="Are you sure you want to delete this owner? This will also delete all their vehicles."
-                            onConfirm={() => deleteOwnerMutation.mutate(owner.id)}
-                            trigger={
+                      <Skeleton className="h-3 w-3/4" />
+                      <Skeleton className="h-3 w-2/3" />
+                    </CardContent>
+                  </Card>
+                ))
+              : filteredOwners?.length === 0
+                ? (
+                    <Card>
+                      <CardContent className="p-6 text-center space-y-2">
+                        <Users className="w-10 h-10 text-muted-foreground mx-auto" />
+                        <p className="text-muted-foreground">No owners found</p>
+                        <p className="text-sm text-muted-foreground">
+                          {searchTerm ? "Try adjusting your search" : "Get started by adding your first owner"}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  )
+                : filteredOwners?.map((owner: Owner) => (
+                    <Card key={owner.id} data-testid={`owner-card-${owner.id}`}>
+                      <CardContent className="p-4 space-y-3">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+                              <Users className="text-primary w-5 h-5" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-foreground">{owner.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Joined {new Date(owner.createdAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            {canManageOwners && (
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="text-red-500 hover:text-red-700"
-                                disabled={deleteOwnerMutation.isPending}
-                                data-testid={`delete-owner-${owner.id}`}
+                                onClick={() => handleEdit(owner)}
+                                data-testid={`edit-owner-${owner.id}`}
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Edit className="w-4 h-4" />
                               </Button>
-                            }
-                          />
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                            )}
+                            {canViewOwners && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                data-testid={`view-owner-${owner.id}`}
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                            )}
+                            {canManageOwners && (
+                              <ConfirmDialog
+                                title="Delete owner"
+                                description="Are you sure you want to delete this owner? This will also delete all their vehicles."
+                                onConfirm={() => deleteOwnerMutation.mutate(owner.id)}
+                                trigger={
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-red-500 hover:text-red-700"
+                                    disabled={deleteOwnerMutation.isPending}
+                                    data-testid={`delete-owner-${owner.id}`}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                }
+                              />
+                            )}
+                          </div>
+                        </div>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex items-center space-x-2">
+                            <Mail className="w-4 h-4 text-muted-foreground" />
+                            <span className="text-foreground">{owner.email}</span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Phone className="w-4 h-4 text-muted-foreground" />
+                            <span className="text-foreground">{owner.phone}</span>
+                          </div>
+                          <p className="text-muted-foreground">{owner.address}</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+          </div>
 
           {/* Summary */}
           {filteredOwners && filteredOwners.length > 0 && (

@@ -766,103 +766,197 @@ export default function Users() {
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Email</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Access</TableHead>
-                <TableHead>Owner</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoadingUsers ? (
-                Array.from({ length: 4 }).map((_, index) => (
-                  <TableRow key={index}>
-                    {Array.from({ length: 7 }).map((__, cellIndex) => (
-                      <TableCell key={cellIndex}>
-                        <Skeleton className="h-4 w-full" />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : sortedUsers.length === 0 ? (
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
-                    No users found. Create your first account to get started.
-                  </TableCell>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Access</TableHead>
+                  <TableHead>Owner</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
-              ) : (
-                sortedUsers.map((user) => (
-                  <TableRow key={user.id} data-testid={`user-row-${user.id}`}>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <Mail className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium text-foreground">{user.email}</span>
-                      </div>
+              </TableHeader>
+              <TableBody>
+                {isLoadingUsers ? (
+                  Array.from({ length: 4 }).map((_, index) => (
+                    <TableRow key={index}>
+                      {Array.from({ length: 7 }).map((__, cellIndex) => (
+                        <TableCell key={cellIndex}>
+                          <Skeleton className="h-4 w-full" />
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : sortedUsers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                      No users found. Create your first account to get started.
                     </TableCell>
-                    <TableCell className="capitalize">{user.role}</TableCell>
-                    <TableCell>{renderEmployeeAccess(user)}</TableCell>
-                    <TableCell>
-                      {user.owner ? (
-                        <div>
-                          <p className="font-medium text-foreground">{user.owner.name}</p>
-                          <p className="text-xs text-muted-foreground">{user.owner.email}</p>
+                  </TableRow>
+                ) : (
+                  sortedUsers.map((user) => (
+                    <TableRow key={user.id} data-testid={`user-row-${user.id}`}>
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          <Mail className="h-4 w-4 text-muted-foreground" />
+                          <span className="font-medium text-foreground">{user.email}</span>
                         </div>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>{renderStatusBadge(user)}</TableCell>
-                    <TableCell>
-                      {new Date(user.createdAt).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {user.role !== "admin" ? (
-                        <div className="flex items-center justify-end space-x-2">
-                          {user.role === "employee" && (
+                      </TableCell>
+                      <TableCell className="capitalize">{user.role}</TableCell>
+                      <TableCell>{renderEmployeeAccess(user)}</TableCell>
+                      <TableCell>
+                        {user.owner ? (
+                          <div>
+                            <p className="font-medium text-foreground">{user.owner.name}</p>
+                            <p className="text-xs text-muted-foreground">{user.owner.email}</p>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>{renderStatusBadge(user)}</TableCell>
+                      <TableCell>
+                        {new Date(user.createdAt).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {user.role !== "admin" ? (
+                          <div className="flex items-center justify-end space-x-2">
+                            {user.role === "employee" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                type="button"
+                                onClick={() => openAccessDialog(user)}
+                                disabled={updateEmployeeAccessMutation.isPending}
+                                data-testid={`access-${user.id}`}
+                              >
+                                <Settings2 className="mr-1 h-3 w-3" /> Access
+                              </Button>
+                            )}
                             <Button
                               variant="outline"
                               size="sm"
                               type="button"
-                              onClick={() => openAccessDialog(user)}
-                              disabled={updateEmployeeAccessMutation.isPending}
-                              data-testid={`access-${user.id}`}
+                              onClick={() => openResetDialog(user)}
+                              disabled={resetUserPasswordMutation.isPending}
+                              data-testid={`reset-password-${user.id}`}
                             >
-                              <Settings2 className="mr-1 h-3 w-3" /> Access
+                              <KeyRound className="mr-1 h-3 w-3" /> Reset
                             </Button>
-                          )}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            type="button"
-                            onClick={() => openResetDialog(user)}
-                            disabled={resetUserPasswordMutation.isPending}
-                            data-testid={`reset-password-${user.id}`}
-                          >
-                            <KeyRound className="mr-1 h-3 w-3" /> Reset
-                          </Button>
-                          <Switch
-                            checked={user.isActive}
-                            onCheckedChange={(checked) =>
-                              updateStatusMutation.mutate({ id: user.id, isActive: checked })
-                            }
-                            disabled={updateStatusMutation.isPending}
-                            data-testid={`user-status-${user.id}`}
-                          />
+                            <Switch
+                              checked={user.isActive}
+                              onCheckedChange={(checked) =>
+                                updateStatusMutation.mutate({ id: user.id, isActive: checked })
+                              }
+                              disabled={updateStatusMutation.isPending}
+                              data-testid={`user-status-${user.id}`}
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Cannot disable admins</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="space-y-3 md:hidden">
+            {isLoadingUsers
+              ? Array.from({ length: 3 }).map((_, index) => (
+                  <Card key={index}>
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <Skeleton className="h-9 w-9 rounded-full" />
+                          <div className="space-y-2">
+                            <Skeleton className="h-4 w-44" />
+                            <Skeleton className="h-3 w-28" />
+                          </div>
                         </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">Cannot disable admins</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
+                        <Skeleton className="h-8 w-16" />
+                      </div>
+                      <Skeleton className="h-3 w-24" />
+                    </CardContent>
+                  </Card>
                 ))
-              )}
-            </TableBody>
-          </Table>
+              : sortedUsers.length === 0
+                ? (
+                    <Card>
+                      <CardContent className="p-6 text-center text-muted-foreground">
+                        No users found. Create your first account to get started.
+                      </CardContent>
+                    </Card>
+                  )
+                : sortedUsers.map((user) => (
+                    <Card key={user.id} data-testid={`user-card-${user.id}`}>
+                      <CardContent className="p-4 space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-1">
+                            <div className="flex items-center space-x-2">
+                              <Mail className="h-4 w-4 text-muted-foreground" />
+                              <span className="font-medium text-foreground">{user.email}</span>
+                            </div>
+                            <p className="text-xs capitalize text-muted-foreground">{user.role}</p>
+                            <div className="text-xs">{renderStatusBadge(user)}</div>
+                            <p className="text-xs text-muted-foreground">
+                              Created {new Date(user.createdAt).toLocaleDateString()}
+                            </p>
+                            <div className="text-sm text-foreground">{renderEmployeeAccess(user)}</div>
+                            {user.owner ? (
+                              <div className="text-xs text-muted-foreground">
+                                Owner: {user.owner.name}
+                              </div>
+                            ) : null}
+                          </div>
+                          <div className="flex flex-col items-end space-y-2">
+                            {user.role !== "admin" ? (
+                              <>
+                                {user.role === "employee" && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    type="button"
+                                    onClick={() => openAccessDialog(user)}
+                                    disabled={updateEmployeeAccessMutation.isPending}
+                                    data-testid={`access-${user.id}`}
+                                  >
+                                    <Settings2 className="mr-1 h-3 w-3" /> Access
+                                  </Button>
+                                )}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  type="button"
+                                  onClick={() => openResetDialog(user)}
+                                  disabled={resetUserPasswordMutation.isPending}
+                                  data-testid={`reset-password-${user.id}`}
+                                >
+                                  <KeyRound className="mr-1 h-3 w-3" /> Reset
+                                </Button>
+                                <Switch
+                                  checked={user.isActive}
+                                  onCheckedChange={(checked) =>
+                                    updateStatusMutation.mutate({ id: user.id, isActive: checked })
+                                  }
+                                  disabled={updateStatusMutation.isPending}
+                                  data-testid={`user-status-${user.id}`}
+                                />
+                              </>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Cannot disable admins</span>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+          </div>
         </CardContent>
       </Card>
 
