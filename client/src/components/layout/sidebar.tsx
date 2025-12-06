@@ -44,6 +44,12 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const [location] = useLocation();
   const { user } = useAuth();
 
+  const handleNavClick = () => {
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      onToggle();
+    }
+  };
+
   const items = navigationItems.filter((item) => {
     if (!item.roles) {
       return true;
@@ -116,6 +122,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
                       : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
                   )}
                   data-testid={`nav-${item.label.toLowerCase()}`}
+                  onClick={handleNavClick}
                 >
                   <Icon className="h-5 w-5 flex-shrink-0" />
                   {isOpen && <span className="truncate">{item.label}</span>}
