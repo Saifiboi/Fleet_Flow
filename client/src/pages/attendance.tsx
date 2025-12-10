@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { useAssignments, useVehicleAttendance, useVehicleAttendanceSummary } from "@/lib/api";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import {
+  useAssignments,
+  useProjects,
+  useVehicleAttendance,
+  useVehicleAttendanceSummary,
+} from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -53,14 +58,21 @@ const UNASSIGNED_SUMMARY_KEY = "unassigned";
 
 export default function Attendance() {
   const { data: assignments = [] } = useAssignments();
+  const { data: projects = [] } = useProjects();
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<Date>(startOfMonth(new Date()));
+  const [projectMonth, setProjectMonth] = useState<Date>(startOfMonth(new Date()));
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>("attendance");
   const days = useMemo(() => getDaysForMonth(selectedMonth), [selectedMonth]);
+  const projectDays = useMemo(() => getDaysForMonth(projectMonth), [projectMonth]);
   const [selectedDays, setSelectedDays] = useState<Record<string, DaySelectionState>>({});
   const [bulkStatus, setBulkStatus] = useState<string>("present");
   const [rangeStart, setRangeStart] = useState<string | undefined>(undefined);
   const [rangeEnd, setRangeEnd] = useState<string | undefined>(undefined);
+  const [projectOverrides, setProjectOverrides] = useState<Record<string, Record<string, boolean>>>(
+    {}
+  );
   const [summaryProjectFilter, setSummaryProjectFilter] = useState<string>("all");
   const [summaryStartDate, setSummaryStartDate] = useState<string>("");
   const [summaryEndDate, setSummaryEndDate] = useState<string>("");
@@ -71,6 +83,13 @@ export default function Attendance() {
     (user?.role === "employee" && user.employeeManageAccess?.includes("attendance"));
   const today = useMemo(() => startOfToday(), []);
   const maxMonth = useMemo(() => startOfMonth(today), [today]);
+  const projectMaxMonth = maxMonth;
+
+  useEffect(() => {
+    if (!selectedProjectId && assignments.length > 0) {
+      setSelectedProjectId(assignments[0].project.id);
+    }
+  }, [assignments, selectedProjectId]);
 
   const selectedAssignment = useMemo(
     () => assignments.find((a: AssignmentWithDetails) => a.id === selectedAssignmentId) || null,
@@ -83,7 +102,21 @@ export default function Attendance() {
     vehicleId: selectedVehicleId ?? undefined,
   });
 
-  const projectAttendanceRecords = useMemo(() => {
+  const {
+    data: projectAttendanceRecords = [],
+    isLoading: projectAttendanceLoading,
+    refetch: refetchProjectAttendance,
+  } = useQuery<VehicleAttendanceWithVehicle[]>({
+    queryKey: ["/api/vehicle-attendance", "project", selectedProjectId ?? "none"],
+    enabled: !!selectedProjectId,
+    queryFn: async () => {
+      if (!selectedProjectId) return [] as VehicleAttendanceWithVehicle[];
+      const res = await apiRequest("GET", `/api/vehicle-attendance?projectId=${selectedProjectId}`);
+      return (await res.json()) as VehicleAttendanceWithVehicle[];
+    },
+  });
+
+  const selectedAssignmentAttendance = useMemo(() => {
     if (!selectedAssignment?.projectId) {
       return attendanceRecords.filter((record) => !record.projectId);
     }
@@ -107,14 +140,25 @@ export default function Attendance() {
 
   const attendanceByDate = useMemo(() => {
     const map: Record<string, VehicleAttendanceWithVehicle> = {};
-    projectAttendanceRecords.forEach((record) => {
+    selectedAssignmentAttendance.forEach((record) => {
       const recordDate = parseISO(record.attendanceDate);
       if (isSameMonth(recordDate, selectedMonth)) {
         map[record.attendanceDate] = record;
       }
     });
     return map;
-  }, [projectAttendanceRecords, selectedMonth]);
+  }, [selectedAssignmentAttendance, selectedMonth]);
+
+  const projectAttendanceByVehicleDate = useMemo(() => {
+    const map: Record<string, Record<string, VehicleAttendanceWithVehicle>> = {};
+    projectAttendanceRecords.forEach((record) => {
+      const recordDate = parseISO(record.attendanceDate);
+      if (!isSameMonth(recordDate, projectMonth)) return;
+      map[record.vehicleId] = map[record.vehicleId] || {};
+      map[record.vehicleId][record.attendanceDate] = record;
+    });
+    return map;
+  }, [projectAttendanceRecords, projectMonth]);
 
   const summaryProjectOptions = useMemo(() => {
     if (!selectedVehicleId) {
@@ -142,6 +186,19 @@ export default function Attendance() {
       return nameA.localeCompare(nameB);
     });
   }, [assignments, attendanceRecords, selectedVehicleId]);
+
+  const projectAssignments = useMemo(() => {
+    if (!selectedProjectId) return [] as AssignmentWithDetails[];
+    return assignments.filter((assignment) => assignment.project.id === selectedProjectId);
+  }, [assignments, selectedProjectId]);
+
+  const projectVehicles = useMemo(() => {
+    const map = new Map<string, AssignmentWithDetails>();
+    projectAssignments.forEach((assignment) => {
+      map.set(assignment.vehicle.id, assignment);
+    });
+    return Array.from(map.values());
+  }, [projectAssignments]);
 
   const summaryRangeError = useMemo(() => {
     if (summaryStartDate && summaryEndDate && summaryStartDate > summaryEndDate) {
@@ -291,6 +348,10 @@ export default function Attendance() {
   }, [days, defaultDayStates, selectedDays]);
 
   const nonFutureDays = useMemo(() => days.filter((d) => !isAfter(d, today)), [days, today]);
+  const projectNonFutureDays = useMemo(
+    () => projectDays.filter((d) => !isAfter(d, today)),
+    [projectDays, today]
+  );
 
   const { selectableCount, selectedCount } = useMemo(() => {
     let selectable = 0;
@@ -329,6 +390,10 @@ export default function Attendance() {
     // reset selected days when month or assignment changes
     setSelectedDays({});
   }, [selectedMonth, selectedAssignmentId]);
+
+  useEffect(() => {
+    setProjectOverrides({});
+  }, [selectedProjectId, projectMonth, projectAttendanceRecords]);
 
   useEffect(() => {
     setSummaryProjectFilter("all");
@@ -428,6 +493,46 @@ export default function Attendance() {
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message || "Failed to delete attendance", variant: "destructive" });
+    },
+  });
+
+  const projectAttendanceSaveMutation = useMutation({
+    mutationFn: async (payload: {
+      create: Array<{ vehicleId: string; projectId: string; attendanceDate: string; status: string }>;
+      remove: Array<{ vehicleId: string; projectId: string; attendanceDate: string }>;
+    }) => {
+      const result = { created: 0, deleted: 0 };
+
+      if (payload.create.length > 0) {
+        const res = await apiRequest("POST", "/api/vehicle-attendance/batch", payload.create);
+        const created = await parseJsonResponse<any[]>(res, "Server returned non-JSON response", []);
+        result.created = Array.isArray(created) ? created.length : 0;
+      }
+
+      if (payload.remove.length > 0) {
+        const res = await apiRequest("POST", "/api/vehicle-attendance/delete", payload.remove);
+        const deleted = await parseJsonResponse<any[]>(res, "Server returned non-JSON response", []);
+        result.deleted = Array.isArray(deleted) ? deleted.length : 0;
+      }
+
+      return result;
+    },
+    onSuccess: ({ created, deleted }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicle-attendance"] });
+      refetchProjectAttendance();
+      setProjectOverrides({});
+      const parts = [created > 0 ? `${created} marked present` : null, deleted > 0 ? `${deleted} removed` : null].filter(Boolean);
+      toast({
+        title: "Project attendance updated",
+        description: parts.length > 0 ? parts.join(", ") : "No changes applied.",
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Error",
+        description: err?.message || "Failed to save project attendance",
+        variant: "destructive",
+      });
     },
   });
 
@@ -706,6 +811,81 @@ export default function Attendance() {
     deleteMutation.mutate(payloads);
   };
 
+  const handleProjectCheckboxChange = (vehicleId: string, dateStr: string, checked: boolean) => {
+    if (!canManageAttendance) return;
+    setProjectOverrides((prev) => ({
+      ...prev,
+      [vehicleId]: {
+        ...(prev[vehicleId] ?? {}),
+        [dateStr]: checked,
+      },
+    }));
+  };
+
+  const handleSaveProjectAttendance = () => {
+    if (!selectedProjectId) {
+      return toast({
+        title: "Select a project",
+        description: "Choose a project to manage attendance.",
+        variant: "destructive",
+      });
+    }
+
+    const createPayloads: Array<{ vehicleId: string; projectId: string; attendanceDate: string; status: string }> = [];
+    const deletePayloads: Array<{ vehicleId: string; projectId: string; attendanceDate: string }> = [];
+
+    projectVehicles.forEach((assignment) => {
+      const vehicleId = assignment.vehicle.id;
+      projectNonFutureDays.forEach((d) => {
+        const dateStr = format(d, "yyyy-MM-dd");
+        const existing = projectAttendanceByVehicleDate[vehicleId]?.[dateStr];
+        const baseChecked = existing?.status === "present";
+        const overrideChecked = projectOverrides[vehicleId]?.[dateStr];
+        const finalChecked = overrideChecked ?? baseChecked;
+
+        if (existing?.isPaid) {
+          return;
+        }
+
+        if (finalChecked === baseChecked) {
+          return;
+        }
+
+        if (finalChecked) {
+          createPayloads.push({
+            vehicleId,
+            projectId: selectedProjectId,
+            attendanceDate: dateStr,
+            status: "present",
+          });
+        } else if (existing) {
+          deletePayloads.push({ vehicleId, projectId: selectedProjectId, attendanceDate: dateStr });
+        }
+      });
+    });
+
+    if (createPayloads.length === 0 && deletePayloads.length === 0) {
+      return toast({
+        title: "No changes to save",
+        description: "Update attendance checkboxes before saving.",
+      });
+    }
+
+    projectAttendanceSaveMutation.mutate({ create: createPayloads, remove: deletePayloads });
+  };
+
+  const handleProjectPrevMonth = () => {
+    setProjectMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1));
+  };
+
+  const handleProjectNextMonth = () => {
+    setProjectMonth((current) => {
+      const next = new Date(current.getFullYear(), current.getMonth() + 1, 1);
+      if (isAfter(next, projectMaxMonth)) return current;
+      return next;
+    });
+  };
+
   return (
     <div className="space-y-6">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
@@ -714,6 +894,149 @@ export default function Attendance() {
           <TabsTrigger value="summary">Summary</TabsTrigger>
         </TabsList>
         <TabsContent value="attendance" className="space-y-6">
+          {canManageAttendance ? (
+            <Card>
+              <CardHeader className="space-y-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <CardTitle>Project Attendance</CardTitle>
+                    <p className="text-sm text-muted-foreground">
+                      Select a project to mark presence across all assigned vehicles for the month.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={handleProjectPrevMonth}>
+                      Prev
+                    </Button>
+                    <div className="px-3 py-2 text-sm font-medium">{format(projectMonth, "MMMM yyyy")}</div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleProjectNextMonth}
+                      disabled={!isBefore(projectMonth, projectMaxMonth)}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="w-full sm:w-80">
+                    <Select
+                      value={selectedProjectId ?? "none"}
+                      onValueChange={(v) => setSelectedProjectId(v === "none" ? null : v)}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select project" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        {projects.map((project) => (
+                          <SelectItem key={project.id} value={project.id}>
+                            {project.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    className="w-full sm:w-auto"
+                    onClick={handleSaveProjectAttendance}
+                    disabled={
+                      projectAttendanceSaveMutation.isPending ||
+                      !selectedProjectId ||
+                      projectVehicles.length === 0
+                    }
+                  >
+                    Save Project Attendance
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Check a box to mark a vehicle as present for that date. Paid attendance and future dates cannot be changed.
+                </p>
+                <div className="rounded-md border">
+                  <div className="overflow-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="min-w-[14rem]">Vehicle</TableHead>
+                          {projectDays.map((day) => (
+                            <TableHead key={day.toISOString()} className="min-w-[3.5rem] text-center">
+                              {format(day, "d")}
+                            </TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {!selectedProjectId ? (
+                          <TableRow>
+                            <TableCell colSpan={projectDays.length + 1} className="text-center text-sm text-muted-foreground">
+                              Select a project to view its assigned vehicles.
+                            </TableCell>
+                          </TableRow>
+                        ) : projectVehicles.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={projectDays.length + 1} className="text-center text-sm text-muted-foreground">
+                              No vehicles are assigned to this project.
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          projectVehicles.map((assignment) => (
+                            <TableRow key={assignment.vehicle.id}>
+                              <TableCell className="whitespace-nowrap font-medium">
+                                <div className="flex flex-col">
+                                  <span>
+                                    {assignment.vehicle.make} {assignment.vehicle.model}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">
+                                    Plate: {assignment.vehicle.licensePlate}
+                                  </span>
+                                </div>
+                              </TableCell>
+                              {projectDays.map((day) => {
+                                const dateStr = format(day, "yyyy-MM-dd");
+                                const existing = projectAttendanceByVehicleDate[assignment.vehicle.id]?.[dateStr];
+                                const baseChecked = existing?.status === "present";
+                                const overrideChecked = projectOverrides[assignment.vehicle.id]?.[dateStr];
+                                const checked = overrideChecked ?? baseChecked;
+                                const isFuture = isAfter(day, today);
+                                const disabled = isFuture || existing?.isPaid || projectAttendanceSaveMutation.isPending;
+                                const hasStatus = existing && existing.status !== "present";
+
+                                return (
+                                  <TableCell key={dateStr} className="text-center align-middle">
+                                    <div className="flex flex-col items-center gap-1">
+                                      <Checkbox
+                                        checked={checked}
+                                        onCheckedChange={(value) => handleProjectCheckboxChange(assignment.vehicle.id, dateStr, value === true)}
+                                        disabled={disabled}
+                                        aria-label={`Mark ${assignment.vehicle.licensePlate} present on ${format(day, "MMM dd")}`}
+                                      />
+                                      {existing?.isPaid ? (
+                                        <span className="text-[10px] text-muted-foreground">Paid</span>
+                                      ) : hasStatus ? (
+                                        <span className="text-[10px] text-muted-foreground">
+                                          {existing?.status ? existing.status.charAt(0).toUpperCase() + existing.status.slice(1) : ""}
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  </TableCell>
+                                );
+                              })}
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  {projectAttendanceLoading && (
+                    <div className="border-t p-3 text-sm text-muted-foreground">Loading attendance...</div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
           <Card>
         <CardHeader>
           <div className="flex flex-col gap-4">
