@@ -257,6 +257,7 @@ export const employeeAccessAreas = [
   "projects",
   "assignments",
   "attendance",
+  "projectAttendance",
   "maintenance",
   "payments",
 ] as const;

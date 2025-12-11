@@ -104,6 +104,11 @@ const employeeAccessOptions: { value: EmployeeAccessArea; label: string; descrip
     description: "Track vehicle attendance and status logs.",
   },
   {
+    value: "projectAttendance",
+    label: "Project Attendance",
+    description: "Bulk mark attendance across projects and assigned vehicles.",
+  },
+  {
     value: "maintenance",
     label: "Maintenance",
     description: "Record and edit maintenance activities.",
