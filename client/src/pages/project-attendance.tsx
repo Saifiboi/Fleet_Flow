@@ -42,10 +42,25 @@ export default function ProjectAttendance() {
   const { user } = useAuth();
   const today = useMemo(() => startOfToday(), []);
   const projectDays = useMemo(() => getDaysForMonth(projectMonth), [projectMonth]);
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.id === selectedProjectId) ?? null,
+    [projects, selectedProjectId],
+  );
+  const projectStartDate = useMemo(
+    () => (selectedProject?.startDate ? parseISO(selectedProject.startDate) : null),
+    [selectedProject?.startDate],
+  );
   const projectMaxMonth = useMemo(() => startOfMonth(today), [today]);
+  const projectMinMonth = useMemo(
+    () => (projectStartDate ? startOfMonth(projectStartDate) : null),
+    [projectStartDate],
+  );
   const projectNonFutureDays = useMemo(
-    () => projectDays.filter((d) => !isAfter(d, today)),
-    [projectDays, today],
+    () =>
+      projectDays.filter(
+        (d) => !isAfter(d, today) && (!projectStartDate || !isBefore(d, projectStartDate)),
+      ),
+    [projectDays, projectStartDate, today],
   );
 
   const canManageProjectAttendance =
@@ -105,6 +120,15 @@ export default function ProjectAttendance() {
     setMarkUncheckedAsOff(false);
   }, [selectedProjectId, projectMonth]);
 
+  useEffect(() => {
+    if (!projectMinMonth) return;
+
+    setProjectMonth((current) => {
+      if (isBefore(current, projectMinMonth)) return projectMinMonth;
+      return current;
+    });
+  }, [projectMinMonth]);
+
   const projectAttendanceSaveMutation = useMutation({
     mutationFn: async (payload: {
       create: Array<{ vehicleId: string; projectId: string; attendanceDate: string; status: string }>;
@@ -162,7 +186,9 @@ export default function ProjectAttendance() {
 
     projectVehicles.forEach((assignment) => {
       const vehicleId = assignment.vehicle.id;
+      const assignmentStartDate = parseISO(assignment.startDate);
       projectNonFutureDays.forEach((d) => {
+        if (isBefore(d, assignmentStartDate)) return;
         const dateStr = format(d, "yyyy-MM-dd");
         const existing = projectAttendanceByVehicleDate[vehicleId]?.[dateStr];
         const baseChecked = existing?.status === "present";
@@ -214,7 +240,13 @@ export default function ProjectAttendance() {
   }
 
   const handleProjectPrevMonth = () => {
-    setProjectMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1));
+    setProjectMonth((current) => {
+      const prev = new Date(current.getFullYear(), current.getMonth() - 1, 1);
+      if (projectMinMonth && (isBefore(prev, projectMinMonth) || prev.getTime() === projectMinMonth.getTime())) {
+        return projectMinMonth;
+      }
+      return prev;
+    });
   };
 
   const handleProjectNextMonth = () => {
@@ -237,7 +269,12 @@ export default function ProjectAttendance() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2 md:justify-end">
-              <Button size="sm" variant="outline" onClick={handleProjectPrevMonth}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleProjectPrevMonth}
+                disabled={!selectedProjectId || (projectMinMonth ? !isAfter(projectMonth, projectMinMonth) : false)}
+              >
                 Prev
               </Button>
               <div className="px-3 py-2 text-sm font-medium text-center min-w-[140px]">
@@ -342,14 +379,27 @@ export default function ProjectAttendance() {
                         </TableCell>
                         {projectDays.map((day) => {
                           const dateStr = format(day, "yyyy-MM-dd");
+                          const isBeforeProjectStart = projectStartDate && isBefore(day, projectStartDate);
+                          const isBeforeAssignmentStart = isBefore(day, parseISO(assignment.startDate));
                           const existing = projectAttendanceByVehicleDate[assignment.vehicle.id]?.[dateStr];
                           const baseChecked = existing?.status === "present";
                           const overrideChecked = projectOverrides[assignment.vehicle.id]?.[dateStr];
                           const checked = overrideChecked ?? baseChecked;
                           const isFuture = isAfter(day, today);
                           const disabled =
-                            isFuture || existing?.isPaid || projectAttendanceSaveMutation.isPending || !canManageProjectAttendance;
-                          const plannedOff = markUncheckedAsOff && !checked && !existing?.isPaid && !isFuture;
+                            isFuture ||
+                            existing?.isPaid ||
+                            projectAttendanceSaveMutation.isPending ||
+                            !canManageProjectAttendance ||
+                            isBeforeProjectStart ||
+                            isBeforeAssignmentStart;
+                          const plannedOff =
+                            markUncheckedAsOff &&
+                            !checked &&
+                            !existing?.isPaid &&
+                            !isFuture &&
+                            !isBeforeProjectStart &&
+                            !isBeforeAssignmentStart;
                           const statusLabel = existing?.isPaid
                             ? "Paid"
                             : checked
@@ -364,7 +414,12 @@ export default function ProjectAttendance() {
                             statusLabel?.toLowerCase() === "off" ? "text-destructive" : null,
                             statusLabel === "Paid" ? "text-emerald-600" : null,
                           );
-                          const showAbsentMarker = !checked && !isFuture && !existing?.isPaid;
+                          const showAbsentMarker =
+                            !checked &&
+                            !isFuture &&
+                            !existing?.isPaid &&
+                            !isBeforeProjectStart &&
+                            !isBeforeAssignmentStart;
 
                           return (
                             <TableCell key={dateStr} className="text-center align-middle">

@@ -1374,6 +1374,11 @@ export async function registerRoutes(app: Application): Promise<void> {
 
     try {
       const validated = insertVehicleAttendanceSchema.parse(req.body);
+      const attendanceDate = new Date(validated.attendanceDate);
+
+      if (Number.isNaN(attendanceDate.getTime())) {
+        return res.status(400).json({ message: "attendanceDate must be a valid date" });
+      }
 
       if (isEmployee(req)) {
         if (!validated.projectId) {
@@ -1392,6 +1397,34 @@ export async function registerRoutes(app: Application): Promise<void> {
           return res
             .status(403)
             .json({ message: "Vehicle is not assigned to one of your projects" });
+        }
+      }
+
+      if (validated.projectId) {
+        const project = await storage.getProject(validated.projectId);
+        if (!project) {
+          return res.status(400).json({ message: "Project not found" });
+        }
+
+        if (attendanceDate < new Date(project.startDate)) {
+          return res
+            .status(400)
+            .json({ message: "Attendance date cannot be before the project's start date" });
+        }
+
+        const vehicleAssignments = await storage.getAssignmentsByVehicle(validated.vehicleId);
+        const assignmentForProject = vehicleAssignments.find(
+          (assignment) => assignment.project.id === validated.projectId,
+        );
+
+        if (!assignmentForProject) {
+          return res.status(400).json({ message: "Vehicle is not assigned to this project" });
+        }
+
+        if (attendanceDate < new Date(assignmentForProject.startDate)) {
+          return res
+            .status(400)
+            .json({ message: "Attendance date cannot be before the vehicle's assignment start date" });
         }
       }
 
@@ -1416,10 +1449,14 @@ export async function registerRoutes(app: Application): Promise<void> {
 
       console.log('[vehicle-attendance/batch] received', { count: body.length });
       const validatedRecords = body.map((b) => insertVehicleAttendanceSchema.parse(b));
+      const projectCache = new Map<string, Awaited<ReturnType<typeof storage.getProject>>>();
+      const assignmentCache = new Map<
+        string,
+        Awaited<ReturnType<typeof storage.getAssignmentsByVehicle>>
+      >();
 
       if (isEmployee(req)) {
         const allowedProjects = new Set(employeeProjectIds(req));
-        const assignmentCache = new Map<string, Awaited<ReturnType<typeof storage.getAssignmentsByVehicle>>>();
 
         for (const record of validatedRecords) {
           if (!record.projectId) {
@@ -1443,6 +1480,50 @@ export async function registerRoutes(app: Application): Promise<void> {
               .status(403)
               .json({ message: "Vehicle is not assigned to one of your projects" });
           }
+        }
+      }
+
+      for (const record of validatedRecords) {
+        if (!record.projectId) continue;
+
+        const attendanceDate = new Date(record.attendanceDate);
+        if (Number.isNaN(attendanceDate.getTime())) {
+          return res.status(400).json({ message: "attendanceDate must be a valid date" });
+        }
+
+        if (!projectCache.has(record.projectId)) {
+          projectCache.set(record.projectId, await storage.getProject(record.projectId));
+        }
+
+        const project = projectCache.get(record.projectId);
+        if (!project) {
+          return res.status(400).json({ message: "Project not found" });
+        }
+
+        if (attendanceDate < new Date(project.startDate)) {
+          return res
+            .status(400)
+            .json({ message: "Attendance date cannot be before the project's start date" });
+        }
+
+        if (!assignmentCache.has(record.vehicleId)) {
+          assignmentCache.set(
+            record.vehicleId,
+            await storage.getAssignmentsByVehicle(record.vehicleId),
+          );
+        }
+
+        const assignments = assignmentCache.get(record.vehicleId)!;
+        const assignmentForProject = assignments.find(
+          (assignment) => assignment.project.id === record.projectId,
+        );
+
+        if (!assignmentForProject) {
+          return res.status(400).json({ message: "Vehicle is not assigned to this project" });
+        }
+
+        if (attendanceDate < new Date(assignmentForProject.startDate)) {
+          return res.status(400).json({ message: "Attendance date cannot be before the vehicle's assignment start date" });
         }
       }
 
