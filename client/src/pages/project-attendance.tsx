@@ -313,7 +313,14 @@ export default function ProjectAttendance() {
                           const isFuture = isAfter(day, today);
                           const disabled =
                             isFuture || existing?.isPaid || projectAttendanceSaveMutation.isPending || !canManageProjectAttendance;
-                          const hasStatus = existing && existing.status !== "present";
+
+                          const statusLabel = existing?.isPaid
+                            ? "Paid"
+                            : checked
+                              ? "Present"
+                              : existing?.status
+                                ? existing.status.charAt(0).toUpperCase() + existing.status.slice(1)
+                                : null;
 
                           return (
                             <TableCell key={dateStr} className="text-center align-middle">
@@ -326,12 +333,8 @@ export default function ProjectAttendance() {
                                   disabled={disabled}
                                   aria-label={`Mark ${assignment.vehicle.licensePlate} present on ${format(day, "MMM dd")}`}
                                 />
-                                {existing?.isPaid ? (
-                                  <span className="text-[10px] text-muted-foreground">Paid</span>
-                                ) : hasStatus ? (
-                                  <span className="text-[10px] text-muted-foreground">
-                                    {existing?.status ? existing.status.charAt(0).toUpperCase() + existing.status.slice(1) : ""}
-                                  </span>
+                                {statusLabel ? (
+                                  <span className="text-[10px] text-muted-foreground">{statusLabel}</span>
                                 ) : null}
                               </div>
                             </TableCell>
