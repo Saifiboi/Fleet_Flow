@@ -409,6 +409,8 @@ export default function ProjectAttendance() {
                                 : plannedOff
                                   ? "Off"
                                   : null;
+                          const recordedNonPresent =
+                            !!existing && !!existing.status && existing.status !== "present" && !checked;
                           const statusClass = cn(
                             "text-[10px] text-muted-foreground",
                             statusLabel?.toLowerCase() === "off" ? "text-destructive" : null,
@@ -425,6 +427,8 @@ export default function ProjectAttendance() {
                           const absentMarkerClass = "text-destructive";
                           const absentCheckboxClass =
                             "border-destructive data-[state=unchecked]:bg-destructive/10";
+                          const recordedAbsentCheckboxClass =
+                            "border-destructive data-[state=checked]:border-destructive data-[state=checked]:bg-destructive/10";
 
                           return (
                             <TableCell key={dateStr} className="text-center align-middle">
@@ -439,6 +443,7 @@ export default function ProjectAttendance() {
                                     aria-label={`Mark ${assignment.vehicle.licensePlate} present on ${format(day, "MMM dd")}`}
                                     className={cn(
                                       showAbsentMarker ? absentCheckboxClass : null,
+                                      recordedNonPresent ? recordedAbsentCheckboxClass : null,
                                     )}
                                   />
                                   {showAbsentMarker ? (
