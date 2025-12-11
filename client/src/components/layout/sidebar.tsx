@@ -35,6 +35,13 @@ const navigationItems: NavigationItem[] = [
   { path: "/vehicles", label: "Vehicles", icon: Car, roles: ["admin", "owner", "employee"], employeeAccess: "vehicles" },
   { path: "/projects", label: "Projects", icon: FolderKanban, roles: ["admin", "employee"], employeeAccess: "projects" },
   { path: "/assignments", label: "Assignments", icon: Calendar, roles: ["admin", "owner", "employee"], employeeAccess: "assignments" },
+  {
+    path: "/project-attendance",
+    label: "Project Attendance",
+    icon: Calendar,
+    roles: ["admin", "employee"],
+    employeeAccess: "projectAttendance",
+  },
   { path: "/attendance", label: "Attendance", icon: Calendar, roles: ["admin", "owner", "employee"], employeeAccess: "attendance" },
   { path: "/payments", label: "Payments", icon: CreditCard, roles: ["admin", "owner", "employee"], employeeAccess: "payments" },
   { path: "/maintenance", label: "Maintenance", icon: Wrench, roles: ["admin", "owner", "employee"], employeeAccess: "maintenance" },
