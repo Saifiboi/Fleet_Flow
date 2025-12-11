@@ -384,7 +384,10 @@ export default function ProjectAttendance() {
                           const existing = projectAttendanceByVehicleDate[assignment.vehicle.id]?.[dateStr];
                           const baseChecked = existing?.status === "present";
                           const overrideChecked = projectOverrides[assignment.vehicle.id]?.[dateStr];
-                          const checked = overrideChecked ?? baseChecked;
+                          const computedChecked = overrideChecked ?? baseChecked;
+                          const recordedNonPresent =
+                            !!existing && existing.status !== "present" && overrideChecked !== true;
+                          const checkboxChecked = recordedNonPresent ? true : computedChecked;
                           const isFuture = isAfter(day, today);
                           const disabled =
                             isFuture ||
@@ -395,22 +398,21 @@ export default function ProjectAttendance() {
                             isBeforeAssignmentStart;
                           const plannedOff =
                             markUncheckedAsOff &&
-                            !checked &&
+                            !computedChecked &&
+                            !recordedNonPresent &&
                             !existing?.isPaid &&
                             !isFuture &&
                             !isBeforeProjectStart &&
                             !isBeforeAssignmentStart;
                           const statusLabel = existing?.isPaid
                             ? "Paid"
-                            : checked
+                            : computedChecked
                               ? "Present"
                               : existing?.status
                                 ? existing.status.charAt(0).toUpperCase() + existing.status.slice(1)
                                 : plannedOff
                                   ? "Off"
                                   : null;
-                          const recordedNonPresent =
-                            !!existing && !!existing.status && existing.status !== "present" && !checked;
                           const statusClass = cn(
                             "text-[10px] text-muted-foreground",
                             statusLabel?.toLowerCase() === "off" ? "text-destructive" : null,
@@ -418,7 +420,8 @@ export default function ProjectAttendance() {
                           );
                           const showAbsentMarker =
                             markUncheckedAsOff &&
-                            !checked &&
+                            !computedChecked &&
+                            !recordedNonPresent &&
                             !isFuture &&
                             !existing?.isPaid &&
                             !isBeforeProjectStart &&
@@ -428,14 +431,14 @@ export default function ProjectAttendance() {
                           const absentCheckboxClass =
                             "border-destructive data-[state=unchecked]:bg-destructive/10";
                           const recordedAbsentCheckboxClass =
-                            "border-destructive data-[state=checked]:border-destructive data-[state=checked]:bg-destructive/10";
+                            "border-destructive text-destructive data-[state=checked]:border-destructive data-[state=checked]:bg-destructive/10 data-[state=checked]:text-destructive";
 
                           return (
                             <TableCell key={dateStr} className="text-center align-middle">
                               <div className="flex flex-col items-center gap-1">
                                 <div className="relative">
                                   <Checkbox
-                                    checked={checked}
+                                    checked={checkboxChecked}
                                     onCheckedChange={(value) =>
                                       handleProjectCheckboxChange(assignment.vehicle.id, dateStr, value === true)
                                     }
