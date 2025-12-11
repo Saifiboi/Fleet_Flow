@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { AssignmentWithDetails, VehicleAttendanceWithVehicle } from "@shared/schema";
+import { cn } from "@/lib/utils";
 import {
   eachDayOfInterval,
   endOfMonth,
@@ -36,6 +37,7 @@ export default function ProjectAttendance() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [projectMonth, setProjectMonth] = useState<Date>(startOfMonth(new Date()));
   const [projectOverrides, setProjectOverrides] = useState<Record<string, Record<string, boolean>>>({});
+  const [markUncheckedAsOff, setMarkUncheckedAsOff] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
   const today = useMemo(() => startOfToday(), []);
@@ -98,6 +100,10 @@ export default function ProjectAttendance() {
   useEffect(() => {
     setProjectOverrides({});
   }, [selectedProjectId, projectMonth, projectAttendanceRecords]);
+
+  useEffect(() => {
+    setMarkUncheckedAsOff(false);
+  }, [selectedProjectId, projectMonth]);
 
   const projectAttendanceSaveMutation = useMutation({
     mutationFn: async (payload: {
@@ -162,18 +168,36 @@ export default function ProjectAttendance() {
         const baseChecked = existing?.status === "present";
         const overrideChecked = projectOverrides[vehicleId]?.[dateStr];
         const finalChecked = overrideChecked ?? baseChecked;
+        const wantsOff = markUncheckedAsOff && !finalChecked;
 
         if (existing?.isPaid) return;
-        if (finalChecked === baseChecked) return;
+        if (finalChecked === baseChecked && !wantsOff) return;
 
         if (finalChecked) {
+          if (existing && existing.status !== "present") {
+            deletePayloads.push({ vehicleId, projectId: selectedProjectId, attendanceDate: dateStr });
+          }
+
           createPayloads.push({
             vehicleId,
             projectId: selectedProjectId,
             attendanceDate: dateStr,
             status: "present",
           });
-        } else if (existing) {
+        } else if (wantsOff) {
+          if (existing && existing.status !== "present" && existing.status !== "off") return;
+
+          if (existing?.status === "present") {
+            deletePayloads.push({ vehicleId, projectId: selectedProjectId, attendanceDate: dateStr });
+          }
+
+          createPayloads.push({
+            vehicleId,
+            projectId: selectedProjectId,
+            attendanceDate: dateStr,
+            status: "off",
+          });
+        } else if (existing?.status === "present") {
           deletePayloads.push({ vehicleId, projectId: selectedProjectId, attendanceDate: dateStr });
         }
       });
@@ -249,13 +273,24 @@ export default function ProjectAttendance() {
               </Select>
             </div>
             {canManageProjectAttendance ? (
-              <Button
-                className="w-full md:w-auto"
-                onClick={handleSaveProjectAttendance}
-                disabled={projectAttendanceSaveMutation.isPending || !selectedProjectId}
-              >
-                Save Attendance
-              </Button>
+              <div className="flex w-full flex-col gap-2 md:w-auto md:items-end">
+                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Checkbox
+                    id="mark-off"
+                    checked={markUncheckedAsOff}
+                    onCheckedChange={(v) => setMarkUncheckedAsOff(v === true)}
+                    disabled={projectAttendanceSaveMutation.isPending || !selectedProjectId}
+                  />
+                  <span className="leading-tight">Mark unchecked days as Off for all vehicles</span>
+                </label>
+                <Button
+                  className="w-full md:w-auto"
+                  onClick={handleSaveProjectAttendance}
+                  disabled={projectAttendanceSaveMutation.isPending || !selectedProjectId}
+                >
+                  Save Attendance
+                </Button>
+              </div>
             ) : (
               <p className="text-sm text-muted-foreground text-right w-full md:w-auto">
                 Attendance is read-only for your account.
@@ -266,6 +301,7 @@ export default function ProjectAttendance() {
         <CardContent className="space-y-4">
           <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground md:text-base">
             Check a box to mark a vehicle as present for that date. Paid attendance and future dates cannot be changed.
+            Use the toggle above to mark every unchecked day as Off across vehicles before saving.
           </div>
           <div className="overflow-x-auto rounded-md border">
             <div className="min-w-[760px]">
@@ -313,29 +349,45 @@ export default function ProjectAttendance() {
                           const isFuture = isAfter(day, today);
                           const disabled =
                             isFuture || existing?.isPaid || projectAttendanceSaveMutation.isPending || !canManageProjectAttendance;
-
+                          const plannedOff = markUncheckedAsOff && !checked && !existing?.isPaid && !isFuture;
                           const statusLabel = existing?.isPaid
                             ? "Paid"
                             : checked
                               ? "Present"
                               : existing?.status
                                 ? existing.status.charAt(0).toUpperCase() + existing.status.slice(1)
-                                : null;
+                                : plannedOff
+                                  ? "Off"
+                                  : null;
+                          const statusClass = cn(
+                            "text-[10px] text-muted-foreground",
+                            statusLabel?.toLowerCase() === "off" ? "text-destructive" : null,
+                            statusLabel === "Paid" ? "text-emerald-600" : null,
+                          );
+                          const showAbsentMarker = !checked && !isFuture && !existing?.isPaid;
 
                           return (
                             <TableCell key={dateStr} className="text-center align-middle">
                               <div className="flex flex-col items-center gap-1">
-                                <Checkbox
-                                  checked={checked}
-                                  onCheckedChange={(value) =>
-                                    handleProjectCheckboxChange(assignment.vehicle.id, dateStr, value === true)
-                                  }
-                                  disabled={disabled}
-                                  aria-label={`Mark ${assignment.vehicle.licensePlate} present on ${format(day, "MMM dd")}`}
-                                />
-                                {statusLabel ? (
-                                  <span className="text-[10px] text-muted-foreground">{statusLabel}</span>
-                                ) : null}
+                                <div className="relative">
+                                  <Checkbox
+                                    checked={checked}
+                                    onCheckedChange={(value) =>
+                                      handleProjectCheckboxChange(assignment.vehicle.id, dateStr, value === true)
+                                    }
+                                    disabled={disabled}
+                                    aria-label={`Mark ${assignment.vehicle.licensePlate} present on ${format(day, "MMM dd")}`}
+                                    className={cn(
+                                      showAbsentMarker ? "border-destructive data-[state=unchecked]:bg-destructive/10" : null,
+                                    )}
+                                  />
+                                  {showAbsentMarker ? (
+                                    <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-lg leading-none text-destructive">
+                                      ×
+                                    </span>
+                                  ) : null}
+                                </div>
+                                {statusLabel ? <span className={statusClass}>{statusLabel}</span> : null}
                               </div>
                             </TableCell>
                           );
