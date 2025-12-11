@@ -420,6 +420,13 @@ export default function ProjectAttendance() {
                             !existing?.isPaid &&
                             !isBeforeProjectStart &&
                             !isBeforeAssignmentStart;
+                          const absentMarkerSymbol = markUncheckedAsOff ? "×" : "?";
+                          const absentMarkerClass = markUncheckedAsOff
+                            ? "text-destructive"
+                            : "text-muted-foreground";
+                          const absentCheckboxClass = markUncheckedAsOff
+                            ? "border-destructive data-[state=unchecked]:bg-destructive/10"
+                            : "border-muted-foreground data-[state=unchecked]:bg-muted/30";
 
                           return (
                             <TableCell key={dateStr} className="text-center align-middle">
@@ -433,12 +440,17 @@ export default function ProjectAttendance() {
                                     disabled={disabled}
                                     aria-label={`Mark ${assignment.vehicle.licensePlate} present on ${format(day, "MMM dd")}`}
                                     className={cn(
-                                      showAbsentMarker ? "border-destructive data-[state=unchecked]:bg-destructive/10" : null,
+                                      showAbsentMarker ? absentCheckboxClass : null,
                                     )}
                                   />
                                   {showAbsentMarker ? (
-                                    <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-lg leading-none text-destructive">
-                                      ×
+                                    <span
+                                      className={cn(
+                                        "pointer-events-none absolute inset-0 flex items-center justify-center text-lg leading-none",
+                                        absentMarkerClass,
+                                      )}
+                                    >
+                                      {absentMarkerSymbol}
                                     </span>
                                   ) : null}
                                 </div>
