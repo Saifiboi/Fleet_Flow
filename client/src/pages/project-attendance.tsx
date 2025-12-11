@@ -415,18 +415,16 @@ export default function ProjectAttendance() {
                             statusLabel === "Paid" ? "text-emerald-600" : null,
                           );
                           const showAbsentMarker =
+                            markUncheckedAsOff &&
                             !checked &&
                             !isFuture &&
                             !existing?.isPaid &&
                             !isBeforeProjectStart &&
                             !isBeforeAssignmentStart;
-                          const absentMarkerSymbol = markUncheckedAsOff ? "×" : "?";
-                          const absentMarkerClass = markUncheckedAsOff
-                            ? "text-destructive"
-                            : "text-muted-foreground";
-                          const absentCheckboxClass = markUncheckedAsOff
-                            ? "border-destructive data-[state=unchecked]:bg-destructive/10"
-                            : "border-muted-foreground data-[state=unchecked]:bg-muted/30";
+                          const absentMarkerSymbol = "×";
+                          const absentMarkerClass = "text-destructive";
+                          const absentCheckboxClass =
+                            "border-destructive data-[state=unchecked]:bg-destructive/10";
 
                           return (
                             <TableCell key={dateStr} className="text-center align-middle">
