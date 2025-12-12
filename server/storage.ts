@@ -7,6 +7,8 @@ import {
   projectVehicleCustomerRates,
   payments,
   paymentTransactions,
+  customerInvoices,
+  customerInvoiceItems,
   maintenanceRecords,
   ownershipHistory,
   vehicleAttendance,
@@ -30,6 +32,12 @@ import {
   type ProjectVehicleCustomerRateWithVehicle,
   type Payment,
   type InsertPayment,
+  type CustomerInvoice,
+  type InsertCustomerInvoice,
+  type CustomerInvoiceItem,
+  type CustomerInvoiceItemWithVehicle,
+  type CreateCustomerInvoiceRequest,
+  type CustomerInvoiceWithItems,
   type PaymentTransaction,
   type InsertPaymentTransaction,
   type CreatePaymentTransaction,
@@ -167,6 +175,7 @@ export interface IStorage {
   createVehiclePaymentForPeriod(
     payload: CreateVehiclePaymentForPeriod
   ): Promise<VehiclePaymentForPeriodResult>;
+  createCustomerInvoice(payload: CreateCustomerInvoiceRequest): Promise<CustomerInvoiceWithItems>;
 
   // Maintenance Records
   getMaintenanceRecords(filter?: { ownerId?: string }): Promise<MaintenanceRecordWithVehicle[]>;
@@ -1397,6 +1406,210 @@ export class DatabaseStorage implements IStorage {
       assignment,
       calculation,
     };
+  }
+
+  async createCustomerInvoice(payload: CreateCustomerInvoiceRequest): Promise<CustomerInvoiceWithItems> {
+    const [project] = await db
+      .select({ project: projects })
+      .from(projects)
+      .where(and(eq(projects.id, payload.projectId), eq(projects.customerId, payload.customerId)))
+      .limit(1);
+
+    if (!project) {
+      const error: any = new Error("Project not found for the provided customer");
+      error.status = 404;
+      throw error;
+    }
+
+    const start = new Date(payload.startDate);
+    const end = new Date(payload.endDate);
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      const error: any = new Error("Invalid start or end date provided");
+      error.status = 400;
+      throw error;
+    }
+
+    if (end < start) {
+      const error: any = new Error("End date must be on or after the start date");
+      error.status = 400;
+      throw error;
+    }
+
+    const normalizeToUtcDate = (value: Date) =>
+      new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+
+    const parseDateOnly = (value: string | Date) => {
+      if (value instanceof Date) {
+        return normalizeToUtcDate(value);
+      }
+
+      const [datePart] = value.split("T");
+      const [year, month, day] = datePart.split("-").map(Number);
+
+      if ([year, month, day].some((component) => Number.isNaN(component))) {
+        throw new Error(`Invalid date value encountered: ${value}`);
+      }
+
+      return new Date(Date.UTC(year, month - 1, day));
+    };
+
+    const startDateUtc = normalizeToUtcDate(start);
+    const endDateUtc = normalizeToUtcDate(end);
+
+    const formatDate = (value: Date) => {
+      const year = value.getUTCFullYear();
+      const month = String(value.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(value.getUTCDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    };
+
+    const startDateString = formatDate(startDateUtc);
+    const endDateString = formatDate(endDateUtc);
+
+    const rateRows = await db
+      .select({
+        vehicleId: projectVehicleCustomerRates.vehicleId,
+        rate: projectVehicleCustomerRates.rate,
+        vehicle: vehicles,
+        owner: owners,
+      })
+      .from(projectVehicleCustomerRates)
+      .leftJoin(vehicles, eq(projectVehicleCustomerRates.vehicleId, vehicles.id))
+      .leftJoin(owners, eq(vehicles.ownerId, owners.id))
+      .where(eq(projectVehicleCustomerRates.projectId, payload.projectId));
+
+    const rateMap = new Map<string, number>();
+    const vehicleMap = new Map<string, VehicleWithOwner>();
+    for (const row of rateRows) {
+      const rateNumber = Number(row.rate ?? 0);
+      if (!Number.isNaN(rateNumber) && row.vehicle) {
+        rateMap.set(row.vehicleId, rateNumber);
+        vehicleMap.set(row.vehicleId, { ...row.vehicle, owner: row.owner! });
+      }
+    }
+
+    const attendance = await db
+      .select({
+        attendanceDate: vehicleAttendance.attendanceDate,
+        vehicleId: vehicleAttendance.vehicleId,
+      })
+      .from(vehicleAttendance)
+      .where(
+        and(
+          eq(vehicleAttendance.projectId, payload.projectId),
+          eq(vehicleAttendance.status, "present"),
+          gte(vehicleAttendance.attendanceDate, startDateString),
+          lte(vehicleAttendance.attendanceDate, endDateString)
+        )
+      );
+
+    if (attendance.length === 0) {
+      const error: any = new Error("No attendance records found for the requested period");
+      error.status = 400;
+      throw error;
+    }
+
+    type Bucket = {
+      presentDays: number;
+      month: number;
+      year: number;
+    };
+
+    const buckets = new Map<string, Map<string, Bucket>>();
+
+    attendance.forEach((record) => {
+      const date = parseDateOnly(record.attendanceDate);
+      const vehicleId = record.vehicleId;
+      const month = date.getUTCMonth() + 1;
+      const year = date.getUTCFullYear();
+      const key = `${year}-${month}`;
+
+      if (!rateMap.has(vehicleId)) {
+        throw new Error("Missing customer rate for one or more vehicles in this project");
+      }
+
+      if (!buckets.has(vehicleId)) {
+        buckets.set(vehicleId, new Map());
+      }
+
+      const vehicleBucket = buckets.get(vehicleId)!;
+      const current = vehicleBucket.get(key) ?? { presentDays: 0, month, year };
+      current.presentDays += 1;
+      vehicleBucket.set(key, current);
+    });
+
+    const monthFormatter = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" });
+    const items: Array<Omit<CustomerInvoiceItem, "id" | "createdAt">> = [];
+
+    for (const [vehicleId, monthMap] of buckets.entries()) {
+      const rateNumber = rateMap.get(vehicleId) ?? 0;
+
+      for (const [, bucket] of monthMap.entries()) {
+        const daysInMonth = new Date(Date.UTC(bucket.year, bucket.month, 0)).getUTCDate();
+        const dailyRate = rateNumber / daysInMonth;
+        const amount = dailyRate * bucket.presentDays;
+
+        const referenceDate = new Date(Date.UTC(bucket.year, bucket.month - 1, 1));
+        const monthLabel = monthFormatter.format(referenceDate);
+
+        items.push({
+          invoiceId: "", // placeholder, replaced after invoice creation
+          vehicleId,
+          month: bucket.month,
+          year: bucket.year,
+          monthLabel,
+          presentDays: bucket.presentDays,
+          dailyRate: Number(dailyRate.toFixed(2)),
+          amount: Number(amount.toFixed(2)),
+        });
+      }
+    }
+
+    const subtotal = items.reduce((sum, item) => sum + Number(item.amount), 0);
+    const adjustmentNumber = Number(payload.adjustment ?? 0);
+    const salesTaxRateNumber = Number(payload.salesTaxRate ?? 0);
+    const taxableBase = subtotal + adjustmentNumber;
+    const salesTaxAmount = taxableBase * (salesTaxRateNumber / 100);
+    const total = taxableBase + salesTaxAmount;
+
+    return await db.transaction(async (tx) => {
+      const invoiceValues: InsertCustomerInvoice = {
+        customerId: payload.customerId,
+        projectId: payload.projectId,
+        periodStart: startDateString,
+        periodEnd: endDateString,
+        dueDate: payload.dueDate,
+        subtotal: subtotal.toFixed(2),
+        adjustment: adjustmentNumber.toFixed(2),
+        salesTaxRate: salesTaxRateNumber.toFixed(2),
+        salesTaxAmount: salesTaxAmount.toFixed(2),
+        total: total.toFixed(2),
+        invoiceNumber: payload.invoiceNumber,
+        status: payload.status ?? "pending",
+      };
+
+      const [invoice] = await tx.insert(customerInvoices).values(invoiceValues).returning();
+
+      const invoiceItems = items.map((item) => ({
+        ...item,
+        invoiceId: invoice.id,
+        dailyRate: item.dailyRate.toFixed(2),
+        amount: item.amount.toFixed(2),
+      }));
+
+      const createdItems = await tx.insert(customerInvoiceItems).values(invoiceItems).returning();
+
+      const itemsWithVehicle: CustomerInvoiceItemWithVehicle[] = createdItems.map((item) => ({
+        ...item,
+        vehicle: vehicleMap.get(item.vehicleId)!,
+      }));
+
+      return {
+        ...invoice,
+        items: itemsWithVehicle,
+      };
+    });
   }
 
   async getMaintenanceRecords(filter?: { ownerId?: string }): Promise<MaintenanceRecordWithVehicle[]> {

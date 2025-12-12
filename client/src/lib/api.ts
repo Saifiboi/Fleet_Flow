@@ -17,6 +17,8 @@ import type {
   VehicleAttendanceSummary,
   CreateVehiclePaymentForPeriod,
   VehiclePaymentForPeriodResult,
+  CreateCustomerInvoiceRequest,
+  CustomerInvoiceWithItems,
   UserWithOwner,
   OwnershipHistoryWithOwner,
   ProjectVehicleCustomerRateWithVehicle,
@@ -164,4 +166,11 @@ export const createVehiclePaymentForPeriod = async (
 ): Promise<VehiclePaymentForPeriodResult> => {
   const res = await apiRequest("POST", "/api/payments/calculate", payload);
   return (await res.json()) as VehiclePaymentForPeriodResult;
+};
+
+export const createCustomerInvoice = async (
+  payload: CreateCustomerInvoiceRequest
+): Promise<CustomerInvoiceWithItems> => {
+  const res = await apiRequest("POST", "/api/customer-invoices", payload);
+  return (await res.json()) as CustomerInvoiceWithItems;
 };

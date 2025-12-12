@@ -13,6 +13,7 @@ import {
   createPaymentRequestSchema,
   createPaymentTransactionSchema,
   createVehiclePaymentForPeriodSchema,
+  createCustomerInvoiceSchema,
   insertMaintenanceRecordSchema,
   insertOwnershipHistorySchema,
   updateOwnerSchema,
@@ -1147,6 +1148,21 @@ export async function registerRoutes(app: Application): Promise<void> {
       const payload = createVehiclePaymentForPeriodSchema.parse(req.body);
       const result = await storage.createVehiclePaymentForPeriod(payload);
       res.status(200).json(result);
+    } catch (error: any) {
+      const status = error.status ?? 400;
+      res.status(status).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/customer-invoices", async (req, res) => {
+    if (!requireAdminOrEmployee(req, res, "payments", { manage: true })) {
+      return;
+    }
+
+    try {
+      const payload = createCustomerInvoiceSchema.parse(req.body);
+      const invoice = await storage.createCustomerInvoice(payload);
+      res.status(201).json(invoice);
     } catch (error: any) {
       const status = error.status ?? 400;
       res.status(status).json({ message: error.message });
