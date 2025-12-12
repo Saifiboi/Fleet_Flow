@@ -310,7 +310,8 @@ export default function ProjectAttendance() {
             status: "present",
           });
         } else if (wantsOff) {
-          if (existing && existing.status !== "present" && existing.status !== "off") return;
+          if (existing?.status === "off") return;
+          if (existing && existing.status !== "present") return;
 
           if (existing?.status === "present") {
             deletePayloads.push({ vehicleId, projectId: selectedProjectId, attendanceDate: dateStr });
