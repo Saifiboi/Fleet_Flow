@@ -172,5 +172,16 @@ export const createCustomerInvoice = async (
   payload: CreateCustomerInvoiceRequest
 ): Promise<CustomerInvoiceWithItems> => {
   const res = await apiRequest("POST", "/api/customer-invoices", payload);
-  return (await res.json()) as CustomerInvoiceWithItems;
+  const text = await res.text();
+
+  try {
+    return JSON.parse(text) as CustomerInvoiceWithItems;
+  } catch (error) {
+    throw new Error(
+      text ||
+        (error instanceof Error
+          ? error.message
+          : "Received an invalid response while creating the invoice"),
+    );
+  }
 };
