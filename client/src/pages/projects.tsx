@@ -180,7 +180,7 @@ export default function Projects() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredProjects?.map((project: Project) => (
+                    filteredProjects?.map((project: ProjectWithCustomer) => (
                       <TableRow key={project.id} data-testid={`project-row-${project.id}`}>
                         <TableCell>
                           <div className="flex items-center space-x-3">
@@ -306,7 +306,7 @@ export default function Projects() {
                       </CardContent>
                     </Card>
                   )
-                : filteredProjects?.map((project: Project) => (
+                : filteredProjects?.map((project: ProjectWithCustomer) => (
                     <Card key={project.id} data-testid={`project-card-${project.id}`}>
                       <CardContent className="p-4 space-y-3">
                         <div className="flex items-start justify-between gap-3">
