@@ -35,7 +35,7 @@ export default function Assignments() {
 
   const { data: projects = [] } = useProjects();
 
-  const columnCount = canManageAssignments ? 8 : 7;
+  const columnCount = canManageAssignments ? 7 : 6;
 
   const deleteAssignmentMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -177,7 +177,6 @@ export default function Assignments() {
                     <TableHead>Owner</TableHead>
                     <TableHead>Project</TableHead>
                     <TableHead>Monthly Rate (PKR)</TableHead>
-                    <TableHead>Customer Price (PKR)</TableHead>
                     <TableHead>Assignment Period</TableHead>
                     <TableHead>Status</TableHead>
                     {canManageAssignments && <TableHead>Actions</TableHead>}
@@ -245,12 +244,6 @@ export default function Assignments() {
                           <div className="flex items-center space-x-2">
                             <DollarSign className="w-3 h-3 text-muted-foreground" />
                             <p className="text-sm font-semibold text-foreground">{assignment.monthlyRate}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center space-x-2">
-                            <DollarSign className="w-3 h-3 text-muted-foreground" />
-                            <p className="text-sm font-semibold text-foreground">{assignment.customerRate}</p>
                           </div>
                         </TableCell>
                         <TableCell>
@@ -404,16 +397,9 @@ e again."
                             <MapPin className="w-3 h-3" />
                             <span>{assignment.project.name}</span>
                           </div>
-                          <div className="flex items-center space-x-2">
-                            <div className="flex items-center space-x-1">
-                              <DollarSign className="w-3 h-3" />
-                              <span>{assignment.monthlyRate}</span>
-                            </div>
-                            <span>•</span>
-                            <div className="flex items-center space-x-1">
-                              <DollarSign className="w-3 h-3" />
-                              <span>{assignment.customerRate}</span>
-                            </div>
+                          <div className="flex items-center space-x-1">
+                            <DollarSign className="w-3 h-3" />
+                            <span>{assignment.monthlyRate}</span>
                           </div>
                         </div>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">

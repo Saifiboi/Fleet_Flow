@@ -7,6 +7,7 @@ import {
   createVehicleSchema,
   updateVehicleSchema,
   insertProjectSchema,
+  insertProjectVehicleCustomerRateSchema,
   insertAssignmentSchema,
   insertPaymentSchema,
   createPaymentRequestSchema,
@@ -772,6 +773,37 @@ export async function registerRoutes(app: Application): Promise<void> {
       res.status(204).send();
     } catch (error: any) {
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Project customer rate routes
+  app.get("/api/projects/:id/customer-rates", async (req, res) => {
+    if (!requireAdmin(req, res)) {
+      return;
+    }
+
+    try {
+      const rates = await storage.getProjectCustomerRates(req.params.id);
+      res.json(rates);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/projects/:id/customer-rates", async (req, res) => {
+    if (!requireAdmin(req, res)) {
+      return;
+    }
+
+    try {
+      const parsedRates = insertProjectVehicleCustomerRateSchema
+        .array()
+        .parse((req.body?.rates ?? []).map((rate: any) => ({ ...rate, projectId: req.params.id })));
+
+      const rates = await storage.upsertProjectCustomerRates(req.params.id, parsedRates);
+      res.status(201).json(rates);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
     }
   });
 

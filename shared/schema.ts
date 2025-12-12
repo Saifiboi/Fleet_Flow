@@ -103,10 +103,24 @@ export const assignments = pgTable("assignments", {
   vehicleId: varchar("vehicle_id").notNull().references(() => vehicles.id, { onDelete: "cascade" }),
   projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
   monthlyRate: decimal("monthly_rate", { precision: 10, scale: 2 }).notNull(),
-  customerRate: decimal("customer_rate", { precision: 10, scale: 2 }).notNull(),
   startDate: date("start_date").notNull(),
   endDate: date("end_date"),
   status: text("status").notNull().default("active"), // active, completed, cancelled
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const projectVehicleCustomerRates = pgTable("project_vehicle_customer_rates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  customerId: varchar("customer_id")
+    .notNull()
+    .references(() => customers.id, { onDelete: "cascade" }),
+  vehicleId: varchar("vehicle_id")
+    .notNull()
+    .references(() => vehicles.id, { onDelete: "cascade" }),
+  rate: decimal("rate", { precision: 10, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -213,6 +227,7 @@ export const vehiclesRelations = relations(vehicles, ({ one, many }) => ({
     references: [owners.id],
   }),
   assignments: many(assignments),
+  customerRates: many(projectVehicleCustomerRates),
   maintenanceRecords: many(maintenanceRecords),
   ownershipHistory: many(ownershipHistory),
   vehicleAttendance: many(vehicleAttendance),
@@ -224,6 +239,7 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
     references: [customers.id],
   }),
   assignments: many(assignments),
+  customerRates: many(projectVehicleCustomerRates),
   vehicleAttendance: many(vehicleAttendance),
 }));
 
@@ -238,6 +254,24 @@ export const assignmentsRelations = relations(assignments, ({ one, many }) => ({
   }),
   payments: many(payments),
 }));
+
+export const projectVehicleCustomerRateRelations = relations(
+  projectVehicleCustomerRates,
+  ({ one }) => ({
+    vehicle: one(vehicles, {
+      fields: [projectVehicleCustomerRates.vehicleId],
+      references: [vehicles.id],
+    }),
+    project: one(projects, {
+      fields: [projectVehicleCustomerRates.projectId],
+      references: [projects.id],
+    }),
+    customer: one(customers, {
+      fields: [projectVehicleCustomerRates.customerId],
+      references: [customers.id],
+    }),
+  }),
+);
 
 export const paymentsRelations = relations(payments, ({ one, many }) => ({
   assignment: one(assignments, {
@@ -532,12 +566,6 @@ export const insertAssignmentSchema = createInsertSchema(assignments, {
       (val) => !isNaN(parseFloat(val)) && parseFloat(val) >= 0,
       "Monthly rate must be a valid non-negative number"
     ),
-  customerRate: z
-    .string({ required_error: "Customer rate is required" })
-    .refine(
-      (val) => !isNaN(parseFloat(val)) && parseFloat(val) >= 0,
-      "Customer rate must be a valid non-negative number"
-    ),
 })
   .omit({
     id: true,
@@ -545,6 +573,20 @@ export const insertAssignmentSchema = createInsertSchema(assignments, {
   })
   .extend({
     endDate: z.string().optional().transform(val => val === "" ? null : val), // Make endDate truly optional
+  });
+
+export const insertProjectVehicleCustomerRateSchema = createInsertSchema(projectVehicleCustomerRates, {
+  rate: z
+    .string({ required_error: "Customer rate is required" })
+    .refine(
+      (val) => !isNaN(parseFloat(val)) && parseFloat(val) >= 0,
+      "Customer rate must be a valid non-negative number"
+    ),
+})
+  .omit({ id: true, createdAt: true, customerId: true })
+  .extend({
+    projectId: z.string().uuid({ message: "Project is required" }),
+    vehicleId: z.string().uuid({ message: "Vehicle is required" }),
   });
 
 export const insertPaymentSchema = createInsertSchema(payments).omit({
@@ -775,6 +817,14 @@ export type InsertProject = z.infer<typeof insertProjectSchema>;
 
 export type Assignment = typeof assignments.$inferSelect;
 export type InsertAssignment = z.infer<typeof insertAssignmentSchema>;
+
+export type ProjectVehicleCustomerRate = typeof projectVehicleCustomerRates.$inferSelect;
+export type InsertProjectVehicleCustomerRate = z.infer<
+  typeof insertProjectVehicleCustomerRateSchema
+>;
+export type ProjectVehicleCustomerRateWithVehicle = ProjectVehicleCustomerRate & {
+  vehicle: VehicleWithOwner;
+};
 
 export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;

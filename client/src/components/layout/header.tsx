@@ -34,6 +34,10 @@ const pageLabels: Record<string, { title: string; description: string }> = {
     title: "Projects",
     description: "Manage active projects and assignments",
   },
+  "/project-rates": {
+    title: "Project Rates",
+    description: "Set customer pricing for project vehicles",
+  },
   "/assignments": {
     title: "Assignments",
     description: "Vehicle assignments to projects",

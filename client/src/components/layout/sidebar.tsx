@@ -9,6 +9,7 @@ import {
   Calendar,
   CreditCard,
   Wrench,
+  DollarSign,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -35,6 +36,7 @@ const navigationItems: NavigationItem[] = [
   { path: "/vehicles", label: "Vehicles", icon: Car, roles: ["admin", "owner", "employee"], employeeAccess: "vehicles" },
   { path: "/customers", label: "Customers", icon: Users, roles: ["admin", "employee"], employeeAccess: "projects" },
   { path: "/projects", label: "Projects", icon: FolderKanban, roles: ["admin", "employee"], employeeAccess: "projects" },
+  { path: "/project-rates", label: "Project Rates", icon: DollarSign, roles: ["admin"] },
   { path: "/assignments", label: "Assignments", icon: Calendar, roles: ["admin", "owner", "employee"], employeeAccess: "assignments" },
   {
     path: "/project-attendance",

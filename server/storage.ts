@@ -4,6 +4,7 @@ import {
   customers,
   projects,
   assignments,
+  projectVehicleCustomerRates,
   payments,
   paymentTransactions,
   maintenanceRecords,
@@ -24,6 +25,9 @@ import {
   type InsertProject,
   type Assignment,
   type InsertAssignment,
+  type ProjectVehicleCustomerRate,
+  type InsertProjectVehicleCustomerRate,
+  type ProjectVehicleCustomerRateWithVehicle,
   type Payment,
   type InsertPayment,
   type PaymentTransaction,
@@ -97,6 +101,8 @@ type PaymentJoinRow = {
   customers: Customer | null;
 };
 
+type ProjectRateInput = Pick<InsertProjectVehicleCustomerRate, "vehicleId" | "rate">;
+
 export interface IStorage {
   // Owners
   getOwners(): Promise<Owner[]>;
@@ -126,6 +132,13 @@ export interface IStorage {
   createProject(project: InsertProject): Promise<ProjectWithCustomer>;
   updateProject(id: string, project: Partial<InsertProject>): Promise<ProjectWithCustomer>;
   deleteProject(id: string): Promise<void>;
+
+  // Project customer rates
+  getProjectCustomerRates(projectId: string): Promise<ProjectVehicleCustomerRateWithVehicle[]>;
+  upsertProjectCustomerRates(
+    projectId: string,
+    rates: ProjectRateInput[],
+  ): Promise<ProjectVehicleCustomerRate[]>;
 
   // Assignments
   getAssignments(filter?: { ownerId?: string; projectIds?: string[] }): Promise<AssignmentWithDetails[]>;
@@ -522,6 +535,68 @@ export class DatabaseStorage implements IStorage {
     }
 
     await db.delete(projects).where(eq(projects.id, id));
+  }
+
+  async getProjectCustomerRates(
+    projectId: string,
+  ): Promise<(ProjectVehicleCustomerRate & { vehicle: VehicleWithOwner })[]> {
+    return await withRetry(async () => {
+      const rows = await db
+        .select({ rate: projectVehicleCustomerRates, vehicle: vehicles, owner: owners })
+        .from(projectVehicleCustomerRates)
+        .leftJoin(vehicles, eq(projectVehicleCustomerRates.vehicleId, vehicles.id))
+        .leftJoin(owners, eq(vehicles.ownerId, owners.id))
+        .where(eq(projectVehicleCustomerRates.projectId, projectId))
+        .orderBy(asc(vehicles.make), asc(vehicles.model), asc(vehicles.licensePlate));
+
+      return rows
+        .filter((row) => row.vehicle && row.owner)
+        .map((row) => ({
+          ...row.rate,
+          vehicle: { ...row.vehicle!, owner: row.owner! },
+        }));
+    });
+  }
+
+  async upsertProjectCustomerRates(
+    projectId: string,
+    rates: ProjectRateInput[],
+  ): Promise<ProjectVehicleCustomerRate[]> {
+    return await withRetry(async () => {
+      const project = await db.query.projects.findFirst({
+        where: eq(projects.id, projectId),
+      });
+
+      if (!project) {
+        throw new Error("Project not found");
+      }
+
+      const customerId = project.customerId;
+
+      return await db.transaction(async (tx) => {
+        const results: ProjectVehicleCustomerRate[] = [];
+
+        for (const rate of rates) {
+          const [record] = await tx
+            .insert(projectVehicleCustomerRates)
+            .values({
+              projectId,
+              customerId,
+              vehicleId: rate.vehicleId,
+              rate: rate.rate,
+            })
+            .onConflictDoUpdate({
+              target: [projectVehicleCustomerRates.projectId, projectVehicleCustomerRates.vehicleId],
+              set: { rate: rate.rate, customerId },
+            })
+            .returning();
+
+          results.push(record);
+        }
+
+        return results;
+      });
+    });
   }
 
   async getAssignments(filter?: { ownerId?: string; projectIds?: string[] }): Promise<AssignmentWithDetails[]> {
