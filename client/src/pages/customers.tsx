@@ -48,6 +48,8 @@ export default function Customers() {
     return (
       customer.name.toLowerCase().includes(term) ||
       (customer.contactName?.toLowerCase().includes(term) ?? false) ||
+      (customer.companyName?.toLowerCase().includes(term) ?? false) ||
+      (customer.taxNumber?.toLowerCase().includes(term) ?? false) ||
       (customer.email?.toLowerCase().includes(term) ?? false)
     );
   });
@@ -108,6 +110,8 @@ export default function Customers() {
                   <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead>Contact</TableHead>
+                    <TableHead>Company</TableHead>
+                    <TableHead>Tax Number</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Phone</TableHead>
                     <TableHead>Actions</TableHead>
@@ -135,6 +139,8 @@ export default function Customers() {
                       <TableRow key={customer.id} data-testid={`customer-row-${customer.id}`}>
                         <TableCell className="font-medium">{customer.name}</TableCell>
                         <TableCell>{customer.contactName || "-"}</TableCell>
+                        <TableCell>{customer.companyName || "-"}</TableCell>
+                        <TableCell>{customer.taxNumber || "-"}</TableCell>
                         <TableCell>{customer.email || "-"}</TableCell>
                         <TableCell>{customer.phone || "-"}</TableCell>
                         <TableCell>

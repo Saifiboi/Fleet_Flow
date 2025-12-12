@@ -26,6 +26,9 @@ export const customers = pgTable("customers", {
   email: text("email"),
   phone: text("phone"),
   address: text("address"),
+  companyName: text("company_name"),
+  companyAddress: text("company_address"),
+  taxNumber: text("tax_number"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

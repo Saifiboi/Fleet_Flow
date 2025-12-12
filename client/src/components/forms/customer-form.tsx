@@ -26,6 +26,9 @@ export default function CustomerForm({ customer, onSuccess }: CustomerFormProps)
       email: customer?.email ?? "",
       phone: customer?.phone ?? "",
       address: customer?.address ?? "",
+      companyName: customer?.companyName ?? "",
+      companyAddress: customer?.companyAddress ?? "",
+      taxNumber: customer?.taxNumber ?? "",
     },
   });
 
@@ -131,6 +134,55 @@ export default function CustomerForm({ customer, onSuccess }: CustomerFormProps)
                   className="min-h-[60px]"
                   {...field}
                   data-testid="input-address"
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="companyName"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Company Name</FormLabel>
+                <FormControl>
+                  <Input placeholder="Legal company name" {...field} data-testid="input-company-name" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="taxNumber"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Tax Number</FormLabel>
+                <FormControl>
+                  <Input placeholder="Tax identification number" {...field} data-testid="input-tax-number" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <FormField
+          control={form.control}
+          name="companyAddress"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Company Address</FormLabel>
+              <FormControl>
+                <Textarea
+                  placeholder="Registered company address"
+                  className="min-h-[60px]"
+                  {...field}
+                  data-testid="input-company-address"
                 />
               </FormControl>
               <FormMessage />
