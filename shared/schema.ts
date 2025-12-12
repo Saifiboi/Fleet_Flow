@@ -19,6 +19,16 @@ export const owners = pgTable("owners", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const customers = pgTable("customers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  contactName: text("contact_name"),
+  email: text("email"),
+  phone: text("phone"),
+  address: text("address"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   ownerId: varchar("owner_id").references(() => owners.id, { onDelete: "set null" }),
@@ -73,6 +83,9 @@ export const vehicles = pgTable("vehicles", {
 
 export const projects = pgTable("projects", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerId: varchar("customer_id")
+    .notNull()
+    .references(() => customers.id, { onDelete: "restrict" }),
   name: text("name").notNull(),
   description: text("description"),
   location: text("location").notNull(),
@@ -168,6 +181,10 @@ export const ownersRelations = relations(owners, ({ many }) => ({
   ownershipHistory: many(ownershipHistory),
 }));
 
+export const customersRelations = relations(customers, ({ many }) => ({
+  projects: many(projects),
+}));
+
 export const usersRelations = relations(users, ({ one }) => ({
   owner: one(owners, {
     fields: [users.ownerId],
@@ -197,7 +214,11 @@ export const vehiclesRelations = relations(vehicles, ({ one, many }) => ({
   vehicleAttendance: many(vehicleAttendance),
 }));
 
-export const projectsRelations = relations(projects, ({ many }) => ({
+export const projectsRelations = relations(projects, ({ one, many }) => ({
+  customer: one(customers, {
+    fields: [projects.customerId],
+    references: [customers.id],
+  }),
   assignments: many(assignments),
   vehicleAttendance: many(vehicleAttendance),
 }));
@@ -430,6 +451,11 @@ export const insertOwnerSchema = createInsertSchema(owners).omit({
   }
 );
 
+export const insertCustomerSchema = createInsertSchema(customers).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertVehicleSchema = createInsertSchema(vehicles).omit({
   id: true,
   createdAt: true,
@@ -491,6 +517,7 @@ export const insertProjectSchema = createInsertSchema(projects).omit({
   id: true,
   createdAt: true,
 }).extend({
+  customerId: z.string().uuid({ message: "Customer is required" }),
   endDate: z.string().optional().transform(val => val === "" ? null : val), // Make endDate truly optional
 });
 
@@ -699,12 +726,18 @@ export const updateOwnerSchema = z.object({
   }
 );
 
+export const updateCustomerSchema = insertCustomerSchema.partial();
+
 export const updateOwnershipHistorySchema = insertOwnershipHistorySchema.partial();
 
 // Types
 export type Owner = typeof owners.$inferSelect;
 export type InsertOwner = z.infer<typeof insertOwnerSchema>;
 export type UpdateOwner = z.infer<typeof updateOwnerSchema>;
+
+export type Customer = typeof customers.$inferSelect;
+export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
+export type UpdateCustomer = z.infer<typeof updateCustomerSchema>;
 
 export type OwnershipHistory = typeof ownershipHistory.$inferSelect;
 export type InsertOwnershipHistory = z.infer<typeof insertOwnershipHistorySchema>;
@@ -718,6 +751,7 @@ export type InsertVehicle = z.infer<typeof insertVehicleSchema>;
 export type TransferVehicleOwnership = z.infer<typeof transferVehicleOwnershipSchema>;
 
 export type Project = typeof projects.$inferSelect;
+export type ProjectWithCustomer = Project & { customer: Customer };
 export type InsertProject = z.infer<typeof insertProjectSchema>;
 
 export type Assignment = typeof assignments.$inferSelect;
@@ -742,7 +776,7 @@ export type VehicleWithOwner = Vehicle & {
 
 export type AssignmentWithDetails = Assignment & {
   vehicle: VehicleWithOwner;
-  project: Project;
+  project: ProjectWithCustomer;
 };
 
 export type PaymentTransaction = typeof paymentTransactions.$inferSelect;

@@ -4,7 +4,8 @@ import type {
   Owner,
   Vehicle,
   VehicleWithOwner,
-  Project,
+  ProjectWithCustomer,
+  Customer,
   Assignment,
   AssignmentWithDetails,
   Payment,
@@ -33,8 +34,12 @@ export const useVehicles = () => useQuery<VehicleWithOwner[]>({
   queryKey: ["/api/vehicles"],
 });
 
-export const useProjects = () => useQuery<Project[]>({
+export const useProjects = () => useQuery<ProjectWithCustomer[]>({
   queryKey: ["/api/projects"],
+});
+
+export const useCustomers = () => useQuery<Customer[]>({
+  queryKey: ["/api/customers"],
 });
 
 export const useAssignments = () => useQuery<AssignmentWithDetails[]>({

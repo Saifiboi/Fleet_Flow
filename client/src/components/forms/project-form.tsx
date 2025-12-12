@@ -9,16 +9,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { insertProjectSchema, type Project, type InsertProject } from "@shared/schema";
+import { useCustomers } from "@/lib/api";
+import { insertProjectSchema, type ProjectWithCustomer, type InsertProject } from "@shared/schema";
 
 interface ProjectFormProps {
-  project?: Project | null;
+  project?: ProjectWithCustomer | null;
   onSuccess?: () => void;
 }
 
 export default function ProjectForm({ project, onSuccess }: ProjectFormProps) {
   const { toast } = useToast();
   const isEditing = !!project;
+  const { data: customers = [] } = useCustomers();
 
   const form = useForm<InsertProject>({
     resolver: zodResolver(insertProjectSchema),
@@ -29,6 +31,7 @@ export default function ProjectForm({ project, onSuccess }: ProjectFormProps) {
       startDate: project?.startDate || "",
       endDate: project?.endDate || "",
       status: project?.status || "active",
+      customerId: project?.customerId || "",
     },
   });
 
@@ -94,6 +97,31 @@ export default function ProjectForm({ project, onSuccess }: ProjectFormProps) {
                   data-testid="input-description" 
                 />
               </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="customerId"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Customer</FormLabel>
+              <Select onValueChange={field.onChange} value={field.value}>
+                <FormControl>
+                  <SelectTrigger data-testid="select-customer">
+                    <SelectValue placeholder="Select customer" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {customers.map((customer) => (
+                    <SelectItem key={customer.id} value={customer.id}>
+                      {customer.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <FormMessage />
             </FormItem>
           )}
