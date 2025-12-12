@@ -35,6 +35,7 @@ export default function AssignmentForm({ assignment, onSuccess }: AssignmentForm
       vehicleId: assignment?.vehicleId || "",
       projectId: assignment?.projectId || "",
       monthlyRate: assignment?.monthlyRate || "",
+      customerRate: assignment?.customerRate || "",
       startDate: assignment?.startDate || "",
       endDate: assignment?.endDate || "",
       status: assignment?.status || "active",
@@ -141,6 +142,27 @@ export default function AssignmentForm({ assignment, onSuccess }: AssignmentForm
                   placeholder="2500.00"
                   {...field} 
                   data-testid="input-monthly-rate" 
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="customerRate"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Customer Price (PKR)</FormLabel>
+              <FormControl>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="3500.00"
+                  {...field}
+                  data-testid="input-customer-rate"
                 />
               </FormControl>
               <FormMessage />

@@ -103,6 +103,7 @@ export const assignments = pgTable("assignments", {
   vehicleId: varchar("vehicle_id").notNull().references(() => vehicles.id, { onDelete: "cascade" }),
   projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
   monthlyRate: decimal("monthly_rate", { precision: 10, scale: 2 }).notNull(),
+  customerRate: decimal("customer_rate", { precision: 10, scale: 2 }).notNull(),
   startDate: date("start_date").notNull(),
   endDate: date("end_date"),
   status: text("status").notNull().default("active"), // active, completed, cancelled
@@ -524,12 +525,27 @@ export const insertProjectSchema = createInsertSchema(projects).omit({
   endDate: z.string().optional().transform(val => val === "" ? null : val), // Make endDate truly optional
 });
 
-export const insertAssignmentSchema = createInsertSchema(assignments).omit({
-  id: true,
-  createdAt: true,
-}).extend({
-  endDate: z.string().optional().transform(val => val === "" ? null : val), // Make endDate truly optional
-});
+export const insertAssignmentSchema = createInsertSchema(assignments, {
+  monthlyRate: z
+    .string({ required_error: "Monthly rate is required" })
+    .refine(
+      (val) => !isNaN(parseFloat(val)) && parseFloat(val) >= 0,
+      "Monthly rate must be a valid non-negative number"
+    ),
+  customerRate: z
+    .string({ required_error: "Customer rate is required" })
+    .refine(
+      (val) => !isNaN(parseFloat(val)) && parseFloat(val) >= 0,
+      "Customer rate must be a valid non-negative number"
+    ),
+})
+  .omit({
+    id: true,
+    createdAt: true,
+  })
+  .extend({
+    endDate: z.string().optional().transform(val => val === "" ? null : val), // Make endDate truly optional
+  });
 
 export const insertPaymentSchema = createInsertSchema(payments).omit({
   id: true,

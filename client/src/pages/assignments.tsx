@@ -35,6 +35,8 @@ export default function Assignments() {
 
   const { data: projects = [] } = useProjects();
 
+  const columnCount = canManageAssignments ? 8 : 7;
+
   const deleteAssignmentMutation = useMutation({
     mutationFn: async (id: string) => {
       await apiRequest("DELETE", `/api/assignments/${id}`);
@@ -175,6 +177,7 @@ export default function Assignments() {
                     <TableHead>Owner</TableHead>
                     <TableHead>Project</TableHead>
                     <TableHead>Monthly Rate (PKR)</TableHead>
+                    <TableHead>Customer Price (PKR)</TableHead>
                     <TableHead>Assignment Period</TableHead>
                     <TableHead>Status</TableHead>
                     {canManageAssignments && <TableHead>Actions</TableHead>}
@@ -184,7 +187,7 @@ export default function Assignments() {
                   {isLoading ? (
                     Array.from({ length: 5 }).map((_, i) => (
                       <TableRow key={i}>
-                        {Array.from({ length: 7 }).map((_, j) => (
+                        {Array.from({ length: columnCount }).map((_, j) => (
                           <TableCell key={j}>
                             <Skeleton className="h-4 w-full" />
                           </TableCell>
@@ -193,7 +196,7 @@ export default function Assignments() {
                     ))
                   ) : filteredAssignments?.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8">
+                      <TableCell colSpan={columnCount} className="text-center py-8">
                         <div className="flex flex-col items-center space-y-2">
                           <Calendar className="w-12 h-12 text-muted-foreground" />
                           <p className="text-muted-foreground">No assignments found</p>
@@ -242,6 +245,12 @@ export default function Assignments() {
                           <div className="flex items-center space-x-2">
                             <DollarSign className="w-3 h-3 text-muted-foreground" />
                             <p className="text-sm font-semibold text-foreground">{assignment.monthlyRate}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <DollarSign className="w-3 h-3 text-muted-foreground" />
+                            <p className="text-sm font-semibold text-foreground">{assignment.customerRate}</p>
                           </div>
                         </TableCell>
                         <TableCell>
@@ -395,9 +404,16 @@ e again."
                             <MapPin className="w-3 h-3" />
                             <span>{assignment.project.name}</span>
                           </div>
-                          <div className="flex items-center space-x-1">
-                            <DollarSign className="w-3 h-3" />
-                            <span>{assignment.monthlyRate}</span>
+                          <div className="flex items-center space-x-2">
+                            <div className="flex items-center space-x-1">
+                              <DollarSign className="w-3 h-3" />
+                              <span>{assignment.monthlyRate}</span>
+                            </div>
+                            <span>•</span>
+                            <div className="flex items-center space-x-1">
+                              <DollarSign className="w-3 h-3" />
+                              <span>{assignment.customerRate}</span>
+                            </div>
                           </div>
                         </div>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
