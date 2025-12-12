@@ -537,10 +537,10 @@ export default function ProjectAttendance() {
           </div>
           <div className="overflow-x-auto rounded-md border">
             <div className="min-w-[760px]">
-              <Table>
+              <Table className="relative">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="min-w-[14rem]">Vehicle</TableHead>
+                    <TableHead className="sticky left-0 z-20 min-w-[14rem] bg-background">Vehicle</TableHead>
                     {projectDays.map((day) => (
                       <TableHead key={day.toISOString()} className="min-w-[3.5rem] text-center">
                         {format(day, "d")}
@@ -564,7 +564,7 @@ export default function ProjectAttendance() {
                   ) : (
                     projectVehicles.map((assignment) => (
                       <TableRow key={assignment.vehicle.id}>
-                        <TableCell className="whitespace-nowrap font-medium align-top">
+                        <TableCell className="sticky left-0 z-10 whitespace-nowrap bg-background font-medium align-top shadow-md shadow-background/80">
                           <div className="flex flex-col">
                             <span>
                               {assignment.vehicle.make} {assignment.vehicle.model}
