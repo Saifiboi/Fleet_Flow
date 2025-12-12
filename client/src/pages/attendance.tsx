@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { useAssignments, useVehicleAttendance, useVehicleAttendanceSummary } from "@/lib/api";
+import {
+  useAssignments,
+  useVehicleAttendance,
+  useVehicleAttendanceSummary,
+} from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -83,7 +87,7 @@ export default function Attendance() {
     vehicleId: selectedVehicleId ?? undefined,
   });
 
-  const projectAttendanceRecords = useMemo(() => {
+  const selectedAssignmentAttendance = useMemo(() => {
     if (!selectedAssignment?.projectId) {
       return attendanceRecords.filter((record) => !record.projectId);
     }
@@ -107,14 +111,14 @@ export default function Attendance() {
 
   const attendanceByDate = useMemo(() => {
     const map: Record<string, VehicleAttendanceWithVehicle> = {};
-    projectAttendanceRecords.forEach((record) => {
+    selectedAssignmentAttendance.forEach((record) => {
       const recordDate = parseISO(record.attendanceDate);
       if (isSameMonth(recordDate, selectedMonth)) {
         map[record.attendanceDate] = record;
       }
     });
     return map;
-  }, [projectAttendanceRecords, selectedMonth]);
+  }, [selectedAssignmentAttendance, selectedMonth]);
 
   const summaryProjectOptions = useMemo(() => {
     if (!selectedVehicleId) {
@@ -142,6 +146,7 @@ export default function Attendance() {
       return nameA.localeCompare(nameB);
     });
   }, [assignments, attendanceRecords, selectedVehicleId]);
+
 
   const summaryRangeError = useMemo(() => {
     if (summaryStartDate && summaryEndDate && summaryStartDate > summaryEndDate) {
@@ -291,7 +296,6 @@ export default function Attendance() {
   }, [days, defaultDayStates, selectedDays]);
 
   const nonFutureDays = useMemo(() => days.filter((d) => !isAfter(d, today)), [days, today]);
-
   const { selectableCount, selectedCount } = useMemo(() => {
     let selectable = 0;
     let selectedTotal = 0;
@@ -715,11 +719,11 @@ export default function Attendance() {
         </TabsList>
         <TabsContent value="attendance" className="space-y-6">
           <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle>Vehicle Attendance</CardTitle>
-              {canManageAttendance ? (
+            <CardHeader>
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <CardTitle>Vehicle Attendance</CardTitle>
+                  {canManageAttendance ? (
                 <div
                   className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3"
                 >

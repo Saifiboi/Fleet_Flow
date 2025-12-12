@@ -34,12 +34,16 @@ const pageLabels: Record<string, { title: string; description: string }> = {
     title: "Assignments",
     description: "Vehicle assignments to projects",
   },
+  "/project-attendance": {
+    title: "Project Attendance",
+    description: "Bulk mark vehicle presence across projects",
+  },
   "/payments": {
     title: "Payments",
     description: "Track payments and outstanding invoices",
   },
   "/attendance": {
-    title: "Attendance",
+    title: "Vehicle Attendance",
     description: "Track and record attendance of vehicles",
   },
   "/maintenance": {

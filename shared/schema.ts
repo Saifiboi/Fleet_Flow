@@ -257,9 +257,12 @@ export const employeeAccessAreas = [
   "projects",
   "assignments",
   "attendance",
+  "projectAttendance",
   "maintenance",
   "payments",
 ] as const;
+
+export const employeeAccessEnum = z.enum(employeeAccessAreas);
 
 export type EmployeeAccessArea = (typeof employeeAccessAreas)[number];
 export type EmployeeProject = typeof employeeProjects.$inferSelect;
@@ -268,8 +271,8 @@ export const insertUserSchema = createInsertSchema(users, {
   email: z.string().email(),
   role: z.enum(["admin", "owner", "employee"]),
 }).extend({
-  employeeAccess: z.array(z.enum(employeeAccessAreas)).default([]),
-  employeeManageAccess: z.array(z.enum(employeeAccessAreas)).default([]),
+  employeeAccess: z.array(employeeAccessEnum).default([]),
+  employeeManageAccess: z.array(employeeAccessEnum).default([]),
   employeeProjectIds: z.array(z.string().uuid()).default([]),
 });
 
@@ -279,14 +282,8 @@ export const createUserSchema = z
     password: z.string().min(8, "Password must be at least 8 characters long"),
     role: z.enum(["admin", "owner", "employee"]),
     ownerId: z.string().uuid().optional().nullable(),
-    employeeAccess: z
-      .array(z.enum(employeeAccessAreas))
-      .optional()
-      .default([]),
-    employeeManageAccess: z
-      .array(z.enum(employeeAccessAreas))
-      .optional()
-      .default([]),
+    employeeAccess: z.array(employeeAccessEnum).optional().default([]),
+    employeeManageAccess: z.array(employeeAccessEnum).optional().default([]),
     employeeProjectIds: z.array(z.string().uuid()).optional().default([]),
   })
   .superRefine((data, ctx) => {
@@ -354,8 +351,8 @@ export const updateUserSchema = z
   .object({
     ownerId: z.string().uuid().optional().nullable(),
     isActive: z.boolean().optional(),
-    employeeAccess: z.array(z.enum(employeeAccessAreas)).optional(),
-    employeeManageAccess: z.array(z.enum(employeeAccessAreas)).optional(),
+    employeeAccess: z.array(employeeAccessEnum).optional(),
+    employeeManageAccess: z.array(employeeAccessEnum).optional(),
     employeeProjectIds: z.array(z.string().uuid()).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
