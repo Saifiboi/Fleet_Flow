@@ -14,5 +14,3 @@ SELECT a.project_id, p.customer_id, a.vehicle_id, a.customer_rate
 FROM assignments a
 JOIN projects p ON p.id = a.project_id
 ON CONFLICT (project_id, vehicle_id) DO NOTHING;
-
-ALTER TABLE assignments DROP COLUMN IF EXISTS customer_rate;
