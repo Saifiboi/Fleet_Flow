@@ -1,5 +1,16 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, decimal, date, timestamp, integer, boolean, primaryKey } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  varchar,
+  decimal,
+  date,
+  timestamp,
+  integer,
+  boolean,
+  primaryKey,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -109,20 +120,28 @@ export const assignments = pgTable("assignments", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const projectVehicleCustomerRates = pgTable("project_vehicle_customer_rates", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  projectId: varchar("project_id")
-    .notNull()
-    .references(() => projects.id, { onDelete: "cascade" }),
-  customerId: varchar("customer_id")
-    .notNull()
-    .references(() => customers.id, { onDelete: "cascade" }),
-  vehicleId: varchar("vehicle_id")
-    .notNull()
-    .references(() => vehicles.id, { onDelete: "cascade" }),
-  rate: decimal("rate", { precision: 10, scale: 2 }).notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+export const projectVehicleCustomerRates = pgTable(
+  "project_vehicle_customer_rates",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    projectId: varchar("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    customerId: varchar("customer_id")
+      .notNull()
+      .references(() => customers.id, { onDelete: "cascade" }),
+    vehicleId: varchar("vehicle_id")
+      .notNull()
+      .references(() => vehicles.id, { onDelete: "cascade" }),
+    rate: decimal("rate", { precision: 10, scale: 2 }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    projectVehicleCustomerRateUnique: uniqueIndex(
+      "project_vehicle_customer_rates_project_id_vehicle_id_key",
+    ).on(table.projectId, table.vehicleId),
+  }),
+);
 
 export const payments = pgTable("payments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
