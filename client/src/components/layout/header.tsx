@@ -43,7 +43,7 @@ const pageLabels: Record<string, { title: string; description: string }> = {
     description: "Track payments and outstanding invoices",
   },
   "/attendance": {
-    title: "Attendance",
+    title: "Vehicle Attendance",
     description: "Track and record attendance of vehicles",
   },
   "/maintenance": {
