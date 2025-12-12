@@ -628,6 +628,21 @@ export class DatabaseStorage implements IStorage {
 
   async createAssignment(insertAssignment: InsertAssignment): Promise<Assignment> {
     const targetStatus = insertAssignment.status ?? "active";
+    const normalizeDate = (value: string | Date) =>
+      value instanceof Date ? value.toISOString().split("T")[0] : value;
+
+    const [project] = await db
+      .select({ startDate: projects.startDate })
+      .from(projects)
+      .where(eq(projects.id, insertAssignment.projectId));
+
+    if (!project) {
+      throw new Error("Project not found");
+    }
+
+    if (normalizeDate(insertAssignment.startDate) < normalizeDate(project.startDate)) {
+      throw new Error("Assignment start date cannot be before the project start date.");
+    }
 
     if (targetStatus === "active") {
       const [{ value: activeCount }] = await db
@@ -662,6 +677,23 @@ export class DatabaseStorage implements IStorage {
     const updates: Partial<InsertAssignment> = { ...insertAssignment };
     const newVehicleId = updates.vehicleId ?? existingAssignment.vehicleId;
     const newStatus = updates.status ?? existingAssignment.status;
+    const targetProjectId = updates.projectId ?? existingAssignment.projectId;
+    const targetStartDate = updates.startDate ?? existingAssignment.startDate;
+    const normalizeDate = (value: string | Date) =>
+      value instanceof Date ? value.toISOString().split("T")[0] : value;
+
+    const [project] = await db
+      .select({ startDate: projects.startDate })
+      .from(projects)
+      .where(eq(projects.id, targetProjectId));
+
+    if (!project) {
+      throw new Error("Project not found");
+    }
+
+    if (normalizeDate(targetStartDate) < normalizeDate(project.startDate)) {
+      throw new Error("Assignment start date cannot be before the project start date.");
+    }
 
     if (updates.projectId !== undefined && updates.projectId !== existingAssignment.projectId) {
       const [{ value: attendanceCount }] = await db
