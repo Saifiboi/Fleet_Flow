@@ -4,7 +4,8 @@ import type {
   Owner,
   Vehicle,
   VehicleWithOwner,
-  Project,
+  ProjectWithCustomer,
+  Customer,
   Assignment,
   AssignmentWithDetails,
   Payment,
@@ -18,6 +19,7 @@ import type {
   VehiclePaymentForPeriodResult,
   UserWithOwner,
   OwnershipHistoryWithOwner,
+  ProjectVehicleCustomerRateWithVehicle,
 } from "@shared/schema";
 
 // Typed query hooks to fix TypeScript issues
@@ -33,8 +35,12 @@ export const useVehicles = () => useQuery<VehicleWithOwner[]>({
   queryKey: ["/api/vehicles"],
 });
 
-export const useProjects = () => useQuery<Project[]>({
+export const useProjects = () => useQuery<ProjectWithCustomer[]>({
   queryKey: ["/api/projects"],
+});
+
+export const useCustomers = () => useQuery<Customer[]>({
+  queryKey: ["/api/customers"],
 });
 
 export const useAssignments = () => useQuery<AssignmentWithDetails[]>({
@@ -57,9 +63,11 @@ export const useVehiclesByOwner = (ownerId: string) => useQuery<VehicleWithOwner
   queryKey: ["/api/vehicles/owner", ownerId],
 });
 
-export const useAssignmentsByProject = (projectId: string) => useQuery<AssignmentWithDetails[]>({
-  queryKey: ["/api/assignments/project", projectId],
-});
+export const useAssignmentsByProject = (projectId?: string, options?: { enabled?: boolean }) =>
+  useQuery<AssignmentWithDetails[]>({
+    queryKey: ["/api/assignments/project", projectId ?? ""],
+    enabled: !!projectId && (options?.enabled ?? true),
+  });
 
 export const useAssignmentsByVehicle = (vehicleId?: string, options?: { enabled?: boolean }) =>
   useQuery<AssignmentWithDetails[]>({
@@ -138,6 +146,16 @@ export const useVehicleAttendanceSummary = (params: {
         query ? `/api/vehicle-attendance/summary?${query}` : "/api/vehicle-attendance/summary"
       );
       return (await res.json()) as VehicleAttendanceSummary[];
+    },
+  });
+
+export const useProjectCustomerRates = (projectId?: string) =>
+  useQuery<ProjectVehicleCustomerRateWithVehicle[]>({
+    queryKey: ["/api/projects", projectId ?? "", "customer-rates"],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/projects/${projectId}/customer-rates`);
+      return (await res.json()) as ProjectVehicleCustomerRateWithVehicle[];
     },
   });
 

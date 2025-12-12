@@ -9,7 +9,9 @@ import Dashboard from "@/pages/dashboard";
 import Vehicles from "@/pages/vehicles";
 import Owners from "@/pages/owners";
 import Projects from "@/pages/projects";
+import Customers from "@/pages/customers";
 import Assignments from "@/pages/assignments";
+import ProjectRates from "@/pages/project-rates";
 import Payments from "@/pages/payments";
 import Maintenance from "@/pages/maintenance";
 import Attendance from "@/pages/attendance";
@@ -33,7 +35,9 @@ const protectedRoutes: ProtectedRoute[] = [
   { path: "/users", component: Users, roles: ["admin"] },
   { path: "/owners", component: Owners, roles: ["admin", "owner", "employee"], employeeAccess: "owners" },
   { path: "/vehicles", component: Vehicles, roles: ["admin", "owner", "employee"], employeeAccess: "vehicles" },
+  { path: "/customers", component: Customers, roles: ["admin", "employee"], employeeAccess: "projects" },
   { path: "/projects", component: Projects, roles: ["admin", "employee"], employeeAccess: "projects" },
+  { path: "/project-rates", component: ProjectRates, roles: ["admin"] },
   { path: "/assignments", component: Assignments, roles: ["admin", "owner", "employee"], employeeAccess: "assignments" },
   {
     path: "/project-attendance",

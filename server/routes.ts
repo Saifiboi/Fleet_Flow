@@ -2,10 +2,12 @@ import type { Application, Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
 import {
   insertOwnerSchema,
+  insertCustomerSchema,
   insertVehicleSchema,
   createVehicleSchema,
   updateVehicleSchema,
   insertProjectSchema,
+  insertProjectVehicleCustomerRateSchema,
   insertAssignmentSchema,
   insertPaymentSchema,
   createPaymentRequestSchema,
@@ -14,6 +16,7 @@ import {
   insertMaintenanceRecordSchema,
   insertOwnershipHistorySchema,
   updateOwnerSchema,
+  updateCustomerSchema,
   updateOwnershipHistorySchema,
   transferVehicleOwnershipSchema,
   insertVehicleAttendanceSchema,
@@ -284,6 +287,78 @@ export async function registerRoutes(app: Application): Promise<void> {
       res.status(204).send();
     } catch (error: any) {
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Customer routes
+  app.get("/api/customers", async (req, res) => {
+    if (!requireAdminOrEmployee(req, res, "projects")) {
+      return;
+    }
+
+    try {
+      const customers = await storage.getCustomers();
+      res.json(customers);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/customers/:id", async (req, res) => {
+    if (!requireAdminOrEmployee(req, res, "projects")) {
+      return;
+    }
+
+    try {
+      const customer = await storage.getCustomer(req.params.id);
+      if (!customer) {
+        return res.status(404).json({ message: "Customer not found" });
+      }
+
+      res.json(customer);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/customers", async (req, res) => {
+    if (!requireAdminOrEmployee(req, res, "projects", { manage: true })) {
+      return;
+    }
+
+    try {
+      const validatedData = insertCustomerSchema.parse(req.body);
+      const customer = await storage.createCustomer(validatedData);
+      res.status(201).json(customer);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/customers/:id", async (req, res) => {
+    if (!requireAdminOrEmployee(req, res, "projects", { manage: true })) {
+      return;
+    }
+
+    try {
+      const validatedData = updateCustomerSchema.parse(req.body);
+      const customer = await storage.updateCustomer(req.params.id, validatedData);
+      res.json(customer);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/customers/:id", async (req, res) => {
+    if (!requireAdminOrEmployee(req, res, "projects", { manage: true })) {
+      return;
+    }
+
+    try {
+      await storage.deleteCustomer(req.params.id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
     }
   });
 
@@ -698,6 +773,37 @@ export async function registerRoutes(app: Application): Promise<void> {
       res.status(204).send();
     } catch (error: any) {
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Project customer rate routes
+  app.get("/api/projects/:id/customer-rates", async (req, res) => {
+    if (!requireAdmin(req, res)) {
+      return;
+    }
+
+    try {
+      const rates = await storage.getProjectCustomerRates(req.params.id);
+      res.json(rates);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/projects/:id/customer-rates", async (req, res) => {
+    if (!requireAdmin(req, res)) {
+      return;
+    }
+
+    try {
+      const parsedRates = insertProjectVehicleCustomerRateSchema
+        .array()
+        .parse((req.body?.rates ?? []).map((rate: any) => ({ ...rate, projectId: req.params.id })));
+
+      const rates = await storage.upsertProjectCustomerRates(req.params.id, parsedRates);
+      res.status(201).json(rates);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
     }
   });
 

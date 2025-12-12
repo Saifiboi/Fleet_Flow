@@ -19,6 +19,19 @@ export const owners = pgTable("owners", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const customers = pgTable("customers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  contactName: text("contact_name"),
+  email: text("email"),
+  phone: text("phone"),
+  address: text("address"),
+  companyName: text("company_name"),
+  companyAddress: text("company_address"),
+  taxNumber: text("tax_number"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   ownerId: varchar("owner_id").references(() => owners.id, { onDelete: "set null" }),
@@ -73,6 +86,9 @@ export const vehicles = pgTable("vehicles", {
 
 export const projects = pgTable("projects", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerId: varchar("customer_id")
+    .notNull()
+    .references(() => customers.id, { onDelete: "restrict" }),
   name: text("name").notNull(),
   description: text("description"),
   location: text("location").notNull(),
@@ -90,6 +106,21 @@ export const assignments = pgTable("assignments", {
   startDate: date("start_date").notNull(),
   endDate: date("end_date"),
   status: text("status").notNull().default("active"), // active, completed, cancelled
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const projectVehicleCustomerRates = pgTable("project_vehicle_customer_rates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  customerId: varchar("customer_id")
+    .notNull()
+    .references(() => customers.id, { onDelete: "cascade" }),
+  vehicleId: varchar("vehicle_id")
+    .notNull()
+    .references(() => vehicles.id, { onDelete: "cascade" }),
+  rate: decimal("rate", { precision: 10, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -168,6 +199,10 @@ export const ownersRelations = relations(owners, ({ many }) => ({
   ownershipHistory: many(ownershipHistory),
 }));
 
+export const customersRelations = relations(customers, ({ many }) => ({
+  projects: many(projects),
+}));
+
 export const usersRelations = relations(users, ({ one }) => ({
   owner: one(owners, {
     fields: [users.ownerId],
@@ -192,13 +227,19 @@ export const vehiclesRelations = relations(vehicles, ({ one, many }) => ({
     references: [owners.id],
   }),
   assignments: many(assignments),
+  customerRates: many(projectVehicleCustomerRates),
   maintenanceRecords: many(maintenanceRecords),
   ownershipHistory: many(ownershipHistory),
   vehicleAttendance: many(vehicleAttendance),
 }));
 
-export const projectsRelations = relations(projects, ({ many }) => ({
+export const projectsRelations = relations(projects, ({ one, many }) => ({
+  customer: one(customers, {
+    fields: [projects.customerId],
+    references: [customers.id],
+  }),
   assignments: many(assignments),
+  customerRates: many(projectVehicleCustomerRates),
   vehicleAttendance: many(vehicleAttendance),
 }));
 
@@ -213,6 +254,24 @@ export const assignmentsRelations = relations(assignments, ({ one, many }) => ({
   }),
   payments: many(payments),
 }));
+
+export const projectVehicleCustomerRateRelations = relations(
+  projectVehicleCustomerRates,
+  ({ one }) => ({
+    vehicle: one(vehicles, {
+      fields: [projectVehicleCustomerRates.vehicleId],
+      references: [vehicles.id],
+    }),
+    project: one(projects, {
+      fields: [projectVehicleCustomerRates.projectId],
+      references: [projects.id],
+    }),
+    customer: one(customers, {
+      fields: [projectVehicleCustomerRates.customerId],
+      references: [customers.id],
+    }),
+  }),
+);
 
 export const paymentsRelations = relations(payments, ({ one, many }) => ({
   assignment: one(assignments, {
@@ -430,6 +489,11 @@ export const insertOwnerSchema = createInsertSchema(owners).omit({
   }
 );
 
+export const insertCustomerSchema = createInsertSchema(customers).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertVehicleSchema = createInsertSchema(vehicles).omit({
   id: true,
   createdAt: true,
@@ -491,15 +555,39 @@ export const insertProjectSchema = createInsertSchema(projects).omit({
   id: true,
   createdAt: true,
 }).extend({
+  customerId: z.string().uuid({ message: "Customer is required" }),
   endDate: z.string().optional().transform(val => val === "" ? null : val), // Make endDate truly optional
 });
 
-export const insertAssignmentSchema = createInsertSchema(assignments).omit({
-  id: true,
-  createdAt: true,
-}).extend({
-  endDate: z.string().optional().transform(val => val === "" ? null : val), // Make endDate truly optional
-});
+export const insertAssignmentSchema = createInsertSchema(assignments, {
+  monthlyRate: z
+    .string({ required_error: "Monthly rate is required" })
+    .refine(
+      (val) => !isNaN(parseFloat(val)) && parseFloat(val) >= 0,
+      "Monthly rate must be a valid non-negative number"
+    ),
+})
+  .omit({
+    id: true,
+    createdAt: true,
+  })
+  .extend({
+    endDate: z.string().optional().transform(val => val === "" ? null : val), // Make endDate truly optional
+  });
+
+export const insertProjectVehicleCustomerRateSchema = createInsertSchema(projectVehicleCustomerRates, {
+  rate: z
+    .string({ required_error: "Customer rate is required" })
+    .refine(
+      (val) => !isNaN(parseFloat(val)) && parseFloat(val) >= 0,
+      "Customer rate must be a valid non-negative number"
+    ),
+})
+  .omit({ id: true, createdAt: true, customerId: true })
+  .extend({
+    projectId: z.string().uuid({ message: "Project is required" }),
+    vehicleId: z.string().uuid({ message: "Vehicle is required" }),
+  });
 
 export const insertPaymentSchema = createInsertSchema(payments).omit({
   id: true,
@@ -699,12 +787,18 @@ export const updateOwnerSchema = z.object({
   }
 );
 
+export const updateCustomerSchema = insertCustomerSchema.partial();
+
 export const updateOwnershipHistorySchema = insertOwnershipHistorySchema.partial();
 
 // Types
 export type Owner = typeof owners.$inferSelect;
 export type InsertOwner = z.infer<typeof insertOwnerSchema>;
 export type UpdateOwner = z.infer<typeof updateOwnerSchema>;
+
+export type Customer = typeof customers.$inferSelect;
+export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
+export type UpdateCustomer = z.infer<typeof updateCustomerSchema>;
 
 export type OwnershipHistory = typeof ownershipHistory.$inferSelect;
 export type InsertOwnershipHistory = z.infer<typeof insertOwnershipHistorySchema>;
@@ -718,10 +812,19 @@ export type InsertVehicle = z.infer<typeof insertVehicleSchema>;
 export type TransferVehicleOwnership = z.infer<typeof transferVehicleOwnershipSchema>;
 
 export type Project = typeof projects.$inferSelect;
+export type ProjectWithCustomer = Project & { customer: Customer };
 export type InsertProject = z.infer<typeof insertProjectSchema>;
 
 export type Assignment = typeof assignments.$inferSelect;
 export type InsertAssignment = z.infer<typeof insertAssignmentSchema>;
+
+export type ProjectVehicleCustomerRate = typeof projectVehicleCustomerRates.$inferSelect;
+export type InsertProjectVehicleCustomerRate = z.infer<
+  typeof insertProjectVehicleCustomerRateSchema
+>;
+export type ProjectVehicleCustomerRateWithVehicle = ProjectVehicleCustomerRate & {
+  vehicle: VehicleWithOwner;
+};
 
 export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;
@@ -742,7 +845,7 @@ export type VehicleWithOwner = Vehicle & {
 
 export type AssignmentWithDetails = Assignment & {
   vehicle: VehicleWithOwner;
-  project: Project;
+  project: ProjectWithCustomer;
 };
 
 export type PaymentTransaction = typeof paymentTransactions.$inferSelect;
