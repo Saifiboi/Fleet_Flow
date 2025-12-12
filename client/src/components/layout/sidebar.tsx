@@ -10,6 +10,7 @@ import {
   CreditCard,
   Wrench,
   DollarSign,
+  Receipt,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -46,6 +47,13 @@ const navigationItems: NavigationItem[] = [
     employeeAccess: "projectAttendance",
   },
   { path: "/attendance", label: "Vehicle Attendance", icon: Calendar, roles: ["admin", "owner", "employee"], employeeAccess: "attendance" },
+  {
+    path: "/customer-invoices",
+    label: "Customer Invoices",
+    icon: Receipt,
+    roles: ["admin", "employee"],
+    employeeAccess: "payments",
+  },
   { path: "/payments", label: "Payments", icon: CreditCard, roles: ["admin", "owner", "employee"], employeeAccess: "payments" },
   { path: "/maintenance", label: "Maintenance", icon: Wrench, roles: ["admin", "owner", "employee"], employeeAccess: "maintenance" },
 ] as const;

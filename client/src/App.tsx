@@ -13,6 +13,7 @@ import Customers from "@/pages/customers";
 import Assignments from "@/pages/assignments";
 import ProjectRates from "@/pages/project-rates";
 import Payments from "@/pages/payments";
+import CustomerInvoices from "@/pages/customer-invoices";
 import Maintenance from "@/pages/maintenance";
 import Attendance from "@/pages/attendance";
 import ProjectAttendance from "@/pages/project-attendance";
@@ -46,6 +47,7 @@ const protectedRoutes: ProtectedRoute[] = [
     employeeAccess: "projectAttendance",
   },
   { path: "/attendance", component: Attendance, roles: ["admin", "owner", "employee"], employeeAccess: "attendance" },
+  { path: "/customer-invoices", component: CustomerInvoices, roles: ["admin", "employee"], employeeAccess: "payments" },
   { path: "/payments", component: Payments, roles: ["admin", "owner", "employee"], employeeAccess: "payments" },
   { path: "/maintenance", component: Maintenance, roles: ["admin", "owner", "employee"], employeeAccess: "maintenance" },
 ];
