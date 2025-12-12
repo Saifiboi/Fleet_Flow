@@ -42,7 +42,7 @@ const navigationItems: NavigationItem[] = [
     roles: ["admin", "employee"],
     employeeAccess: "projectAttendance",
   },
-  { path: "/attendance", label: "Attendance", icon: Calendar, roles: ["admin", "owner", "employee"], employeeAccess: "attendance" },
+  { path: "/attendance", label: "Vehicle Attendance", icon: Calendar, roles: ["admin", "owner", "employee"], employeeAccess: "attendance" },
   { path: "/payments", label: "Payments", icon: CreditCard, roles: ["admin", "owner", "employee"], employeeAccess: "payments" },
   { path: "/maintenance", label: "Maintenance", icon: Wrench, roles: ["admin", "owner", "employee"], employeeAccess: "maintenance" },
 ] as const;
