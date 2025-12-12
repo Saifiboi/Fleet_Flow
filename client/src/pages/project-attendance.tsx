@@ -170,6 +170,54 @@ export default function ProjectAttendance() {
     });
   }, [projectAttendanceSummary.statusCounts]);
 
+  const vehicleSummaries = useMemo(() => {
+    if (!selectedProjectId) return [] as Array<{
+      vehicleId: string;
+      vehicleLabel: string;
+      licensePlate: string;
+      totalDays: number;
+      markedDays: number;
+      unmarkedDays: number;
+      statusCounts: Record<string, number>;
+    }>;
+
+    return projectVehicles.map((assignment) => {
+      let totalDays = 0;
+      let markedDays = 0;
+      const statusCounts: Record<string, number> = {};
+      const assignmentStartDate = parseISO(assignment.startDate);
+
+      projectNonFutureDays.forEach((day) => {
+        if (isBefore(day, assignmentStartDate)) return;
+        if (projectStartDate && isBefore(day, projectStartDate)) return;
+
+        totalDays += 1;
+        const dateStr = format(day, "yyyy-MM-dd");
+        const record = projectAttendanceByVehicleDate[assignment.vehicle.id]?.[dateStr];
+        if (record) {
+          markedDays += 1;
+          statusCounts[record.status] = (statusCounts[record.status] ?? 0) + 1;
+        }
+      });
+
+      return {
+        vehicleId: assignment.vehicle.id,
+        vehicleLabel: `${assignment.vehicle.make} ${assignment.vehicle.model}`.trim(),
+        licensePlate: assignment.vehicle.licensePlate,
+        totalDays,
+        markedDays,
+        unmarkedDays: totalDays - markedDays,
+        statusCounts,
+      };
+    });
+  }, [
+    projectAttendanceByVehicleDate,
+    projectNonFutureDays,
+    projectStartDate,
+    projectVehicles,
+    selectedProjectId,
+  ]);
+
   useEffect(() => {
     if (!projectMinMonth) return;
 
@@ -386,6 +434,89 @@ export default function ProjectAttendance() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="rounded-lg border bg-card p-4 shadow-sm space-y-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-base font-semibold">Monthly Summary</h3>
+                <p className="text-sm text-muted-foreground">
+                  Totals for {format(projectMonth, "MMMM yyyy")} across this project's assigned vehicles.
+                </p>
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Marked {projectAttendanceSummary.markedDays} of {projectAttendanceSummary.totalDays} eligible days
+                {projectAttendanceSummary.totalDays > 0
+                  ? ` (${Math.round((projectAttendanceSummary.markedDays / projectAttendanceSummary.totalDays) * 100)}%)`
+                  : ""}
+              </div>
+            </div>
+            {selectedProjectId && projectVehicles.length > 0 ? (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-6">
+                {summaryStatuses.map((status) => {
+                  const count = projectAttendanceSummary.statusCounts[status] ?? 0;
+                  const label = status.charAt(0).toUpperCase() + status.slice(1);
+                  return (
+                    <div
+                      key={status}
+                      className="rounded-md border bg-muted/40 px-3 py-2 text-center shadow-sm"
+                    >
+                      <div className="text-xs text-muted-foreground">{label}</div>
+                      <div className="text-lg font-semibold">{count}</div>
+                    </div>
+                  );
+                })}
+                <div className="rounded-md border bg-muted/40 px-3 py-2 text-center shadow-sm">
+                  <div className="text-xs text-muted-foreground">Unmarked</div>
+                  <div className="text-lg font-semibold">{projectAttendanceSummary.unmarkedDays}</div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Select a project with assigned vehicles to view summary.</p>
+            )}
+            {selectedProjectId && vehicleSummaries.length > 0 ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-sm font-medium">
+                  <span>Vehicle summaries</span>
+                  <span className="text-xs text-muted-foreground">Per vehicle for {format(projectMonth, "MMMM yyyy")}</span>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {vehicleSummaries.map((summary) => (
+                    <div key={summary.vehicleId} className="rounded-md border bg-muted/40 p-3 shadow-sm space-y-3">
+                      <div className="flex flex-col gap-1">
+                        <div className="text-sm font-semibold leading-tight">{summary.vehicleLabel}</div>
+                        <div className="text-xs text-muted-foreground">Plate: {summary.licensePlate}</div>
+                        <div className="text-xs text-muted-foreground">
+                          Marked {summary.markedDays} of {summary.totalDays} eligible days
+                          {summary.totalDays > 0
+                            ? ` (${Math.round((summary.markedDays / summary.totalDays) * 100)}%)`
+                            : ""}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {summaryStatuses.map((status) => {
+                          const count = summary.statusCounts[status] ?? 0;
+                          if (count === 0) return null;
+                          const label = status.charAt(0).toUpperCase() + status.slice(1);
+                          return (
+                            <div
+                              key={status}
+                              className="rounded border bg-background px-2 py-1 text-center text-xs shadow-sm"
+                            >
+                              <div className="text-[10px] text-muted-foreground">{label}</div>
+                              <div className="text-sm font-semibold">{count}</div>
+                            </div>
+                          );
+                        })}
+                        <div className="rounded border bg-background px-2 py-1 text-center text-xs shadow-sm">
+                          <div className="text-[10px] text-muted-foreground">Unmarked</div>
+                          <div className="text-sm font-semibold">{summary.unmarkedDays}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
           <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground md:text-base">
             Check a box to mark a vehicle as present for that date. Paid attendance and future dates cannot be changed.
             Use the toggle above to mark every unchecked day as Off across vehicles before saving.
@@ -523,45 +654,6 @@ export default function ProjectAttendance() {
             </div>
             {projectAttendanceLoading && (
               <div className="border-t p-3 text-sm text-muted-foreground">Loading attendance...</div>
-            )}
-          </div>
-          <div className="rounded-lg border bg-card p-4 shadow-sm space-y-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="text-base font-semibold">Monthly Summary</h3>
-                <p className="text-sm text-muted-foreground">
-                  Totals for {format(projectMonth, "MMMM yyyy")} across this project's assigned vehicles.
-                </p>
-              </div>
-              <div className="text-sm text-muted-foreground">
-                Marked {projectAttendanceSummary.markedDays} of {projectAttendanceSummary.totalDays} eligible days
-                {projectAttendanceSummary.totalDays > 0
-                  ? ` (${Math.round((projectAttendanceSummary.markedDays / projectAttendanceSummary.totalDays) * 100)}%)`
-                  : ""}
-              </div>
-            </div>
-            {selectedProjectId && projectVehicles.length > 0 ? (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-6">
-                {summaryStatuses.map((status) => {
-                  const count = projectAttendanceSummary.statusCounts[status] ?? 0;
-                  const label = status.charAt(0).toUpperCase() + status.slice(1);
-                  return (
-                    <div
-                      key={status}
-                      className="rounded-md border bg-muted/40 px-3 py-2 text-center shadow-sm"
-                    >
-                      <div className="text-xs text-muted-foreground">{label}</div>
-                      <div className="text-lg font-semibold">{count}</div>
-                    </div>
-                  );
-                })}
-                <div className="rounded-md border bg-muted/40 px-3 py-2 text-center shadow-sm">
-                  <div className="text-xs text-muted-foreground">Unmarked</div>
-                  <div className="text-lg font-semibold">{projectAttendanceSummary.unmarkedDays}</div>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">Select a project with assigned vehicles to view summary.</p>
             )}
           </div>
         </CardContent>
