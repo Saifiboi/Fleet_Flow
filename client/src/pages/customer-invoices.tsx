@@ -770,7 +770,7 @@ export default function CustomerInvoices() {
                                 </div>
                               </TableCell>
                               <TableCell>{rate.vehicle.owner.name}</TableCell>
-                              <TableCell className="text-right">${Number(rate.rate).toFixed(2)}</TableCell>
+                              <TableCell className="text-right">{formatCurrency(rate.rate)}</TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
