@@ -24,8 +24,8 @@ type FormFieldContextValue<
   name: TName
 }
 
-const FormFieldContext = React.createContext<FormFieldContextValue>(
-  {} as FormFieldContextValue
+const FormFieldContext = React.createContext<FormFieldContextValue | undefined>(
+  undefined
 )
 
 const FormField = <
@@ -44,14 +44,33 @@ const FormField = <
 const useFormField = () => {
   const fieldContext = React.useContext(FormFieldContext)
   const itemContext = React.useContext(FormItemContext)
-  const formContext = useFormContext()
+  const generatedId = React.useId()
+  const formContext = (() => {
+    try {
+      return useFormContext()
+    } catch {
+      return undefined
+    }
+  })()
 
-  if (!fieldContext) {
-    throw new Error("useFormField should be used within <FormField>")
+  const fallbackId = itemContext?.id ?? generatedId
+  const fallbackState = {
+    error: undefined,
+    invalid: false,
+    isDirty: false,
+    isTouched: false,
+    isValidating: false,
   }
 
-  if (!formContext) {
-    throw new Error("useFormField should be used within <Form>")
+  if (!fieldContext || !itemContext || !formContext) {
+    return {
+      id: fallbackId,
+      name: fieldContext?.name ?? "",
+      formItemId: `${fallbackId}-form-item`,
+      formDescriptionId: `${fallbackId}-form-item-description`,
+      formMessageId: `${fallbackId}-form-item-message`,
+      ...fallbackState,
+    }
   }
 
   const { getFieldState, formState } = formContext
@@ -73,8 +92,8 @@ type FormItemContextValue = {
   id: string
 }
 
-const FormItemContext = React.createContext<FormItemContextValue>(
-  {} as FormItemContextValue
+const FormItemContext = React.createContext<FormItemContextValue | undefined>(
+  undefined
 )
 
 const FormItem = React.forwardRef<
