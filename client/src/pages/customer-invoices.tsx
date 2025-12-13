@@ -451,7 +451,7 @@ export default function CustomerInvoices() {
                           <TableCell>
                             <div className="font-medium">{row.invoiceNumber ?? "—"}</div>
                             <div className="text-xs text-muted-foreground">Due {row.dueDate}</div>
-                          </div>
+                          </TableCell>
                           <TableCell>{row.customer.name}</TableCell>
                           <TableCell>{row.project.name}</TableCell>
                           <TableCell>
