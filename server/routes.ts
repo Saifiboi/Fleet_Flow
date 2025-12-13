@@ -1224,10 +1224,6 @@ export async function registerRoutes(app: Application): Promise<void> {
     }
   });
 
-  app.use("/api", (_req, res) => {
-    res.status(404).json({ message: "API route not found" });
-  });
-
   app.put("/api/payments/:id", async (_req, res) => {
     res.status(405).json({ message: "Payments cannot be modified after they are created." });
   });
@@ -1735,6 +1731,11 @@ export async function registerRoutes(app: Application): Promise<void> {
       res.status(400).json({ message: error?.message || "Failed to delete attendance" });
     }
   });
+
+  app.use("/api", (_req, res) => {
+    res.status(404).json({ message: "API route not found" });
+  });
+
   app.get("/chicken", async (req: Request, res: Response) => {
     res.json({ message: "healthy", status: 200 });
   });
