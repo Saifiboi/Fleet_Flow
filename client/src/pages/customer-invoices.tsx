@@ -196,6 +196,13 @@ export default function CustomerInvoices() {
 
   const resetAccordion = () => setAccordionValue(["created-list"]);
 
+  const handleBackToCreated = () => {
+    setShowCreateForm(false);
+    setCalculation(null);
+    setInvoice(null);
+    resetAccordion();
+  };
+
   const handleCalculate = form.handleSubmit(async (values) => {
     openSections("details");
     setIsCalculating(true);
@@ -354,7 +361,7 @@ export default function CustomerInvoices() {
       salesTaxRate: 0,
       status: "pending",
     });
-    setAccordionValue(["created-list", "details"]);
+    setAccordionValue(["details"]);
   };
 
   const handleViewInvoice = (row: CustomerInvoiceWithDetails) => {
@@ -409,90 +416,95 @@ export default function CustomerInvoices() {
         className="space-y-4"
       >
         <AccordionItem value="created-list">
-          <Card>
-            <CardHeader>
-              <CardTitle>Created invoices</CardTitle>
-              <CardDescription>
-                View previously generated invoices and update their payment status.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {invoicesLoading ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Loading invoices...
-                </div>
-              ) : invoices.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Invoice</TableHead>
-                      <TableHead>Customer</TableHead>
-                      <TableHead>Project</TableHead>
-                      <TableHead>Period</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {invoices.map((row) => (
-                      <TableRow key={row.id}>
-                        <TableCell>
-                          <div className="font-medium">{row.invoiceNumber ?? "—"}</div>
-                          <div className="text-xs text-muted-foreground">Due {row.dueDate}</div>
-                        </TableCell>
-                        <TableCell>{row.customer.name}</TableCell>
-                        <TableCell>{row.project.name}</TableCell>
-                        <TableCell>
-                          <div className="flex flex-col text-sm">
-                            <span>{row.periodStart}</span>
-                            <span>{row.periodEnd}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">${formatCurrency(row.total)}</TableCell>
-                        <TableCell>
-                          <Select
-                            disabled={!canManageInvoices || updatingInvoiceId === row.id}
-                            value={row.status}
-                            onValueChange={(value) =>
-                              handleStatusChange(
-                                row.id,
-                                value as "pending" | "partial" | "paid" | "overdue",
-                              )
-                            }
-                          >
-                            <FormControl>
-                              <SelectTrigger className="w-32 capitalize">
-                                <SelectValue />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="pending">Pending</SelectItem>
-                              <SelectItem value="partial">Partial</SelectItem>
-                              <SelectItem value="paid">Paid</SelectItem>
-                              <SelectItem value="overdue">Overdue</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleViewInvoice(row)}
-                            disabled={updatingInvoiceId === row.id}
-                          >
-                            View
-                          </Button>
-                        </TableCell>
+          <AccordionTrigger className="text-lg font-semibold">
+            Created invoices
+          </AccordionTrigger>
+          <AccordionContent>
+            <Card>
+              <CardHeader>
+                <CardTitle>Created invoices</CardTitle>
+                <CardDescription>
+                  View previously generated invoices and update their payment status.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {invoicesLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Loading invoices...
+                  </div>
+                ) : invoices.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Invoice</TableHead>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Project</TableHead>
+                        <TableHead>Period</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                <p className="text-sm text-muted-foreground">No invoices have been created yet.</p>
-              )}
-            </CardContent>
-          </Card>
+                    </TableHeader>
+                    <TableBody>
+                      {invoices.map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell>
+                            <div className="font-medium">{row.invoiceNumber ?? "—"}</div>
+                            <div className="text-xs text-muted-foreground">Due {row.dueDate}</div>
+                          </div>
+                          <TableCell>{row.customer.name}</TableCell>
+                          <TableCell>{row.project.name}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-col text-sm">
+                              <span>{row.periodStart}</span>
+                              <span>{row.periodEnd}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">${formatCurrency(row.total)}</TableCell>
+                          <TableCell>
+                            <Select
+                              disabled={!canManageInvoices || updatingInvoiceId === row.id}
+                              value={row.status}
+                              onValueChange={(value) =>
+                                handleStatusChange(
+                                  row.id,
+                                  value as "pending" | "partial" | "paid" | "overdue",
+                                )
+                              }
+                            >
+                              <FormControl>
+                                <SelectTrigger className="w-32 capitalize">
+                                  <SelectValue />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="pending">Pending</SelectItem>
+                                <SelectItem value="partial">Partial</SelectItem>
+                                <SelectItem value="paid">Paid</SelectItem>
+                                <SelectItem value="overdue">Overdue</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleViewInvoice(row)}
+                              disabled={updatingInvoiceId === row.id}
+                            >
+                              View
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No invoices have been created yet.</p>
+                )}
+              </CardContent>
+            </Card>
+          </AccordionContent>
         </AccordionItem>
 
         {(showCreateForm || calculation) && (
@@ -501,6 +513,12 @@ export default function CustomerInvoices() {
               Invoice details & rates
             </AccordionTrigger>
             <AccordionContent>
+              <div className="flex items-center justify-end pb-4">
+                <Button variant="ghost" onClick={handleBackToCreated}>
+                  Back to created invoices
+                </Button>
+              </div>
+
               <div className="grid gap-6 lg:grid-cols-2">
                 <Card>
                   <CardHeader>
@@ -687,7 +705,8 @@ export default function CustomerInvoices() {
                           </Button>
                           <Button
                             type="button"
-                            variant="secondary"
+                            variant={calculation ? "default" : "secondary"}
+                            className={calculation ? "bg-orange-500 hover:bg-orange-600" : undefined}
                             disabled={!canManageInvoices || !calculation || isCreating}
                             onClick={handleCreate}
                           >
