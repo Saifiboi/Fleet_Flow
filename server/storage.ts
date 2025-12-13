@@ -9,6 +9,7 @@ import {
   paymentTransactions,
   customerInvoices,
   customerInvoiceItems,
+  customerInvoicePayments,
   maintenanceRecords,
   ownershipHistory,
   vehicleAttendance,
@@ -41,6 +42,9 @@ import {
   type CustomerInvoiceCalculation,
   type CustomerInvoiceWithDetails,
   type UpdateCustomerInvoiceStatus,
+  type CustomerInvoicePayment,
+  type InsertCustomerInvoicePayment,
+  type CreateCustomerInvoicePayment,
   type PaymentTransaction,
   type InsertPaymentTransaction,
   type CreatePaymentTransaction,
@@ -179,6 +183,19 @@ export interface IStorage {
     payload: CreateVehiclePaymentForPeriod
   ): Promise<VehiclePaymentForPeriodResult>;
   createCustomerInvoice(payload: CreateCustomerInvoiceRequest): Promise<CustomerInvoiceWithItems>;
+  calculateCustomerInvoice(payload: CreateCustomerInvoiceRequest): Promise<CustomerInvoiceCalculation>;
+  getCustomerInvoices(filter?: { projectIds?: string[]; invoiceIds?: string[] }): Promise<
+    CustomerInvoiceWithDetails[]
+  >;
+  getCustomerInvoice(id: string): Promise<CustomerInvoiceWithDetails | null>;
+  updateCustomerInvoiceStatus(
+    id: string,
+    status: UpdateCustomerInvoiceStatus["status"]
+  ): Promise<CustomerInvoiceWithDetails | null>;
+  recordCustomerInvoicePayment(
+    invoiceId: string,
+    payment: CreateCustomerInvoicePayment
+  ): Promise<CustomerInvoiceWithDetails>;
 
   // Maintenance Records
   getMaintenanceRecords(filter?: { ownerId?: string }): Promise<MaintenanceRecordWithVehicle[]>;
@@ -317,6 +334,70 @@ export class DatabaseStorage implements IStorage {
         outstandingAmount,
       };
     });
+  }
+
+  private async generateUniqueInvoiceNumber(client = db): Promise<string> {
+    let attempts = 0;
+    while (attempts < 10) {
+      const candidate = `AHT-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+      const existing = await client
+        .select({ id: customerInvoices.id })
+        .from(customerInvoices)
+        .where(eq(customerInvoices.invoiceNumber, candidate))
+        .limit(1);
+
+      if (existing.length === 0) {
+        return candidate;
+      }
+
+      attempts += 1;
+    }
+
+    throw new Error("Unable to generate a unique invoice number");
+  }
+
+  private async resolveInvoiceNumber(
+    preferred: string | undefined,
+    client = db
+  ): Promise<string> {
+    if (preferred) {
+      const existing = await client
+        .select({ id: customerInvoices.id })
+        .from(customerInvoices)
+        .where(eq(customerInvoices.invoiceNumber, preferred))
+        .limit(1);
+
+      if (existing.length === 0) {
+        return preferred;
+      }
+    }
+
+    return this.generateUniqueInvoiceNumber(client);
+  }
+
+  private async ensureInvoicePeriodAvailable(
+    projectId: string,
+    periodStart: string,
+    periodEnd: string,
+    client = db
+  ): Promise<void> {
+    const [existing] = await client
+      .select({ id: customerInvoices.id })
+      .from(customerInvoices)
+      .where(
+        and(
+          eq(customerInvoices.projectId, projectId),
+          eq(customerInvoices.periodStart, periodStart),
+          eq(customerInvoices.periodEnd, periodEnd)
+        )
+      )
+      .limit(1);
+
+    if (existing) {
+      const error: any = new Error("An invoice already exists for this project and period");
+      error.status = 409;
+      throw error;
+    }
   }
 
   async getOwners(): Promise<Owner[]> {
@@ -1415,6 +1496,15 @@ export class DatabaseStorage implements IStorage {
     const calculation = await this.calculateCustomerInvoice(payload);
 
     return await db.transaction(async (tx) => {
+      await this.ensureInvoicePeriodAvailable(
+        calculation.projectId,
+        calculation.periodStart,
+        calculation.periodEnd,
+        tx
+      );
+
+      const invoiceNumber = await this.resolveInvoiceNumber(calculation.invoiceNumber, tx);
+
       const invoiceValues: InsertCustomerInvoice = {
         customerId: calculation.customerId,
         projectId: calculation.projectId,
@@ -1426,17 +1516,20 @@ export class DatabaseStorage implements IStorage {
         salesTaxRate: calculation.salesTaxRate.toFixed(2),
         salesTaxAmount: calculation.salesTaxAmount.toFixed(2),
         total: calculation.total.toFixed(2),
-        invoiceNumber: calculation.invoiceNumber,
+        invoiceNumber,
         status: calculation.status ?? "pending",
       };
 
       const [invoice] = await tx.insert(customerInvoices).values(invoiceValues).returning();
 
-      const invoiceItems = calculation.items.map((item) => ({
+      const invoiceItems = calculation.items.map(({ vehicle, ...item }) => ({
         ...item,
         invoiceId: invoice.id,
         dailyRate: item.dailyRate.toFixed(2),
         amount: item.amount.toFixed(2),
+        salesTaxRate: item.salesTaxRate.toFixed(2),
+        salesTaxAmount: item.salesTaxAmount.toFixed(2),
+        totalAmount: item.totalAmount.toFixed(2),
       }));
 
       const createdItems = await tx.insert(customerInvoiceItems).values(invoiceItems).returning();
@@ -1619,6 +1712,24 @@ export class DatabaseStorage implements IStorage {
     const salesTaxAmount = Number((taxableBase * (salesTaxRateNumber / 100)).toFixed(2));
     const total = Number((taxableBase + salesTaxAmount).toFixed(2));
 
+    const itemsWithTax = items.map((item) => {
+      const adjustmentShare = subtotal === 0 ? 0 : (Number(item.amount) / subtotal) * adjustmentNumber;
+      const taxableAmount = Number(item.amount) + adjustmentShare;
+      const itemSalesTaxAmount = Number(
+        (taxableAmount * (salesTaxRateNumber / 100)).toFixed(2)
+      );
+      const totalAmount = Number((taxableAmount + itemSalesTaxAmount).toFixed(2));
+
+      return {
+        ...item,
+        salesTaxRate: salesTaxRateNumber,
+        salesTaxAmount: itemSalesTaxAmount,
+        totalAmount,
+      };
+    });
+
+    const invoiceNumber = await this.resolveInvoiceNumber(payload.invoiceNumber);
+
     return {
       customerId: payload.customerId,
       projectId: payload.projectId,
@@ -1630,9 +1741,9 @@ export class DatabaseStorage implements IStorage {
       salesTaxRate: salesTaxRateNumber,
       salesTaxAmount,
       total,
-      invoiceNumber: payload.invoiceNumber,
+      invoiceNumber,
       status: payload.status ?? "pending",
-      items,
+      items: itemsWithTax,
     };
   }
 
@@ -1669,6 +1780,7 @@ export class DatabaseStorage implements IStorage {
     const invoiceIds = invoiceRows.map((row) => row.invoice.id);
 
     const itemsMap = new Map<string, CustomerInvoiceItemWithVehicle[]>();
+    const paymentsMap = new Map<string, CustomerInvoicePayment[]>();
 
     if (invoiceIds.length > 0) {
       const itemRows = await db
@@ -1694,6 +1806,21 @@ export class DatabaseStorage implements IStorage {
         });
         itemsMap.set(row.item.invoiceId, collection);
       });
+
+      const paymentRows = await db
+        .select({ payment: customerInvoicePayments })
+        .from(customerInvoicePayments)
+        .where(inArray(customerInvoicePayments.invoiceId, invoiceIds))
+        .orderBy(
+          asc(customerInvoicePayments.transactionDate),
+          asc(customerInvoicePayments.createdAt)
+        );
+
+      paymentRows.forEach(({ payment }) => {
+        const collection = paymentsMap.get(payment.invoiceId) ?? [];
+        collection.push(payment);
+        paymentsMap.set(payment.invoiceId, collection);
+      });
     }
 
     return invoiceRows.map((row) => ({
@@ -1701,6 +1828,7 @@ export class DatabaseStorage implements IStorage {
       items: itemsMap.get(row.invoice.id) ?? [],
       project: row.project!,
       customer: row.customer!,
+      payments: paymentsMap.get(row.invoice.id) ?? [],
     }));
   }
 
@@ -1722,6 +1850,57 @@ export class DatabaseStorage implements IStorage {
     if (!updated) return null;
 
     return await this.getCustomerInvoice(id);
+  }
+
+  async recordCustomerInvoicePayment(
+    invoiceId: string,
+    payment: CreateCustomerInvoicePayment
+  ): Promise<CustomerInvoiceWithDetails> {
+    const [updatedInvoiceId] = await db.transaction(async (tx) => {
+      const [invoice] = await tx
+        .select()
+        .from(customerInvoices)
+        .where(eq(customerInvoices.id, invoiceId))
+        .limit(1);
+
+      if (!invoice) {
+        const error: any = new Error("Invoice not found");
+        error.status = 404;
+        throw error;
+      }
+
+      const paymentValues: InsertCustomerInvoicePayment = {
+        ...payment,
+        invoiceId,
+      };
+
+      await tx.insert(customerInvoicePayments).values(paymentValues);
+
+      const paymentRows = await tx
+        .select({ amount: customerInvoicePayments.amount })
+        .from(customerInvoicePayments)
+        .where(eq(customerInvoicePayments.invoiceId, invoiceId));
+
+      const totalPaid = paymentRows.reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
+      const invoiceTotal = Number(invoice.total ?? 0);
+
+      if (totalPaid >= invoiceTotal && invoice.status !== "paid") {
+        await tx
+          .update(customerInvoices)
+          .set({ status: "paid" })
+          .where(eq(customerInvoices.id, invoiceId));
+      }
+
+      return [invoiceId] as const;
+    });
+
+    const updatedInvoice = await this.getCustomerInvoice(updatedInvoiceId);
+
+    if (!updatedInvoice) {
+      throw new Error("Failed to reload invoice after recording payment");
+    }
+
+    return updatedInvoice;
   }
 
   async getMaintenanceRecords(filter?: { ownerId?: string }): Promise<MaintenanceRecordWithVehicle[]> {

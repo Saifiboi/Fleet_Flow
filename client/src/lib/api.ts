@@ -22,6 +22,7 @@ import type {
   CustomerInvoiceCalculation,
   CustomerInvoiceWithDetails,
   UpdateCustomerInvoiceStatus,
+  CreateCustomerInvoicePayment,
   UserWithOwner,
   OwnershipHistoryWithOwner,
   ProjectVehicleCustomerRateWithVehicle,
@@ -206,5 +207,13 @@ export const updateCustomerInvoiceStatus = async (
   payload: UpdateCustomerInvoiceStatus
 ): Promise<CustomerInvoiceWithDetails> => {
   const res = await apiRequest("PATCH", `/api/customer-invoices/${id}/status`, payload);
+  return (await res.json()) as CustomerInvoiceWithDetails;
+};
+
+export const recordCustomerInvoicePayment = async (
+  id: string,
+  payload: CreateCustomerInvoicePayment
+): Promise<CustomerInvoiceWithDetails> => {
+  const res = await apiRequest("POST", `/api/customer-invoices/${id}/payments`, payload);
   return (await res.json()) as CustomerInvoiceWithDetails;
 };

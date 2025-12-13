@@ -161,26 +161,39 @@ export const payments = pgTable("payments", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const customerInvoices = pgTable("customer_invoices", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  customerId: varchar("customer_id")
-    .notNull()
-    .references(() => customers.id, { onDelete: "cascade" }),
-  projectId: varchar("project_id")
-    .notNull()
-    .references(() => projects.id, { onDelete: "cascade" }),
-  periodStart: date("period_start").notNull(),
-  periodEnd: date("period_end").notNull(),
-  subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull().default("0"),
-  adjustment: decimal("adjustment", { precision: 10, scale: 2 }).notNull().default("0"),
-  salesTaxRate: decimal("sales_tax_rate", { precision: 5, scale: 2 }).notNull().default("0"),
-  salesTaxAmount: decimal("sales_tax_amount", { precision: 10, scale: 2 }).notNull().default("0"),
-  total: decimal("total", { precision: 10, scale: 2 }).notNull(),
-  invoiceNumber: text("invoice_number"),
-  status: text("status").notNull().default("pending"),
-  dueDate: date("due_date").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+export const customerInvoices = pgTable(
+  "customer_invoices",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    customerId: varchar("customer_id")
+      .notNull()
+      .references(() => customers.id, { onDelete: "cascade" }),
+    projectId: varchar("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull().default("0"),
+    adjustment: decimal("adjustment", { precision: 10, scale: 2 }).notNull().default("0"),
+    salesTaxRate: decimal("sales_tax_rate", { precision: 5, scale: 2 }).notNull().default("0"),
+    salesTaxAmount: decimal("sales_tax_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+    total: decimal("total", { precision: 10, scale: 2 }).notNull(),
+    invoiceNumber: text("invoice_number"),
+    status: text("status").notNull().default("pending"),
+    dueDate: date("due_date").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    customerInvoicePeriodUnique: uniqueIndex("customer_invoices_project_period_key").on(
+      table.projectId,
+      table.periodStart,
+      table.periodEnd,
+    ),
+    customerInvoiceNumberUnique: uniqueIndex("customer_invoices_invoice_number_key").on(
+      table.invoiceNumber,
+    ),
+  })
+);
 
 export const customerInvoiceItems = pgTable("customer_invoice_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -196,6 +209,23 @@ export const customerInvoiceItems = pgTable("customer_invoice_items", {
   presentDays: integer("present_days").notNull().default(0),
   dailyRate: decimal("daily_rate", { precision: 10, scale: 2 }).notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  salesTaxRate: decimal("sales_tax_rate", { precision: 5, scale: 2 }).notNull().default("0"),
+  salesTaxAmount: decimal("sales_tax_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const customerInvoicePayments = pgTable("customer_invoice_payments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  invoiceId: varchar("invoice_id")
+    .notNull()
+    .references(() => customerInvoices.id, { onDelete: "cascade" }),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  method: text("method").notNull().default("cash"),
+  referenceNumber: text("reference_number"),
+  notes: text("notes"),
+  recordedBy: text("recorded_by"),
+  transactionDate: date("transaction_date").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -788,6 +818,37 @@ export const updateCustomerInvoiceStatusSchema = z.object({
   status: z.enum(["pending", "paid", "overdue"]),
 });
 
+export const insertCustomerInvoicePaymentSchema = createInsertSchema(customerInvoicePayments)
+  .omit({ id: true, createdAt: true })
+  .extend({
+    invoiceId: z.string().min(1, "Invoice is required"),
+    amount: z
+      .coerce
+      .number({ invalid_type_error: "Amount must be a valid number" })
+      .gt(0, "Amount must be greater than zero")
+      .transform((value) => value.toFixed(2)),
+    method: z.enum(["cash", "bank_transfer", "cheque", "mobile_wallet", "other"]).default(
+      "cash",
+    ),
+    transactionDate: z.string().min(1, "Transaction date is required"),
+    referenceNumber: z
+      .string()
+      .optional()
+      .transform((value) => (value === "" ? undefined : value)),
+    notes: z
+      .string()
+      .optional()
+      .transform((value) => (value === "" ? undefined : value)),
+    recordedBy: z
+      .string()
+      .optional()
+      .transform((value) => (value === "" ? undefined : value)),
+  });
+
+export const createCustomerInvoicePaymentSchema = insertCustomerInvoicePaymentSchema.omit({
+  invoiceId: true,
+});
+
 export const insertPaymentTransactionSchema = createInsertSchema(paymentTransactions).omit({
   id: true,
   createdAt: true,
@@ -1009,6 +1070,9 @@ export type CustomerInvoiceCalculationItem = {
   presentDays: number;
   dailyRate: number;
   amount: number;
+  salesTaxRate: number;
+  salesTaxAmount: number;
+  totalAmount: number;
 };
 
 export type CustomerInvoiceCalculation = {
@@ -1027,9 +1091,14 @@ export type CustomerInvoiceCalculation = {
   items: CustomerInvoiceCalculationItem[];
 };
 
+export type CustomerInvoicePayment = typeof customerInvoicePayments.$inferSelect;
+export type InsertCustomerInvoicePayment = z.infer<typeof insertCustomerInvoicePaymentSchema>;
+export type CreateCustomerInvoicePayment = z.infer<typeof createCustomerInvoicePaymentSchema>;
+
 export type CustomerInvoiceWithDetails = CustomerInvoiceWithItems & {
   customer: Customer;
   project: Project;
+  payments: CustomerInvoicePayment[];
 };
 export type UpdateCustomerInvoiceStatus = z.infer<typeof updateCustomerInvoiceStatusSchema>;
 

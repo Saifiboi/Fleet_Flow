@@ -50,12 +50,14 @@ import {
   useProjectCustomerRates,
   useProjects,
   useCustomerInvoices,
+  recordCustomerInvoicePayment,
 } from "@/lib/api";
 import type {
   CreateCustomerInvoiceRequest,
   CustomerInvoiceWithItems,
   CustomerInvoiceCalculation,
   CustomerInvoiceWithDetails,
+  CreateCustomerInvoicePayment,
 } from "@shared/schema";
 import { createCustomerInvoiceSchema } from "@shared/schema";
 import { queryClient } from "@/lib/queryClient";
@@ -76,6 +78,7 @@ export default function CustomerInvoices() {
   const [isCalculating, setIsCalculating] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [updatingInvoiceId, setUpdatingInvoiceId] = useState<string | null>(null);
+  const [isRecordingPayment, setIsRecordingPayment] = useState(false);
 
   const form = useForm<CreateCustomerInvoiceRequest>({
     resolver: zodResolver(createCustomerInvoiceSchema),
@@ -89,6 +92,17 @@ export default function CustomerInvoices() {
       adjustment: 0,
       salesTaxRate: 0,
       status: "pending",
+    },
+  });
+
+  const paymentForm = useForm<CreateCustomerInvoicePayment>({
+    defaultValues: {
+      amount: 0,
+      method: "cash",
+      transactionDate: format(today, "yyyy-MM-dd"),
+      referenceNumber: "",
+      notes: "",
+      recordedBy: user?.name ?? "",
     },
   });
 
@@ -118,6 +132,17 @@ export default function CustomerInvoices() {
     setCalculation(null);
   }, [adjustment, salesTaxRate]);
 
+  useEffect(() => {
+    paymentForm.reset({
+      amount: 0,
+      method: "cash",
+      transactionDate: format(today, "yyyy-MM-dd"),
+      referenceNumber: "",
+      notes: "",
+      recordedBy: user?.name ?? "",
+    });
+  }, [invoice?.id, user?.name, paymentForm]);
+
   const {
     data: projectRates = [],
     isLoading: ratesLoading,
@@ -131,6 +156,18 @@ export default function CustomerInvoices() {
   const formatCurrency = (value: number | string | undefined | null) =>
     Number(value ?? 0).toFixed(2);
 
+  const invoicePayments = invoice?.payments ?? [];
+
+  const totalPaid = useMemo(
+    () => invoicePayments.reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0),
+    [invoicePayments]
+  );
+
+  const outstandingAmount = useMemo(
+    () => Math.max(Number(invoice?.total ?? 0) - totalPaid, 0),
+    [invoice, totalPaid]
+  );
+
   const handleCalculate = form.handleSubmit(async (values) => {
     setIsCalculating(true);
     try {
@@ -139,6 +176,9 @@ export default function CustomerInvoices() {
         customerId: selectedProject?.customerId ?? values.customerId,
       };
       const result = await calculateCustomerInvoice(payload);
+      if (result.invoiceNumber) {
+        form.setValue("invoiceNumber", result.invoiceNumber);
+      }
       setCalculation(result);
       setInvoice(null);
       toast({
@@ -216,6 +256,36 @@ export default function CustomerInvoices() {
       setUpdatingInvoiceId(null);
     }
   };
+
+  const handleRecordPayment = paymentForm.handleSubmit(async (values) => {
+    if (!invoice) {
+      toast({
+        title: "No invoice selected",
+        description: "Select or create an invoice before recording a payment.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsRecordingPayment(true);
+    try {
+      const updated = await recordCustomerInvoicePayment(invoice.id, values);
+      setInvoice(updated);
+      toast({
+        title: "Payment recorded",
+        description: "Invoice payment has been saved.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/customer-invoices"] });
+    } catch (error: any) {
+      toast({
+        title: "Failed to record payment",
+        description: error?.message ?? "An unexpected error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRecordingPayment(false);
+    }
+  });
 
   return (
     <div className="space-y-6">
@@ -559,6 +629,8 @@ export default function CustomerInvoices() {
                     <TableHead className="text-right">Present days</TableHead>
                     <TableHead className="text-right">Daily rate</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
+                    <TableHead className="text-right">Sales tax</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -574,6 +646,8 @@ export default function CustomerInvoices() {
                       <TableCell className="text-right">{item.presentDays}</TableCell>
                       <TableCell className="text-right">${formatCurrency(item.dailyRate)}</TableCell>
                       <TableCell className="text-right">${formatCurrency(item.amount)}</TableCell>
+                      <TableCell className="text-right">${formatCurrency(item.salesTaxAmount)}</TableCell>
+                      <TableCell className="text-right">${formatCurrency(item.totalAmount)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -619,6 +693,29 @@ export default function CustomerInvoices() {
 
             <div className="grid gap-4 md:grid-cols-4">
               <div>
+                <div className="text-sm text-muted-foreground">Invoice number</div>
+                <div className="font-medium">{invoice.invoiceNumber ?? "Pending number"}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Due date</div>
+                <div className="font-medium">{invoice.dueDate}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Total paid</div>
+                <div className="text-lg font-semibold">${formatCurrency(totalPaid)}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Outstanding</div>
+                <div className="text-lg font-semibold">
+                  ${formatCurrency(outstandingAmount)}
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="grid gap-4 md:grid-cols-4">
+              <div>
                 <div className="text-sm text-muted-foreground">Subtotal</div>
                 <div className="text-lg font-semibold">${formatCurrency(invoice.subtotal)}</div>
               </div>
@@ -652,6 +749,8 @@ export default function CustomerInvoices() {
                     <TableHead className="text-right">Present days</TableHead>
                     <TableHead className="text-right">Daily rate</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
+                    <TableHead className="text-right">Sales tax</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -667,10 +766,167 @@ export default function CustomerInvoices() {
                       <TableCell className="text-right">{item.presentDays}</TableCell>
                       <TableCell className="text-right">${formatCurrency(item.dailyRate)}</TableCell>
                       <TableCell className="text-right">${formatCurrency(item.amount)}</TableCell>
+                      <TableCell className="text-right">${formatCurrency(item.salesTaxAmount)}</TableCell>
+                      <TableCell className="text-right">${formatCurrency(item.totalAmount)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-medium text-muted-foreground">Payments</div>
+                <div className="text-xs text-muted-foreground">
+                  Record payments to track outstanding balances.
+                </div>
+              </div>
+
+              {invoicePayments.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Method</TableHead>
+                      <TableHead>Reference</TableHead>
+                      <TableHead>Notes</TableHead>
+                      <TableHead>Recorded by</TableHead>
+                      <TableHead>Transaction date</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {invoicePayments.map((payment) => (
+                      <TableRow key={payment.id}>
+                        <TableCell>${formatCurrency(payment.amount)}</TableCell>
+                        <TableCell className="capitalize">{payment.method.replace("_", " ")}</TableCell>
+                        <TableCell>{payment.referenceNumber ?? "—"}</TableCell>
+                        <TableCell className="max-w-xs truncate">{payment.notes ?? "—"}</TableCell>
+                        <TableCell>{payment.recordedBy ?? "—"}</TableCell>
+                        <TableCell>{payment.transactionDate}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <p className="text-sm text-muted-foreground">No payments recorded yet.</p>
+              )}
+
+              {canManageInvoices && (
+                <Form {...paymentForm}>
+                  <form
+                    className="grid gap-4 md:grid-cols-5 md:items-end"
+                    onSubmit={handleRecordPayment}
+                  >
+                    <FormField
+                      control={paymentForm.control}
+                      name="amount"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Payment amount</FormLabel>
+                          <FormControl>
+                            <Input type="number" step="0.01" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={paymentForm.control}
+                      name="method"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Method</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="cash">Cash</SelectItem>
+                              <SelectItem value="bank_transfer">Bank transfer</SelectItem>
+                              <SelectItem value="cheque">Cheque</SelectItem>
+                              <SelectItem value="mobile_wallet">Mobile wallet</SelectItem>
+                              <SelectItem value="other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={paymentForm.control}
+                      name="transactionDate"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Transaction date</FormLabel>
+                          <FormControl>
+                            <Input type="date" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={paymentForm.control}
+                      name="referenceNumber"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Reference</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Receipt or ref" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={paymentForm.control}
+                      name="recordedBy"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Recorded by</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Name" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={paymentForm.control}
+                      name="notes"
+                      render={({ field }) => (
+                        <FormItem className="md:col-span-5">
+                          <FormLabel>Notes</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Optional notes" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <div className="md:col-span-5">
+                      <Button type="submit" disabled={isRecordingPayment}>
+                        {isRecordingPayment ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <ClipboardCheck className="mr-2 h-4 w-4" />
+                        )}
+                        Record payment
+                      </Button>
+                    </div>
+                  </form>
+                </Form>
+              )}
             </div>
           </CardContent>
         </Card>

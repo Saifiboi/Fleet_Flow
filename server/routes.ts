@@ -14,6 +14,7 @@ import {
   createPaymentTransactionSchema,
   createVehiclePaymentForPeriodSchema,
   createCustomerInvoiceSchema,
+  createCustomerInvoicePaymentSchema,
   updateCustomerInvoiceStatusSchema,
   insertMaintenanceRecordSchema,
   insertOwnershipHistorySchema,
@@ -1218,6 +1219,31 @@ export async function registerRoutes(app: Application): Promise<void> {
 
       const updated = await storage.updateCustomerInvoiceStatus(req.params.id, status);
       res.json(updated);
+    } catch (error: any) {
+      const status = error.status ?? 400;
+      res.status(status).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/customer-invoices/:id/payments", async (req, res) => {
+    if (!requireAdminOrEmployee(req, res, "payments", { manage: true })) {
+      return;
+    }
+
+    try {
+      const payment = createCustomerInvoicePaymentSchema.parse(req.body);
+      const invoice = await storage.getCustomerInvoice(req.params.id);
+
+      if (!invoice) {
+        return res.status(404).json({ message: "Invoice not found" });
+      }
+
+      if (isEmployee(req) && !employeeProjectIds(req).includes(invoice.projectId)) {
+        return res.status(403).json({ message: "You cannot update invoices for this project" });
+      }
+
+      const updated = await storage.recordCustomerInvoicePayment(req.params.id, payment);
+      res.status(201).json(updated);
     } catch (error: any) {
       const status = error.status ?? 400;
       res.status(status).json({ message: error.message });
