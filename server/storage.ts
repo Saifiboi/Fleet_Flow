@@ -382,19 +382,25 @@ export class DatabaseStorage implements IStorage {
     client = db
   ): Promise<void> {
     const [existing] = await client
-      .select({ id: customerInvoices.id })
+      .select({
+        id: customerInvoices.id,
+        periodStart: customerInvoices.periodStart,
+        periodEnd: customerInvoices.periodEnd,
+      })
       .from(customerInvoices)
       .where(
         and(
           eq(customerInvoices.projectId, projectId),
-          eq(customerInvoices.periodStart, periodStart),
-          eq(customerInvoices.periodEnd, periodEnd)
+          lte(customerInvoices.periodStart, periodEnd),
+          gte(customerInvoices.periodEnd, periodStart)
         )
       )
       .limit(1);
 
     if (existing) {
-      const error: any = new Error("An invoice already exists for this project and period");
+      const error: any = new Error(
+        "An invoice already exists for this project during the selected period"
+      );
       error.status = 409;
       throw error;
     }
@@ -1869,6 +1875,33 @@ export class DatabaseStorage implements IStorage {
         throw error;
       }
 
+      const existingPayments = await tx
+        .select({ amount: customerInvoicePayments.amount })
+        .from(customerInvoicePayments)
+        .where(eq(customerInvoicePayments.invoiceId, invoiceId));
+
+      const alreadyPaid = existingPayments.reduce(
+        (sum, row) => sum + Number(row.amount ?? 0),
+        0
+      );
+
+      const invoiceTotal = Number(invoice.total ?? 0);
+      const outstanding = invoiceTotal - alreadyPaid;
+
+      if (outstanding <= 0 || invoice.status === "paid") {
+        const error: any = new Error("This invoice is already fully paid");
+        error.status = 409;
+        throw error;
+      }
+
+      const paymentAmount = Number(payment.amount ?? 0);
+
+      if (paymentAmount <= 0) {
+        const error: any = new Error("Payment amount must be greater than zero");
+        error.status = 400;
+        throw error;
+      }
+
       const paymentValues: InsertCustomerInvoicePayment = {
         ...payment,
         invoiceId,
@@ -1876,13 +1909,7 @@ export class DatabaseStorage implements IStorage {
 
       await tx.insert(customerInvoicePayments).values(paymentValues);
 
-      const paymentRows = await tx
-        .select({ amount: customerInvoicePayments.amount })
-        .from(customerInvoicePayments)
-        .where(eq(customerInvoicePayments.invoiceId, invoiceId));
-
-      const totalPaid = paymentRows.reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
-      const invoiceTotal = Number(invoice.total ?? 0);
+      const totalPaid = alreadyPaid + paymentAmount;
 
       if (totalPaid >= invoiceTotal && invoice.status !== "paid") {
         await tx

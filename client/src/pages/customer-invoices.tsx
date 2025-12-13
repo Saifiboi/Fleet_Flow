@@ -168,6 +168,8 @@ export default function CustomerInvoices() {
     [invoice, totalPaid]
   );
 
+  const paymentBlocked = !invoice || outstandingAmount <= 0;
+
   const handleCalculate = form.handleSubmit(async (values) => {
     setIsCalculating(true);
     try {
@@ -262,6 +264,15 @@ export default function CustomerInvoices() {
       toast({
         title: "No invoice selected",
         description: "Select or create an invoice before recording a payment.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (outstandingAmount <= 0) {
+      toast({
+        title: "Invoice already paid",
+        description: "This invoice has no outstanding balance to record.",
         variant: "destructive",
       });
       return;
@@ -826,7 +837,12 @@ export default function CustomerInvoices() {
                         <FormItem>
                           <FormLabel>Payment amount</FormLabel>
                           <FormControl>
-                            <Input type="number" step="0.01" {...field} />
+                            <Input
+                              type="number"
+                              step="0.01"
+                              disabled={paymentBlocked || isRecordingPayment}
+                              {...field}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -839,7 +855,11 @@ export default function CustomerInvoices() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Method</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
+                          <Select
+                            onValueChange={field.onChange}
+                            value={field.value}
+                            disabled={paymentBlocked || isRecordingPayment}
+                          >
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue />
@@ -865,7 +885,11 @@ export default function CustomerInvoices() {
                         <FormItem>
                           <FormLabel>Transaction date</FormLabel>
                           <FormControl>
-                            <Input type="date" {...field} />
+                            <Input
+                              type="date"
+                              disabled={paymentBlocked || isRecordingPayment}
+                              {...field}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -879,7 +903,11 @@ export default function CustomerInvoices() {
                         <FormItem>
                           <FormLabel>Reference</FormLabel>
                           <FormControl>
-                            <Input placeholder="Receipt or ref" {...field} />
+                            <Input
+                              placeholder="Receipt or ref"
+                              disabled={paymentBlocked || isRecordingPayment}
+                              {...field}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -893,7 +921,11 @@ export default function CustomerInvoices() {
                         <FormItem>
                           <FormLabel>Recorded by</FormLabel>
                           <FormControl>
-                            <Input placeholder="Name" {...field} />
+                            <Input
+                              placeholder="Name"
+                              disabled={paymentBlocked || isRecordingPayment}
+                              {...field}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -907,7 +939,11 @@ export default function CustomerInvoices() {
                         <FormItem className="md:col-span-5">
                           <FormLabel>Notes</FormLabel>
                           <FormControl>
-                            <Input placeholder="Optional notes" {...field} />
+                            <Input
+                              placeholder="Optional notes"
+                              disabled={paymentBlocked || isRecordingPayment}
+                              {...field}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -915,7 +951,11 @@ export default function CustomerInvoices() {
                     />
 
                     <div className="md:col-span-5">
-                      <Button type="submit" disabled={isRecordingPayment}>
+                      <Button
+                        type="submit"
+                        disabled={isRecordingPayment || paymentBlocked}
+                        variant={paymentBlocked ? "secondary" : "default"}
+                      >
                         {isRecordingPayment ? (
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         ) : (
@@ -923,6 +963,11 @@ export default function CustomerInvoices() {
                         )}
                         Record payment
                       </Button>
+                      {paymentBlocked && (
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Payments can only be recorded for invoices with an outstanding balance.
+                        </p>
+                      )}
                     </div>
                   </form>
                 </Form>
