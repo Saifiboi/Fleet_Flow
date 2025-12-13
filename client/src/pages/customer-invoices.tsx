@@ -425,6 +425,72 @@ export default function CustomerInvoices() {
 
   return (
     <div className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-1 pt-3">
+            <CardDescription>Total invoices</CardDescription>
+            <CardTitle className="flex items-center gap-2 text-2xl">
+              <FileText className="h-5 w-5 text-muted-foreground" />
+              {invoicesLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : invoiceStats.count}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pb-3 pt-0 text-sm text-muted-foreground">
+            Pending {invoiceStats.pending} • Partial {invoiceStats.partial}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-1 pt-3">
+            <CardDescription>Paid vs overdue</CardDescription>
+            <CardTitle className="flex items-center gap-2 text-2xl">
+              <Calculator className="h-5 w-5 text-muted-foreground" />
+              {invoicesLoading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                `${invoiceStats.paid} paid / ${invoiceStats.overdue} overdue`
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pb-3 pt-0 text-sm text-muted-foreground">
+            Track cleared invoices against those requiring follow-up.
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-1 pt-3">
+            <CardDescription>Total billed</CardDescription>
+            <CardTitle className="flex items-center gap-2 text-2xl">
+              <Wallet className="h-5 w-5 text-muted-foreground" />
+              {invoicesLoading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                formatCurrency(invoiceStats.billed)
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pb-3 pt-0 text-sm text-muted-foreground">
+            Includes all generated invoices in the system.
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-1 pt-3">
+            <CardDescription>Outstanding balance</CardDescription>
+            <CardTitle className="flex items-center gap-2 text-2xl">
+              <ClipboardCheck className="h-5 w-5 text-muted-foreground" />
+              {invoicesLoading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                formatCurrency(invoiceStats.outstanding)
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pb-3 pt-0 text-sm text-muted-foreground">
+            Balance remaining after recorded payments.
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Customer Invoices</h1>
@@ -441,72 +507,6 @@ export default function CustomerInvoices() {
             Billing
           </Badge>
         </div>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Total invoices</CardDescription>
-            <CardTitle className="flex items-center gap-2 text-2xl">
-              <FileText className="h-5 w-5 text-muted-foreground" />
-              {invoicesLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : invoiceStats.count}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Pending {invoiceStats.pending} • Partial {invoiceStats.partial}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Paid vs overdue</CardDescription>
-            <CardTitle className="flex items-center gap-2 text-2xl">
-              <Calculator className="h-5 w-5 text-muted-foreground" />
-              {invoicesLoading ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                `${invoiceStats.paid} paid / ${invoiceStats.overdue} overdue`
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Track cleared invoices against those requiring follow-up.
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Total billed</CardDescription>
-            <CardTitle className="flex items-center gap-2 text-2xl">
-              <Wallet className="h-5 w-5 text-muted-foreground" />
-              {invoicesLoading ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                formatCurrency(invoiceStats.billed)
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Includes all generated invoices in the system.
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Outstanding balance</CardDescription>
-            <CardTitle className="flex items-center gap-2 text-2xl">
-              <ClipboardCheck className="h-5 w-5 text-muted-foreground" />
-              {invoicesLoading ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                formatCurrency(invoiceStats.outstanding)
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Balance remaining after recorded payments.
-          </CardContent>
-        </Card>
       </div>
 
       {!canManageInvoices && (
@@ -526,12 +526,12 @@ export default function CustomerInvoices() {
       >
         <AccordionItem value="created-list">
           <AccordionTrigger className="text-lg font-semibold">
-            Created invoices
+            Invoices History
           </AccordionTrigger>
           <AccordionContent>
             <Card>
               <CardHeader>
-                <CardTitle>Created invoices</CardTitle>
+                <CardTitle>Invoices History</CardTitle>
                 <CardDescription>
                   View previously generated invoices and update their payment status.
                 </CardDescription>
