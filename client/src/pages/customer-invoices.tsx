@@ -505,12 +505,12 @@ export default function CustomerInvoices() {
               <div>
                 <div className="text-sm text-muted-foreground">Customer</div>
                 <div className="font-medium">
-                  {invoice.customer?.name ?? selectedProject?.customer.name}
+                  {invoice?.customer?.name ?? selectedProject?.customer.name}
                 </div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Project</div>
-                <div className="font-medium">{invoice.project?.name ?? selectedProject?.name}</div>
+                <div className="font-medium">{invoice?.project?.name ?? selectedProject?.name}</div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Period</div>
