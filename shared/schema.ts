@@ -784,6 +784,10 @@ export const createCustomerInvoiceSchema = z
     }
   });
 
+export const updateCustomerInvoiceStatusSchema = z.object({
+  status: z.enum(["pending", "paid", "overdue"]),
+});
+
 export const insertPaymentTransactionSchema = createInsertSchema(paymentTransactions).omit({
   id: true,
   createdAt: true,
@@ -996,6 +1000,38 @@ export type CustomerInvoiceItem = typeof customerInvoiceItems.$inferSelect;
 export type CreateCustomerInvoiceRequest = z.infer<typeof createCustomerInvoiceSchema>;
 export type CustomerInvoiceItemWithVehicle = CustomerInvoiceItem & { vehicle: VehicleWithOwner };
 export type CustomerInvoiceWithItems = CustomerInvoice & { items: CustomerInvoiceItemWithVehicle[] };
+export type CustomerInvoiceCalculationItem = {
+  vehicleId: string;
+  vehicle: VehicleWithOwner;
+  month: number;
+  year: number;
+  monthLabel?: string | null;
+  presentDays: number;
+  dailyRate: number;
+  amount: number;
+};
+
+export type CustomerInvoiceCalculation = {
+  customerId: string;
+  projectId: string;
+  periodStart: string;
+  periodEnd: string;
+  dueDate: string;
+  subtotal: number;
+  adjustment: number;
+  salesTaxRate: number;
+  salesTaxAmount: number;
+  total: number;
+  invoiceNumber?: string;
+  status: "pending" | "paid" | "overdue";
+  items: CustomerInvoiceCalculationItem[];
+};
+
+export type CustomerInvoiceWithDetails = CustomerInvoiceWithItems & {
+  customer: Customer;
+  project: Project;
+};
+export type UpdateCustomerInvoiceStatus = z.infer<typeof updateCustomerInvoiceStatusSchema>;
 
 export type MaintenanceRecord = typeof maintenanceRecords.$inferSelect;
 export type InsertMaintenanceRecord = z.infer<typeof insertMaintenanceRecordSchema>;

@@ -38,6 +38,9 @@ import {
   type CustomerInvoiceItemWithVehicle,
   type CreateCustomerInvoiceRequest,
   type CustomerInvoiceWithItems,
+  type CustomerInvoiceCalculation,
+  type CustomerInvoiceWithDetails,
+  type UpdateCustomerInvoiceStatus,
   type PaymentTransaction,
   type InsertPaymentTransaction,
   type CreatePaymentTransaction,
@@ -1409,6 +1412,50 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createCustomerInvoice(payload: CreateCustomerInvoiceRequest): Promise<CustomerInvoiceWithItems> {
+    const calculation = await this.calculateCustomerInvoice(payload);
+
+    return await db.transaction(async (tx) => {
+      const invoiceValues: InsertCustomerInvoice = {
+        customerId: calculation.customerId,
+        projectId: calculation.projectId,
+        periodStart: calculation.periodStart,
+        periodEnd: calculation.periodEnd,
+        dueDate: calculation.dueDate,
+        subtotal: calculation.subtotal.toFixed(2),
+        adjustment: calculation.adjustment.toFixed(2),
+        salesTaxRate: calculation.salesTaxRate.toFixed(2),
+        salesTaxAmount: calculation.salesTaxAmount.toFixed(2),
+        total: calculation.total.toFixed(2),
+        invoiceNumber: calculation.invoiceNumber,
+        status: calculation.status ?? "pending",
+      };
+
+      const [invoice] = await tx.insert(customerInvoices).values(invoiceValues).returning();
+
+      const invoiceItems = calculation.items.map((item) => ({
+        ...item,
+        invoiceId: invoice.id,
+        dailyRate: item.dailyRate.toFixed(2),
+        amount: item.amount.toFixed(2),
+      }));
+
+      const createdItems = await tx.insert(customerInvoiceItems).values(invoiceItems).returning();
+
+      const itemsWithVehicle: CustomerInvoiceItemWithVehicle[] = createdItems.map((item) => ({
+        ...item,
+        vehicle: calculation.items.find((source) => source.vehicleId === item.vehicleId)!.vehicle,
+      }));
+
+      return {
+        ...invoice,
+        items: itemsWithVehicle,
+      };
+    });
+  }
+
+  async calculateCustomerInvoice(
+    payload: CreateCustomerInvoiceRequest
+  ): Promise<CustomerInvoiceCalculation> {
     const [project] = await db
       .select({ project: projects })
       .from(projects)
@@ -1444,8 +1491,7 @@ export class DatabaseStorage implements IStorage {
         return normalizeToUtcDate(value);
       }
 
-      const [datePart] = value.split("T");
-      const [year, month, day] = datePart.split("-").map(Number);
+      const [year, month, day] = value.split("-").map((part) => Number(part));
 
       if ([year, month, day].some((component) => Number.isNaN(component))) {
         throw new Error(`Invalid date value encountered: ${value}`);
@@ -1540,7 +1586,7 @@ export class DatabaseStorage implements IStorage {
     });
 
     const monthFormatter = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" });
-    const items: Array<Omit<CustomerInvoiceItem, "id" | "createdAt">> = [];
+    const items: CustomerInvoiceCalculationItem[] = [];
 
     for (const [vehicleId, monthMap] of buckets.entries()) {
       const rateNumber = rateMap.get(vehicleId) ?? 0;
@@ -1554,8 +1600,8 @@ export class DatabaseStorage implements IStorage {
         const monthLabel = monthFormatter.format(referenceDate);
 
         items.push({
-          invoiceId: "", // placeholder, replaced after invoice creation
           vehicleId,
+          vehicle: vehicleMap.get(vehicleId)!,
           month: bucket.month,
           year: bucket.year,
           monthLabel,
@@ -1570,46 +1616,112 @@ export class DatabaseStorage implements IStorage {
     const adjustmentNumber = Number(payload.adjustment ?? 0);
     const salesTaxRateNumber = Number(payload.salesTaxRate ?? 0);
     const taxableBase = subtotal + adjustmentNumber;
-    const salesTaxAmount = taxableBase * (salesTaxRateNumber / 100);
-    const total = taxableBase + salesTaxAmount;
+    const salesTaxAmount = Number((taxableBase * (salesTaxRateNumber / 100)).toFixed(2));
+    const total = Number((taxableBase + salesTaxAmount).toFixed(2));
 
-    return await db.transaction(async (tx) => {
-      const invoiceValues: InsertCustomerInvoice = {
-        customerId: payload.customerId,
-        projectId: payload.projectId,
-        periodStart: startDateString,
-        periodEnd: endDateString,
-        dueDate: payload.dueDate,
-        subtotal: subtotal.toFixed(2),
-        adjustment: adjustmentNumber.toFixed(2),
-        salesTaxRate: salesTaxRateNumber.toFixed(2),
-        salesTaxAmount: salesTaxAmount.toFixed(2),
-        total: total.toFixed(2),
-        invoiceNumber: payload.invoiceNumber,
-        status: payload.status ?? "pending",
-      };
+    return {
+      customerId: payload.customerId,
+      projectId: payload.projectId,
+      periodStart: startDateString,
+      periodEnd: endDateString,
+      dueDate: payload.dueDate,
+      subtotal,
+      adjustment: adjustmentNumber,
+      salesTaxRate: salesTaxRateNumber,
+      salesTaxAmount,
+      total,
+      invoiceNumber: payload.invoiceNumber,
+      status: payload.status ?? "pending",
+      items,
+    };
+  }
 
-      const [invoice] = await tx.insert(customerInvoices).values(invoiceValues).returning();
+  async getCustomerInvoices(filter?: {
+    projectIds?: string[];
+    invoiceIds?: string[];
+  }): Promise<CustomerInvoiceWithDetails[]> {
+    let query = db
+      .select({
+        invoice: customerInvoices,
+        project: projects,
+        customer: customers,
+      })
+      .from(customerInvoices)
+      .leftJoin(projects, eq(customerInvoices.projectId, projects.id))
+      .leftJoin(customers, eq(customerInvoices.customerId, customers.id))
+      .orderBy(desc(customerInvoices.createdAt));
 
-      const invoiceItems = items.map((item) => ({
-        ...item,
-        invoiceId: invoice.id,
-        dailyRate: item.dailyRate.toFixed(2),
-        amount: item.amount.toFixed(2),
-      }));
+    const conditions = [] as any[];
 
-      const createdItems = await tx.insert(customerInvoiceItems).values(invoiceItems).returning();
+    if (filter?.projectIds && filter.projectIds.length > 0) {
+      conditions.push(inArray(customerInvoices.projectId, filter.projectIds));
+    }
 
-      const itemsWithVehicle: CustomerInvoiceItemWithVehicle[] = createdItems.map((item) => ({
-        ...item,
-        vehicle: vehicleMap.get(item.vehicleId)!,
-      }));
+    if (filter?.invoiceIds && filter.invoiceIds.length > 0) {
+      conditions.push(inArray(customerInvoices.id, filter.invoiceIds));
+    }
 
-      return {
-        ...invoice,
-        items: itemsWithVehicle,
-      };
-    });
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
+    }
+
+    const invoiceRows = await withRetry(() => query);
+    const invoiceIds = invoiceRows.map((row) => row.invoice.id);
+
+    const itemsMap = new Map<string, CustomerInvoiceItemWithVehicle[]>();
+
+    if (invoiceIds.length > 0) {
+      const itemRows = await db
+        .select({
+          item: customerInvoiceItems,
+          vehicle: vehicles,
+          owner: owners,
+        })
+        .from(customerInvoiceItems)
+        .leftJoin(vehicles, eq(customerInvoiceItems.vehicleId, vehicles.id))
+        .leftJoin(owners, eq(vehicles.ownerId, owners.id))
+        .where(inArray(customerInvoiceItems.invoiceId, invoiceIds))
+        .orderBy(customerInvoiceItems.createdAt);
+
+      itemRows.forEach((row) => {
+        const collection = itemsMap.get(row.item.invoiceId) ?? [];
+        collection.push({
+          ...row.item,
+          vehicle: {
+            ...row.vehicle!,
+            owner: row.owner!,
+          },
+        });
+        itemsMap.set(row.item.invoiceId, collection);
+      });
+    }
+
+    return invoiceRows.map((row) => ({
+      ...row.invoice,
+      items: itemsMap.get(row.invoice.id) ?? [],
+      project: row.project!,
+      customer: row.customer!,
+    }));
+  }
+
+  async getCustomerInvoice(id: string): Promise<CustomerInvoiceWithDetails | null> {
+    const [invoice] = await this.getCustomerInvoices({ invoiceIds: [id] });
+    return invoice ?? null;
+  }
+
+  async updateCustomerInvoiceStatus(
+    id: string,
+    status: UpdateCustomerInvoiceStatus["status"]
+  ): Promise<CustomerInvoiceWithDetails | null> {
+    const [updated] = await db
+      .update(customerInvoices)
+      .set({ status })
+      .where(eq(customerInvoices.id, id))
+      .returning();
+
+    if (!updated) return null;
+
+    return await this.getCustomerInvoice(id);
   }
 
   async getMaintenanceRecords(filter?: { ownerId?: string }): Promise<MaintenanceRecordWithVehicle[]> {

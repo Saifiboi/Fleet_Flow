@@ -45,14 +45,20 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import {
   createCustomerInvoice,
+  calculateCustomerInvoice,
+  updateCustomerInvoiceStatus,
   useProjectCustomerRates,
   useProjects,
+  useCustomerInvoices,
 } from "@/lib/api";
 import type {
   CreateCustomerInvoiceRequest,
   CustomerInvoiceWithItems,
+  CustomerInvoiceCalculation,
+  CustomerInvoiceWithDetails,
 } from "@shared/schema";
 import { createCustomerInvoiceSchema } from "@shared/schema";
+import { queryClient } from "@/lib/queryClient";
 import { Calculator, ClipboardCheck, Loader2, Receipt } from "lucide-react";
 
 const today = new Date();
@@ -62,7 +68,14 @@ export default function CustomerInvoices() {
   const { toast } = useToast();
   const { user } = useAuth();
   const { data: projects = [], isLoading: projectsLoading } = useProjects();
-  const [invoice, setInvoice] = useState<CustomerInvoiceWithItems | null>(null);
+  const { data: invoices = [], isLoading: invoicesLoading } = useCustomerInvoices();
+  const [invoice, setInvoice] = useState<
+    CustomerInvoiceWithItems | CustomerInvoiceWithDetails | null
+  >(null);
+  const [calculation, setCalculation] = useState<CustomerInvoiceCalculation | null>(null);
+  const [isCalculating, setIsCalculating] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [updatingInvoiceId, setUpdatingInvoiceId] = useState<string | null>(null);
 
   const form = useForm<CreateCustomerInvoiceRequest>({
     resolver: zodResolver(createCustomerInvoiceSchema),
@@ -82,6 +95,8 @@ export default function CustomerInvoices() {
   const projectId = form.watch("projectId");
   const startDate = form.watch("startDate");
   const endDate = form.watch("endDate");
+  const adjustment = form.watch("adjustment");
+  const salesTaxRate = form.watch("salesTaxRate");
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === projectId),
@@ -96,7 +111,12 @@ export default function CustomerInvoices() {
 
   useEffect(() => {
     setInvoice(null);
+    setCalculation(null);
   }, [projectId, startDate, endDate]);
+
+  useEffect(() => {
+    setCalculation(null);
+  }, [adjustment, salesTaxRate]);
 
   const {
     data: projectRates = [],
@@ -104,7 +124,49 @@ export default function CustomerInvoices() {
     isFetching: ratesFetching,
   } = useProjectCustomerRates(projectId);
 
-  const onSubmit = form.handleSubmit(async (values) => {
+  const canManageInvoices =
+    user?.role === "admin" ||
+    (user?.role === "employee" && user.employeeAccess?.includes("payments"));
+
+  const formatCurrency = (value: number | string | undefined | null) =>
+    Number(value ?? 0).toFixed(2);
+
+  const handleCalculate = form.handleSubmit(async (values) => {
+    setIsCalculating(true);
+    try {
+      const payload: CreateCustomerInvoiceRequest = {
+        ...values,
+        customerId: selectedProject?.customerId ?? values.customerId,
+      };
+      const result = await calculateCustomerInvoice(payload);
+      setCalculation(result);
+      setInvoice(null);
+      toast({
+        title: "Invoice calculated",
+        description: "Review the totals before creating the invoice.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Failed to calculate invoice",
+        description: error?.message ?? "An unexpected error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCalculating(false);
+    }
+  });
+
+  const handleCreate = form.handleSubmit(async (values) => {
+    if (!calculation) {
+      toast({
+        title: "Calculate required",
+        description: "Please calculate the invoice before creating it.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsCreating(true);
     try {
       const payload: CreateCustomerInvoiceRequest = {
         ...values,
@@ -112,22 +174,48 @@ export default function CustomerInvoices() {
       };
       const created = await createCustomerInvoice(payload);
       setInvoice(created);
+      setCalculation(null);
       toast({
         title: "Invoice created",
         description: "Project invoice calculated and saved.",
       });
+      queryClient.invalidateQueries({ queryKey: ["/api/customer-invoices"] });
     } catch (error: any) {
       toast({
         title: "Failed to create invoice",
         description: error?.message ?? "An unexpected error occurred",
         variant: "destructive",
       });
+    } finally {
+      setIsCreating(false);
     }
   });
 
-  const canManageInvoices =
-    user?.role === "admin" ||
-    (user?.role === "employee" && user.employeeAccess?.includes("payments"));
+  const handleStatusChange = async (
+    invoiceId: string,
+    status: "pending" | "paid" | "overdue",
+  ) => {
+    setUpdatingInvoiceId(invoiceId);
+    try {
+      const updated = await updateCustomerInvoiceStatus(invoiceId, { status });
+      if (invoice?.id === invoiceId) {
+        setInvoice(updated);
+      }
+      toast({
+        title: "Invoice updated",
+        description: "Invoice status has been updated.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/customer-invoices"] });
+    } catch (error: any) {
+      toast({
+        title: "Failed to update status",
+        description: error?.message ?? "An unexpected error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingInvoiceId(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -163,7 +251,7 @@ export default function CustomerInvoices() {
           </CardHeader>
           <CardContent>
             <Form {...form}>
-              <form className="space-y-4" onSubmit={onSubmit}>
+              <form className="space-y-4" onSubmit={handleCalculate}>
                 <div className="grid gap-4 md:grid-cols-2">
                   <FormField
                     control={form.control}
@@ -315,13 +403,36 @@ export default function CustomerInvoices() {
                 <input type="hidden" {...form.register("customerId")} />
 
                 <div className="flex flex-wrap items-center gap-3">
-                  <Button type="submit" disabled={!canManageInvoices || !projectId}>
-                    <Calculator className="mr-2 h-4 w-4" />
-                    Calculate &amp; Create Invoice
+                  <Button type="submit" disabled={!canManageInvoices || !projectId || isCalculating}>
+                    {isCalculating ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Calculator className="mr-2 h-4 w-4" />
+                    )}
+                    Calculate invoice
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={!canManageInvoices || !calculation || isCreating}
+                    onClick={handleCreate}
+                  >
+                    {isCreating ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Receipt className="mr-2 h-4 w-4" />
+                    )}
+                    Create invoice
                   </Button>
                   {(!selectedProject || projectRates.length === 0) && (
                     <p className="text-sm text-muted-foreground">
                       Select a project with customer vehicle rates to calculate totals.
+                    </p>
+                  )}
+                  {!calculation && (
+                    <p className="text-xs text-muted-foreground">
+                      Adjust the adjustment or tax rate and click Calculate to refresh totals before
+                      creating.
                     </p>
                   )}
                 </div>
@@ -378,6 +489,100 @@ export default function CustomerInvoices() {
         </Card>
       </div>
 
+      {calculation && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ClipboardCheck className="h-5 w-5" /> Invoice preview
+            </CardTitle>
+            <CardDescription>
+              Totals based on attendance and the current adjustment and tax values. Create the
+              invoice to save it.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-4">
+              <div>
+                <div className="text-sm text-muted-foreground">Customer</div>
+                <div className="font-medium">
+                  {invoice.customer?.name ?? selectedProject?.customer.name}
+                </div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Project</div>
+                <div className="font-medium">{invoice.project?.name ?? selectedProject?.name}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Period</div>
+                <div className="font-medium">
+                  {calculation.periodStart} — {calculation.periodEnd}
+                </div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Due date</div>
+                <div className="font-medium">{calculation.dueDate}</div>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="grid gap-4 md:grid-cols-4">
+              <div>
+                <div className="text-sm text-muted-foreground">Subtotal</div>
+                <div className="text-lg font-semibold">${formatCurrency(calculation.subtotal)}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Adjustment</div>
+                <div className="text-lg font-semibold">${formatCurrency(calculation.adjustment)}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Sales tax</div>
+                <div className="text-lg font-semibold">
+                  {calculation.salesTaxRate}% (${formatCurrency(calculation.salesTaxAmount)})
+                </div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Total</div>
+                <div className="text-lg font-semibold">${formatCurrency(calculation.total)}</div>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-muted-foreground">Line items by vehicle and month</div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Vehicle</TableHead>
+                    <TableHead>Month</TableHead>
+                    <TableHead className="text-right">Present days</TableHead>
+                    <TableHead className="text-right">Daily rate</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {calculation.items.map((item) => (
+                    <TableRow key={`${item.vehicleId}-${item.month}-${item.year}`}>
+                      <TableCell>
+                        <div className="font-medium">{item.vehicle.licensePlate}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {item.vehicle.make} {item.vehicle.model}
+                        </div>
+                      </TableCell>
+                      <TableCell>{item.monthLabel ?? `${item.month}/${item.year}`}</TableCell>
+                      <TableCell className="text-right">{item.presentDays}</TableCell>
+                      <TableCell className="text-right">${formatCurrency(item.dailyRate)}</TableCell>
+                      <TableCell className="text-right">${formatCurrency(item.amount)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {invoice && (
         <Card>
           <CardHeader>
@@ -415,21 +620,21 @@ export default function CustomerInvoices() {
             <div className="grid gap-4 md:grid-cols-4">
               <div>
                 <div className="text-sm text-muted-foreground">Subtotal</div>
-                <div className="text-lg font-semibold">${invoice.subtotal}</div>
+                <div className="text-lg font-semibold">${formatCurrency(invoice.subtotal)}</div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Adjustment</div>
-                <div className="text-lg font-semibold">${invoice.adjustment}</div>
+                <div className="text-lg font-semibold">${formatCurrency(invoice.adjustment)}</div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Sales tax</div>
                 <div className="text-lg font-semibold">
-                  {invoice.salesTaxRate}% (${invoice.salesTaxAmount})
+                  {Number(invoice.salesTaxRate ?? 0)}% (${formatCurrency(invoice.salesTaxAmount)})
                 </div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Total</div>
-                <div className="text-lg font-semibold">${invoice.total}</div>
+                <div className="text-lg font-semibold">${formatCurrency(invoice.total)}</div>
               </div>
             </div>
 
@@ -460,8 +665,8 @@ export default function CustomerInvoices() {
                       </TableCell>
                       <TableCell>{item.monthLabel ?? `${item.month}/${item.year}`}</TableCell>
                       <TableCell className="text-right">{item.presentDays}</TableCell>
-                      <TableCell className="text-right">${item.dailyRate}</TableCell>
-                      <TableCell className="text-right">${item.amount}</TableCell>
+                      <TableCell className="text-right">${formatCurrency(item.dailyRate)}</TableCell>
+                      <TableCell className="text-right">${formatCurrency(item.amount)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -470,6 +675,87 @@ export default function CustomerInvoices() {
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Created invoices</CardTitle>
+          <CardDescription>
+            View previously generated invoices and update their payment status.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {invoicesLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading invoices...
+            </div>
+          ) : invoices.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Invoice</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Project</TableHead>
+                  <TableHead>Period</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {invoices.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell>
+                      <div className="font-medium">{row.invoiceNumber ?? "—"}</div>
+                      <div className="text-xs text-muted-foreground">Due {row.dueDate}</div>
+                    </TableCell>
+                    <TableCell>{row.customer.name}</TableCell>
+                    <TableCell>{row.project.name}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col text-sm">
+                        <span>{row.periodStart}</span>
+                        <span>{row.periodEnd}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">${formatCurrency(row.total)}</TableCell>
+                    <TableCell>
+                      <Select
+                        disabled={!canManageInvoices || updatingInvoiceId === row.id}
+                        value={row.status}
+                        onValueChange={(value) =>
+                          handleStatusChange(row.id, value as "pending" | "paid" | "overdue")
+                        }
+                      >
+                        <FormControl>
+                          <SelectTrigger className="w-32 capitalize">
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="paid">Paid</SelectItem>
+                          <SelectItem value="overdue">Overdue</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setInvoice(row)}
+                        disabled={updatingInvoiceId === row.id}
+                      >
+                        View
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <p className="text-sm text-muted-foreground">No invoices have been created yet.</p>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

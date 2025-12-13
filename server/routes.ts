@@ -14,6 +14,7 @@ import {
   createPaymentTransactionSchema,
   createVehiclePaymentForPeriodSchema,
   createCustomerInvoiceSchema,
+  updateCustomerInvoiceStatusSchema,
   insertMaintenanceRecordSchema,
   insertOwnershipHistorySchema,
   updateOwnerSchema,
@@ -1154,6 +1155,35 @@ export async function registerRoutes(app: Application): Promise<void> {
     }
   });
 
+  app.get("/api/customer-invoices", async (req, res) => {
+    if (!requireAdminOrEmployee(req, res, "payments")) {
+      return;
+    }
+
+    try {
+      const projectIds = isEmployee(req) ? employeeProjectIds(req) : undefined;
+      const invoices = await storage.getCustomerInvoices({ projectIds });
+      res.json(invoices);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/customer-invoices/calculate", async (req, res) => {
+    if (!requireAdminOrEmployee(req, res, "payments", { manage: true })) {
+      return;
+    }
+
+    try {
+      const payload = createCustomerInvoiceSchema.parse(req.body);
+      const invoice = await storage.calculateCustomerInvoice(payload);
+      res.status(200).json(invoice);
+    } catch (error: any) {
+      const status = error.status ?? 400;
+      res.status(status).json({ message: error.message });
+    }
+  });
+
   app.post("/api/customer-invoices", async (req, res) => {
     if (!requireAdminOrEmployee(req, res, "payments", { manage: true })) {
       return;
@@ -1163,6 +1193,31 @@ export async function registerRoutes(app: Application): Promise<void> {
       const payload = createCustomerInvoiceSchema.parse(req.body);
       const invoice = await storage.createCustomerInvoice(payload);
       res.status(201).json(invoice);
+    } catch (error: any) {
+      const status = error.status ?? 400;
+      res.status(status).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/customer-invoices/:id/status", async (req, res) => {
+    if (!requireAdminOrEmployee(req, res, "payments", { manage: true })) {
+      return;
+    }
+
+    try {
+      const { status } = updateCustomerInvoiceStatusSchema.parse(req.body);
+      const invoice = await storage.getCustomerInvoice(req.params.id);
+
+      if (!invoice) {
+        return res.status(404).json({ message: "Invoice not found" });
+      }
+
+      if (isEmployee(req) && !employeeProjectIds(req).includes(invoice.projectId)) {
+        return res.status(403).json({ message: "You cannot update invoices for this project" });
+      }
+
+      const updated = await storage.updateCustomerInvoiceStatus(req.params.id, status);
+      res.json(updated);
     } catch (error: any) {
       const status = error.status ?? 400;
       res.status(status).json({ message: error.message });

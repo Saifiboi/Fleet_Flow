@@ -19,6 +19,9 @@ import type {
   VehiclePaymentForPeriodResult,
   CreateCustomerInvoiceRequest,
   CustomerInvoiceWithItems,
+  CustomerInvoiceCalculation,
+  CustomerInvoiceWithDetails,
+  UpdateCustomerInvoiceStatus,
   UserWithOwner,
   OwnershipHistoryWithOwner,
   ProjectVehicleCustomerRateWithVehicle,
@@ -161,6 +164,11 @@ export const useProjectCustomerRates = (projectId?: string) =>
     },
   });
 
+export const useCustomerInvoices = () =>
+  useQuery<CustomerInvoiceWithDetails[]>({
+    queryKey: ["/api/customer-invoices"],
+  });
+
 export const createVehiclePaymentForPeriod = async (
   payload: CreateVehiclePaymentForPeriod
 ): Promise<VehiclePaymentForPeriodResult> => {
@@ -184,4 +192,19 @@ export const createCustomerInvoice = async (
           : "Received an invalid response while creating the invoice"),
     );
   }
+};
+
+export const calculateCustomerInvoice = async (
+  payload: CreateCustomerInvoiceRequest
+): Promise<CustomerInvoiceCalculation> => {
+  const res = await apiRequest("POST", "/api/customer-invoices/calculate", payload);
+  return (await res.json()) as CustomerInvoiceCalculation;
+};
+
+export const updateCustomerInvoiceStatus = async (
+  id: string,
+  payload: UpdateCustomerInvoiceStatus
+): Promise<CustomerInvoiceWithDetails> => {
+  const res = await apiRequest("PATCH", `/api/customer-invoices/${id}/status`, payload);
+  return (await res.json()) as CustomerInvoiceWithDetails;
 };
