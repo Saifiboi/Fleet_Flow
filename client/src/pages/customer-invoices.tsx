@@ -85,6 +85,8 @@ export default function CustomerInvoices() {
   const [isCreating, setIsCreating] = useState(false);
   const [updatingInvoiceId, setUpdatingInvoiceId] = useState<string | null>(null);
   const [isRecordingPayment, setIsRecordingPayment] = useState(false);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [accordionValue, setAccordionValue] = useState<string[]>(["created-list"]);
 
   const form = useForm<CreateCustomerInvoiceRequest>({
     resolver: zodResolver(createCustomerInvoiceSchema),
@@ -130,9 +132,11 @@ export default function CustomerInvoices() {
   }, [selectedProject, form]);
 
   useEffect(() => {
+    if (!showCreateForm) return;
+
     setInvoice(null);
     setCalculation(null);
-  }, [projectId, startDate, endDate]);
+  }, [projectId, startDate, endDate, showCreateForm]);
 
   useEffect(() => {
     setCalculation(null);
@@ -180,23 +184,20 @@ export default function CustomerInvoices() {
     [invoice, totalPaid]
   );
 
-  const accordionDefaults = useMemo(() => {
-    const defaults = ["details", "created-list"] as string[];
-
-    if (calculation) {
-      defaults.push("preview");
-    }
-
-    if (invoice) {
-      defaults.push("invoice-details", "invoice-payments");
-    }
-
-    return defaults;
-  }, [calculation, invoice]);
-
   const paymentBlocked = !invoice || outstandingAmount <= 0;
 
+  const openSections = (...sections: string[]) => {
+    setAccordionValue((prev) => {
+      const next = new Set(prev);
+      sections.forEach((section) => next.add(section));
+      return Array.from(next);
+    });
+  };
+
+  const resetAccordion = () => setAccordionValue(["created-list"]);
+
   const handleCalculate = form.handleSubmit(async (values) => {
+    openSections("details");
     setIsCalculating(true);
     try {
       const payload: CreateCustomerInvoiceRequest = {
@@ -209,6 +210,7 @@ export default function CustomerInvoices() {
       }
       setCalculation(result);
       setInvoice(null);
+      openSections("preview");
       toast({
         title: "Invoice calculated",
         description: "Review the totals before creating the invoice.",
@@ -241,8 +243,10 @@ export default function CustomerInvoices() {
         customerId: selectedProject?.customerId ?? values.customerId,
       };
       const created = await createCustomerInvoice(payload);
-      setInvoice(created);
+      setInvoice(null);
       setCalculation(null);
+      setShowCreateForm(false);
+      resetAccordion();
       toast({
         title: "Invoice created",
         description: "Project invoice calculated and saved.",
@@ -335,19 +339,58 @@ export default function CustomerInvoices() {
     }
   });
 
+  const handleStartCreate = () => {
+    setInvoice(null);
+    setCalculation(null);
+    setShowCreateForm(true);
+    form.reset({
+      customerId: "",
+      projectId: "",
+      startDate: format(defaultStart, "yyyy-MM-dd"),
+      endDate: format(today, "yyyy-MM-dd"),
+      dueDate: format(addDays(today, 7), "yyyy-MM-dd"),
+      invoiceNumber: "",
+      adjustment: 0,
+      salesTaxRate: 0,
+      status: "pending",
+    });
+    setAccordionValue(["created-list", "details"]);
+  };
+
+  const handleViewInvoice = (row: CustomerInvoiceWithDetails) => {
+    setInvoice(row);
+    setCalculation(null);
+    setShowCreateForm(false);
+    form.setValue("projectId", row.projectId);
+    form.setValue("customerId", row.customerId);
+    form.setValue("startDate", row.periodStart);
+    form.setValue("endDate", row.periodEnd);
+    form.setValue("dueDate", row.dueDate);
+    form.setValue("invoiceNumber", row.invoiceNumber ?? "");
+    form.setValue("adjustment", Number(row.adjustment ?? 0));
+    form.setValue("salesTaxRate", Number(row.salesTaxRate ?? 0));
+    form.setValue("status", row.status);
+    setAccordionValue(["created-list", "invoice-details", "invoice-payments"]);
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Customer Invoices</h1>
           <p className="text-sm text-muted-foreground">
             Calculate and create invoices for project vehicle attendance.
           </p>
         </div>
-        <Badge variant="secondary" className="gap-2">
-          <Receipt className="h-4 w-4" />
-          Billing
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="default" onClick={handleStartCreate} disabled={!canManageInvoices}>
+            Create invoice
+          </Button>
+          <Badge variant="secondary" className="gap-2">
+            <Receipt className="h-4 w-4" />
+            Billing
+          </Badge>
+        </div>
       </div>
 
       {!canManageInvoices && (
@@ -359,262 +402,370 @@ export default function CustomerInvoices() {
         </Alert>
       )}
 
-      <Accordion type="multiple" defaultValue={accordionDefaults} className="space-y-4">
-        <AccordionItem value="details">
-          <AccordionTrigger className="text-lg font-semibold">
-            Invoice details & rates
-          </AccordionTrigger>
-          <AccordionContent>
-            <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Invoice details</CardTitle>
-            <CardDescription>
-              Choose a project, date range, and tax details to calculate the invoice.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Form {...form}>
-              <form className="space-y-4" onSubmit={handleCalculate}>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <FormField
-                    control={form.control}
-                    name="projectId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Project</FormLabel>
-                        <Select
-                          onValueChange={(value) => {
-                            field.onChange(value);
-                            const project = projects.find((p) => p.id === value);
-                            if (project) {
-                              form.setValue("customerId", project.customerId);
-                            }
-                          }}
-                          value={field.value}
-                          disabled={projectsLoading || !canManageInvoices}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select a project" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {projects.map((project) => (
-                              <SelectItem key={project.id} value={project.id}>
-                                {project.name} — {project.customer.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="invoiceNumber"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Invoice number (optional)</FormLabel>
-                        <FormControl>
-                          <Input placeholder="INV-001" {...field} disabled={!canManageInvoices} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+      <Accordion
+        type="multiple"
+        value={accordionValue}
+        onValueChange={(value) => setAccordionValue(value as string[])}
+        className="space-y-4"
+      >
+        <AccordionItem value="created-list">
+          <Card>
+            <CardHeader>
+              <CardTitle>Created invoices</CardTitle>
+              <CardDescription>
+                View previously generated invoices and update their payment status.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {invoicesLoading ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading invoices...
                 </div>
-
-                <div className="grid gap-4 md:grid-cols-3">
-                  <FormField
-                    control={form.control}
-                    name="startDate"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Start date</FormLabel>
-                        <FormControl>
-                          <Input type="date" {...field} disabled={!canManageInvoices} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="endDate"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>End date</FormLabel>
-                        <FormControl>
-                          <Input type="date" {...field} disabled={!canManageInvoices} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="dueDate"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Due date</FormLabel>
-                        <FormControl>
-                          <Input type="date" {...field} disabled={!canManageInvoices} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-3">
-                  <FormField
-                    control={form.control}
-                    name="adjustment"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Adjustment</FormLabel>
-                        <FormControl>
-                          <Input type="number" step="0.01" {...field} disabled={!canManageInvoices} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="salesTaxRate"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Sales tax rate (%)</FormLabel>
-                        <FormControl>
-                          <Input type="number" step="0.01" {...field} disabled={!canManageInvoices} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="status"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Status</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          value={field.value ?? "pending"}
-                          disabled={!canManageInvoices}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="pending">Pending</SelectItem>
-                            <SelectItem value="partial">Partial</SelectItem>
-                            <SelectItem value="paid">Paid</SelectItem>
-                            <SelectItem value="overdue">Overdue</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <input type="hidden" {...form.register("customerId")} />
-
-                <div className="flex flex-wrap items-center gap-3">
-                  <Button type="submit" disabled={!canManageInvoices || !projectId || isCalculating}>
-                    {isCalculating ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Calculator className="mr-2 h-4 w-4" />
-                    )}
-                    Calculate invoice
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={!canManageInvoices || !calculation || isCreating}
-                    onClick={handleCreate}
-                  >
-                    {isCreating ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Receipt className="mr-2 h-4 w-4" />
-                    )}
-                    Create invoice
-                  </Button>
-                  {(!selectedProject || projectRates.length === 0) && (
-                    <p className="text-sm text-muted-foreground">
-                      Select a project with customer vehicle rates to calculate totals.
-                    </p>
-                  )}
-                  {!calculation && (
-                    <p className="text-xs text-muted-foreground">
-                      Adjust the adjustment or tax rate and click Calculate to refresh totals before
-                      creating.
-                    </p>
-                  )}
-                </div>
-              </form>
-            </Form>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Project rates</CardTitle>
-            <CardDescription>
-              Daily rates are derived from the monthly customer rate for each vehicle.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {ratesLoading || ratesFetching ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" /> Loading project rates...
-              </div>
-            ) : projectRates.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Vehicle</TableHead>
-                    <TableHead>Owner</TableHead>
-                    <TableHead className="text-right">Monthly rate</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {projectRates.map((rate) => (
-                    <TableRow key={rate.id}>
-                      <TableCell>
-                        <div className="font-medium">{rate.vehicle.licensePlate}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {rate.vehicle.make} {rate.vehicle.model}
-                        </div>
-                      </TableCell>
-                      <TableCell>{rate.vehicle.owner.name}</TableCell>
-                      <TableCell className="text-right">${Number(rate.rate).toFixed(2)}</TableCell>
+              ) : invoices.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Invoice</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Project</TableHead>
+                      <TableHead>Period</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <Alert>
-                <AlertTitle>No rate data</AlertTitle>
-                <AlertDescription>
-                  Select a project to view customer rates. Rates are required to calculate invoices.
-                </AlertDescription>
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-          </AccordionContent>
+                  </TableHeader>
+                  <TableBody>
+                    {invoices.map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell>
+                          <div className="font-medium">{row.invoiceNumber ?? "—"}</div>
+                          <div className="text-xs text-muted-foreground">Due {row.dueDate}</div>
+                        </TableCell>
+                        <TableCell>{row.customer.name}</TableCell>
+                        <TableCell>{row.project.name}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-col text-sm">
+                            <span>{row.periodStart}</span>
+                            <span>{row.periodEnd}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">${formatCurrency(row.total)}</TableCell>
+                        <TableCell>
+                          <Select
+                            disabled={!canManageInvoices || updatingInvoiceId === row.id}
+                            value={row.status}
+                            onValueChange={(value) =>
+                              handleStatusChange(
+                                row.id,
+                                value as "pending" | "partial" | "paid" | "overdue",
+                              )
+                            }
+                          >
+                            <FormControl>
+                              <SelectTrigger className="w-32 capitalize">
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="pending">Pending</SelectItem>
+                              <SelectItem value="partial">Partial</SelectItem>
+                              <SelectItem value="paid">Paid</SelectItem>
+                              <SelectItem value="overdue">Overdue</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleViewInvoice(row)}
+                            disabled={updatingInvoiceId === row.id}
+                          >
+                            View
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <p className="text-sm text-muted-foreground">No invoices have been created yet.</p>
+              )}
+            </CardContent>
+          </Card>
         </AccordionItem>
+
+        {(showCreateForm || calculation) && (
+          <AccordionItem value="details">
+            <AccordionTrigger className="text-lg font-semibold">
+              Invoice details & rates
+            </AccordionTrigger>
+            <AccordionContent>
+              <div className="grid gap-6 lg:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Invoice details</CardTitle>
+                    <CardDescription>
+                      Choose a project, date range, and tax details to calculate the invoice.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Form {...form}>
+                      <form className="space-y-4" onSubmit={handleCalculate}>
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <FormField
+                            control={form.control}
+                            name="projectId"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Project</FormLabel>
+                                <Select
+                                  onValueChange={(value) => {
+                                    field.onChange(value);
+                                    const project = projects.find((p) => p.id === value);
+                                    if (project) {
+                                      form.setValue("customerId", project.customerId);
+                                    }
+                                  }}
+                                  value={field.value}
+                                  disabled={projectsLoading || !canManageInvoices}
+                                >
+                                  <FormControl>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Select a project" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    {projects.map((project) => (
+                                      <SelectItem key={project.id} value={project.id}>
+                                        {project.name} — {project.customer.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
+                            name="invoiceNumber"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Invoice number (optional)</FormLabel>
+                                <FormControl>
+                                  <Input placeholder="INV-001" {...field} disabled={!canManageInvoices} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+
+                        <div className="grid gap-4 md:grid-cols-3">
+                          <FormField
+                            control={form.control}
+                            name="startDate"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Start date</FormLabel>
+                                <FormControl>
+                                  <Input type="date" {...field} disabled={!canManageInvoices} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name="endDate"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>End date</FormLabel>
+                                <FormControl>
+                                  <Input type="date" {...field} disabled={!canManageInvoices} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name="dueDate"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Due date</FormLabel>
+                                <FormControl>
+                                  <Input type="date" {...field} disabled={!canManageInvoices} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+
+                        <div className="grid gap-4 md:grid-cols-3">
+                          <FormField
+                            control={form.control}
+                            name="adjustment"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Adjustment</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    {...field}
+                                    disabled={!canManageInvoices}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name="salesTaxRate"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Sales tax rate (%)</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    {...field}
+                                    disabled={!canManageInvoices}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name="status"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Status</FormLabel>
+                                <Select
+                                  onValueChange={field.onChange}
+                                  value={field.value ?? "pending"}
+                                  disabled={!canManageInvoices}
+                                >
+                                  <FormControl>
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="pending">Pending</SelectItem>
+                                    <SelectItem value="partial">Partial</SelectItem>
+                                    <SelectItem value="paid">Paid</SelectItem>
+                                    <SelectItem value="overdue">Overdue</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+
+                        <input type="hidden" {...form.register("customerId")} />
+
+                        <div className="flex flex-wrap items-center gap-3">
+                          <Button
+                            type="submit"
+                            disabled={!canManageInvoices || !projectId || isCalculating}
+                          >
+                            {isCalculating ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <Calculator className="mr-2 h-4 w-4" />
+                            )}
+                            Calculate invoice
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            disabled={!canManageInvoices || !calculation || isCreating}
+                            onClick={handleCreate}
+                          >
+                            {isCreating ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <Receipt className="mr-2 h-4 w-4" />
+                            )}
+                            Create invoice
+                          </Button>
+                          {(!selectedProject || projectRates.length === 0) && (
+                            <p className="text-sm text-muted-foreground">
+                              Select a project with customer vehicle rates to calculate totals.
+                            </p>
+                          )}
+                          {!calculation && (
+                            <p className="text-xs text-muted-foreground">
+                              Adjust the adjustment or tax rate and click Calculate to refresh totals
+                              before creating.
+                            </p>
+                          )}
+                        </div>
+                      </form>
+                    </Form>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Project rates</CardTitle>
+                    <CardDescription>
+                      Daily rates are derived from the monthly customer rate for each vehicle.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {ratesLoading || ratesFetching ? (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Loading project rates...
+                      </div>
+                    ) : projectRates.length > 0 ? (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Vehicle</TableHead>
+                            <TableHead>Owner</TableHead>
+                            <TableHead className="text-right">Monthly rate</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {projectRates.map((rate) => (
+                            <TableRow key={rate.id}>
+                              <TableCell>
+                                <div className="font-medium">{rate.vehicle.licensePlate}</div>
+                                <div className="text-sm text-muted-foreground">
+                                  {rate.vehicle.make} {rate.vehicle.model}
+                                </div>
+                              </TableCell>
+                              <TableCell>{rate.vehicle.owner.name}</TableCell>
+                              <TableCell className="text-right">${Number(rate.rate).toFixed(2)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    ) : (
+                      <Alert>
+                        <AlertTitle>No rate data</AlertTitle>
+                        <AlertDescription>
+                          Select a project to view customer rates. Rates are required to calculate
+                          invoices.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        )}
 
         {calculation && (
           <AccordionItem value="preview">
@@ -625,101 +776,103 @@ export default function CustomerInvoices() {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-              <ClipboardCheck className="h-5 w-5" /> Invoice preview
-            </CardTitle>
-            <CardDescription>
-              Totals based on attendance and the current adjustment and tax values. Create the
-              invoice to save it.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-4">
-              <div>
-                <div className="text-sm text-muted-foreground">Customer</div>
-                <div className="font-medium">
-                  {invoice?.customer?.name ?? selectedProject?.customer.name}
-                </div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Project</div>
-                <div className="font-medium">{invoice?.project?.name ?? selectedProject?.name}</div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Period</div>
-                <div className="font-medium">
-                  {calculation.periodStart} — {calculation.periodEnd}
-                </div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Due date</div>
-                <div className="font-medium">{calculation.dueDate}</div>
-              </div>
-            </div>
+                    <ClipboardCheck className="h-5 w-5" /> Invoice preview
+                  </CardTitle>
+                  <CardDescription>
+                    Totals based on attendance and the current adjustment and tax values. Create the
+                    invoice to save it.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-4">
+                    <div>
+                      <div className="text-sm text-muted-foreground">Customer</div>
+                      <div className="font-medium">
+                        {invoice?.customer?.name ?? selectedProject?.customer.name}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Project</div>
+                      <div className="font-medium">{invoice?.project?.name ?? selectedProject?.name}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Period</div>
+                      <div className="font-medium">
+                        {calculation.periodStart} — {calculation.periodEnd}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Due date</div>
+                      <div className="font-medium">{calculation.dueDate}</div>
+                    </div>
+                  </div>
 
-            <Separator />
+                  <Separator />
 
-            <div className="grid gap-4 md:grid-cols-4">
-              <div>
-                <div className="text-sm text-muted-foreground">Subtotal</div>
-                <div className="text-lg font-semibold">${formatCurrency(calculation.subtotal)}</div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Adjustment</div>
-                <div className="text-lg font-semibold">${formatCurrency(calculation.adjustment)}</div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Sales tax</div>
-                <div className="text-lg font-semibold">
-                  {calculation.salesTaxRate}% (${formatCurrency(calculation.salesTaxAmount)})
-                </div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Total</div>
-                <div className="text-lg font-semibold">${formatCurrency(calculation.total)}</div>
-              </div>
-            </div>
+                  <div className="grid gap-4 md:grid-cols-4">
+                    <div>
+                      <div className="text-sm text-muted-foreground">Subtotal</div>
+                      <div className="text-lg font-semibold">${formatCurrency(calculation.subtotal)}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Adjustment</div>
+                      <div className="text-lg font-semibold">${formatCurrency(calculation.adjustment)}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Sales tax</div>
+                      <div className="text-lg font-semibold">
+                        {calculation.salesTaxRate}% (${formatCurrency(calculation.salesTaxAmount)})
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Total</div>
+                      <div className="text-lg font-semibold">${formatCurrency(calculation.total)}</div>
+                    </div>
+                  </div>
 
-            <Separator />
+                  <Separator />
 
-            <div className="space-y-2">
-              <div className="text-sm font-medium text-muted-foreground">Line items by vehicle and month</div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Vehicle</TableHead>
-                    <TableHead>Month</TableHead>
-                    <TableHead className="text-right">Present days</TableHead>
-                    <TableHead className="text-right">Daily rate</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead className="text-right">Sales tax</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {calculation.items.map((item) => (
-                    <TableRow key={`${item.vehicleId}-${item.month}-${item.year}`}>
-                      <TableCell>
-                        <div className="font-medium">{item.vehicle.licensePlate}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {item.vehicle.make} {item.vehicle.model}
-                        </div>
-                      </TableCell>
-                      <TableCell>{item.monthLabel ?? `${item.month}/${item.year}`}</TableCell>
-                      <TableCell className="text-right">{item.presentDays}</TableCell>
-                      <TableCell className="text-right">${formatCurrency(item.dailyRate)}</TableCell>
-                      <TableCell className="text-right">${formatCurrency(item.amount)}</TableCell>
-                      <TableCell className="text-right">${formatCurrency(item.salesTaxAmount)}</TableCell>
-                      <TableCell className="text-right">${formatCurrency(item.totalAmount)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      </AccordionContent>
-    </AccordionItem>
-      )}
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">
+                      Line items by vehicle and month
+                    </div>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Vehicle</TableHead>
+                          <TableHead>Month</TableHead>
+                          <TableHead className="text-right">Present days</TableHead>
+                          <TableHead className="text-right">Daily rate</TableHead>
+                          <TableHead className="text-right">Amount</TableHead>
+                          <TableHead className="text-right">Sales tax</TableHead>
+                          <TableHead className="text-right">Total</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {calculation.items.map((item) => (
+                          <TableRow key={`${item.vehicleId}-${item.month}-${item.year}`}>
+                            <TableCell>
+                              <div className="font-medium">{item.vehicle.licensePlate}</div>
+                              <div className="text-sm text-muted-foreground">
+                                {item.vehicle.make} {item.vehicle.model}
+                              </div>
+                            </TableCell>
+                            <TableCell>{item.monthLabel ?? `${item.month}/${item.year}`}</TableCell>
+                            <TableCell className="text-right">{item.presentDays}</TableCell>
+                            <TableCell className="text-right">${formatCurrency(item.dailyRate)}</TableCell>
+                            <TableCell className="text-right">${formatCurrency(item.amount)}</TableCell>
+                            <TableCell className="text-right">${formatCurrency(item.salesTaxAmount)}</TableCell>
+                            <TableCell className="text-right">${formatCurrency(item.totalAmount)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </AccordionContent>
+          </AccordionItem>
+        )}
 
       {invoice && (
         <>
@@ -1064,89 +1217,6 @@ export default function CustomerInvoices() {
         </>
       )}
 
-      <AccordionItem value="created-list">
-        <Card>
-          <CardHeader>
-            <CardTitle>Created invoices</CardTitle>
-            <CardDescription>
-              View previously generated invoices and update their payment status.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {invoicesLoading ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" /> Loading invoices...
-              </div>
-            ) : invoices.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Invoice</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Project</TableHead>
-                    <TableHead>Period</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {invoices.map((row) => (
-                    <TableRow key={row.id}>
-                      <TableCell>
-                        <div className="font-medium">{row.invoiceNumber ?? "—"}</div>
-                        <div className="text-xs text-muted-foreground">Due {row.dueDate}</div>
-                      </TableCell>
-                      <TableCell>{row.customer.name}</TableCell>
-                      <TableCell>{row.project.name}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-col text-sm">
-                          <span>{row.periodStart}</span>
-                          <span>{row.periodEnd}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">${formatCurrency(row.total)}</TableCell>
-                      <TableCell>
-                        <Select
-                          disabled={!canManageInvoices || updatingInvoiceId === row.id}
-                          value={row.status}
-                          onValueChange={(value) =>
-                            handleStatusChange(row.id, value as "pending" | "partial" | "paid" | "overdue")
-                          }
-                        >
-                          <FormControl>
-                            <SelectTrigger className="w-32 capitalize">
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="pending">Pending</SelectItem>
-                            <SelectItem value="partial">Partial</SelectItem>
-                            <SelectItem value="paid">Paid</SelectItem>
-                            <SelectItem value="overdue">Overdue</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setInvoice(row)}
-                          disabled={updatingInvoiceId === row.id}
-                        >
-                          View
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <p className="text-sm text-muted-foreground">No invoices have been created yet.</p>
-            )}
-          </CardContent>
-        </Card>
-      </AccordionItem>
     </Accordion>
   </div>
   );
