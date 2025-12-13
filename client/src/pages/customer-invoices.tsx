@@ -67,7 +67,14 @@ import type {
 } from "@shared/schema";
 import { createCustomerInvoiceSchema } from "@shared/schema";
 import { queryClient } from "@/lib/queryClient";
-import { Calculator, ClipboardCheck, Loader2, Receipt } from "lucide-react";
+import {
+  Calculator,
+  ClipboardCheck,
+  FileText,
+  Loader2,
+  Receipt,
+  Wallet,
+} from "lucide-react";
 
 const today = new Date();
 const defaultStart = startOfMonth(today);
@@ -190,6 +197,37 @@ export default function CustomerInvoices() {
   );
 
   const paymentBlocked = !invoice || outstandingAmount <= 0;
+
+  const invoiceStats = useMemo(() => {
+    const totals = invoices.reduce(
+      (acc, inv) => {
+        const paid = (inv.payments ?? []).reduce(
+          (sum, payment) => sum + Number(payment.amount ?? 0),
+          0,
+        );
+
+        const outstanding = Math.max(Number(inv.total ?? 0) - paid, 0);
+
+        return {
+          ...acc,
+          count: acc.count + 1,
+          billed: acc.billed + Number(inv.total ?? 0),
+          outstanding: acc.outstanding + outstanding,
+          pending: acc.pending + (inv.status === "pending" ? 1 : 0),
+          partial: acc.partial + (inv.status === "partial" ? 1 : 0),
+          paid: acc.paid + (inv.status === "paid" ? 1 : 0),
+          overdue: acc.overdue + (inv.status === "overdue" ? 1 : 0),
+        };
+      },
+      { count: 0, billed: 0, outstanding: 0, pending: 0, partial: 0, paid: 0, overdue: 0 },
+    );
+
+    return {
+      ...totals,
+      billed: roundCurrency(totals.billed),
+      outstanding: roundCurrency(totals.outstanding),
+    };
+  }, [invoices]);
 
   const openSections = (...sections: string[]) => {
     setAccordionValue((prev) => {
@@ -403,6 +441,72 @@ export default function CustomerInvoices() {
             Billing
           </Badge>
         </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Total invoices</CardDescription>
+            <CardTitle className="flex items-center gap-2 text-2xl">
+              <FileText className="h-5 w-5 text-muted-foreground" />
+              {invoicesLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : invoiceStats.count}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            Pending {invoiceStats.pending} • Partial {invoiceStats.partial}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Paid vs overdue</CardDescription>
+            <CardTitle className="flex items-center gap-2 text-2xl">
+              <Calculator className="h-5 w-5 text-muted-foreground" />
+              {invoicesLoading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                `${invoiceStats.paid} paid / ${invoiceStats.overdue} overdue`
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            Track cleared invoices against those requiring follow-up.
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Total billed</CardDescription>
+            <CardTitle className="flex items-center gap-2 text-2xl">
+              <Wallet className="h-5 w-5 text-muted-foreground" />
+              {invoicesLoading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                formatCurrency(invoiceStats.billed)
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            Includes all generated invoices in the system.
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Outstanding balance</CardDescription>
+            <CardTitle className="flex items-center gap-2 text-2xl">
+              <ClipboardCheck className="h-5 w-5 text-muted-foreground" />
+              {invoicesLoading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                formatCurrency(invoiceStats.outstanding)
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            Balance remaining after recorded payments.
+          </CardContent>
+        </Card>
       </div>
 
       {!canManageInvoices && (
