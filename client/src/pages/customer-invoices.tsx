@@ -167,7 +167,12 @@ export default function CustomerInvoices() {
     Math.round(Number(value ?? 0) * 100) / 100;
 
   const formatCurrency = (value: number | string | undefined | null) =>
-    roundCurrency(value).toFixed(2);
+    new Intl.NumberFormat("en-PK", {
+      style: "currency",
+      currency: "PKR",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(roundCurrency(value));
 
   const invoicePayments = invoice?.payments ?? [];
 
@@ -460,7 +465,7 @@ export default function CustomerInvoices() {
                               <span>{row.periodEnd}</span>
                             </div>
                           </TableCell>
-                          <TableCell className="text-right">${formatCurrency(row.total)}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(row.total)}</TableCell>
                           <TableCell>
                             <Select
                               disabled={!canManageInvoices || updatingInvoiceId === row.id}
@@ -831,21 +836,21 @@ export default function CustomerInvoices() {
                   <div className="grid gap-4 md:grid-cols-4">
                     <div>
                       <div className="text-sm text-muted-foreground">Subtotal</div>
-                      <div className="text-lg font-semibold">${formatCurrency(calculation.subtotal)}</div>
+                      <div className="text-lg font-semibold">{formatCurrency(calculation.subtotal)}</div>
                     </div>
                     <div>
                       <div className="text-sm text-muted-foreground">Adjustment</div>
-                      <div className="text-lg font-semibold">${formatCurrency(calculation.adjustment)}</div>
+                      <div className="text-lg font-semibold">{formatCurrency(calculation.adjustment)}</div>
                     </div>
                     <div>
                       <div className="text-sm text-muted-foreground">Sales tax</div>
                       <div className="text-lg font-semibold">
-                        {calculation.salesTaxRate}% (${formatCurrency(calculation.salesTaxAmount)})
+                        {calculation.salesTaxRate}% ({formatCurrency(calculation.salesTaxAmount)})
                       </div>
                     </div>
                     <div>
                       <div className="text-sm text-muted-foreground">Total</div>
-                      <div className="text-lg font-semibold">${formatCurrency(calculation.total)}</div>
+                      <div className="text-lg font-semibold">{formatCurrency(calculation.total)}</div>
                     </div>
                   </div>
 
@@ -878,10 +883,10 @@ export default function CustomerInvoices() {
                             </TableCell>
                             <TableCell>{item.monthLabel ?? `${item.month}/${item.year}`}</TableCell>
                             <TableCell className="text-right">{item.presentDays}</TableCell>
-                            <TableCell className="text-right">${formatCurrency(item.dailyRate)}</TableCell>
-                            <TableCell className="text-right">${formatCurrency(item.amount)}</TableCell>
-                            <TableCell className="text-right">${formatCurrency(item.salesTaxAmount)}</TableCell>
-                            <TableCell className="text-right">${formatCurrency(item.totalAmount)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(item.dailyRate)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(item.amount)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(item.salesTaxAmount)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(item.totalAmount)}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -942,11 +947,11 @@ export default function CustomerInvoices() {
                     </div>
                     <div>
                       <div className="text-sm text-muted-foreground">Total paid</div>
-                      <div className="text-lg font-semibold">${formatCurrency(totalPaid)}</div>
+                      <div className="text-lg font-semibold">{formatCurrency(totalPaid)}</div>
                     </div>
                     <div>
                       <div className="text-sm text-muted-foreground">Outstanding</div>
-                      <div className="text-lg font-semibold">${formatCurrency(outstandingAmount)}</div>
+                      <div className="text-lg font-semibold">{formatCurrency(outstandingAmount)}</div>
                     </div>
                   </div>
 
@@ -955,21 +960,21 @@ export default function CustomerInvoices() {
                   <div className="grid gap-4 md:grid-cols-4">
                     <div>
                       <div className="text-sm text-muted-foreground">Subtotal</div>
-                      <div className="text-lg font-semibold">${formatCurrency(invoice.subtotal)}</div>
+                      <div className="text-lg font-semibold">{formatCurrency(invoice.subtotal)}</div>
                     </div>
                     <div>
                       <div className="text-sm text-muted-foreground">Adjustment</div>
-                      <div className="text-lg font-semibold">${formatCurrency(invoice.adjustment)}</div>
+                      <div className="text-lg font-semibold">{formatCurrency(invoice.adjustment)}</div>
                     </div>
                     <div>
                       <div className="text-sm text-muted-foreground">Sales tax</div>
                       <div className="text-lg font-semibold">
-                        {Number(invoice.salesTaxRate ?? 0)}% (${formatCurrency(invoice.salesTaxAmount)})
+                        {Number(invoice.salesTaxRate ?? 0)}% ({formatCurrency(invoice.salesTaxAmount)})
                       </div>
                     </div>
                     <div>
                       <div className="text-sm text-muted-foreground">Total</div>
-                      <div className="text-lg font-semibold">${formatCurrency(invoice.total)}</div>
+                      <div className="text-lg font-semibold">{formatCurrency(invoice.total)}</div>
                     </div>
                   </div>
 
@@ -1002,10 +1007,10 @@ export default function CustomerInvoices() {
                             </TableCell>
                             <TableCell>{item.monthLabel ?? `${item.month}/${item.year}`}</TableCell>
                             <TableCell className="text-right">{item.presentDays}</TableCell>
-                            <TableCell className="text-right">${formatCurrency(item.dailyRate)}</TableCell>
-                            <TableCell className="text-right">${formatCurrency(item.amount)}</TableCell>
-                            <TableCell className="text-right">${formatCurrency(item.salesTaxAmount)}</TableCell>
-                            <TableCell className="text-right">${formatCurrency(item.totalAmount)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(item.dailyRate)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(item.amount)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(item.salesTaxAmount)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(item.totalAmount)}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -1032,15 +1037,15 @@ export default function CustomerInvoices() {
                   <div className="grid gap-4 md:grid-cols-3">
                     <div>
                       <div className="text-sm text-muted-foreground">Invoice total</div>
-                      <div className="text-lg font-semibold">${formatCurrency(invoice.total)}</div>
+                      <div className="text-lg font-semibold">{formatCurrency(invoice.total)}</div>
                     </div>
                     <div>
                       <div className="text-sm text-muted-foreground">Total paid</div>
-                      <div className="text-lg font-semibold">${formatCurrency(totalPaid)}</div>
+                      <div className="text-lg font-semibold">{formatCurrency(totalPaid)}</div>
                     </div>
                     <div>
                       <div className="text-sm text-muted-foreground">Outstanding</div>
-                      <div className="text-lg font-semibold">${formatCurrency(outstandingAmount)}</div>
+                      <div className="text-lg font-semibold">{formatCurrency(outstandingAmount)}</div>
                     </div>
                   </div>
 
@@ -1069,7 +1074,7 @@ export default function CustomerInvoices() {
                         <TableBody>
                           {invoicePayments.map((payment) => (
                             <TableRow key={payment.id}>
-                              <TableCell>${formatCurrency(payment.amount)}</TableCell>
+                            <TableCell>{formatCurrency(payment.amount)}</TableCell>
                               <TableCell className="capitalize">{payment.method.replace("_", " ")}</TableCell>
                               <TableCell>{payment.referenceNumber ?? "—"}</TableCell>
                               <TableCell className="max-w-xs truncate">{payment.notes ?? "—"}</TableCell>
