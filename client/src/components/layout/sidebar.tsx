@@ -13,6 +13,7 @@ import {
   Receipt,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import type { EmployeeAccessArea, UserRole } from "@shared/schema";
@@ -29,33 +30,57 @@ type NavigationItem = {
   roles?: readonly UserRole[];
   employeeAccess?: EmployeeAccessArea;
 };
+type NavigationSection = {
+  label: string;
+  items: NavigationItem[];
+};
 
-const navigationItems: NavigationItem[] = [
-  { path: "/", label: "Dashboard", icon: BarChart3, roles: ["admin"] },
-  { path: "/users", label: "Users", icon: Shield, roles: ["admin"] },
-  { path: "/owners", label: "Owners", icon: Users, roles: ["admin", "owner", "employee"], employeeAccess: "owners" },
-  { path: "/vehicles", label: "Vehicles", icon: Car, roles: ["admin", "owner", "employee"], employeeAccess: "vehicles" },
-  { path: "/customers", label: "Customers", icon: Users, roles: ["admin", "employee"], employeeAccess: "projects" },
-  { path: "/projects", label: "Projects", icon: FolderKanban, roles: ["admin", "employee"], employeeAccess: "projects" },
-  { path: "/project-rates", label: "Project Rates", icon: DollarSign, roles: ["admin"] },
-  { path: "/assignments", label: "Assignments", icon: Calendar, roles: ["admin", "owner", "employee"], employeeAccess: "assignments" },
+const navigationSections: NavigationSection[] = [
   {
-    path: "/project-attendance",
-    label: "Project Attendance",
-    icon: Calendar,
-    roles: ["admin", "employee"],
-    employeeAccess: "projectAttendance",
+    label: "Overview",
+    items: [
+      { path: "/", label: "Dashboard", icon: BarChart3, roles: ["admin"] },
+      { path: "/users", label: "Users", icon: Shield, roles: ["admin"] },
+    ],
   },
-  { path: "/attendance", label: "Vehicle Attendance", icon: Calendar, roles: ["admin", "owner", "employee"], employeeAccess: "attendance" },
   {
-    path: "/customer-invoices",
-    label: "Customer Invoices",
-    icon: Receipt,
-    roles: ["admin", "employee"],
-    employeeAccess: "payments",
+    label: "Fleet",
+    items: [
+      { path: "/owners", label: "Owners", icon: Users, roles: ["admin", "owner", "employee"], employeeAccess: "owners" },
+      { path: "/vehicles", label: "Vehicles", icon: Car, roles: ["admin", "owner", "employee"], employeeAccess: "vehicles" },
+      { path: "/assignments", label: "Assignments", icon: Calendar, roles: ["admin", "owner", "employee"], employeeAccess: "assignments" },
+      { path: "/maintenance", label: "Maintenance", icon: Wrench, roles: ["admin", "owner", "employee"], employeeAccess: "maintenance" },
+    ],
   },
-  { path: "/payments", label: "Payments", icon: CreditCard, roles: ["admin", "owner", "employee"], employeeAccess: "payments" },
-  { path: "/maintenance", label: "Maintenance", icon: Wrench, roles: ["admin", "owner", "employee"], employeeAccess: "maintenance" },
+  {
+    label: "Projects",
+    items: [
+      { path: "/projects", label: "Projects", icon: FolderKanban, roles: ["admin", "employee"], employeeAccess: "projects" },
+      {
+        path: "/project-attendance",
+        label: "Project Attendance",
+        icon: Calendar,
+        roles: ["admin", "employee"],
+        employeeAccess: "projectAttendance",
+      },
+      { path: "/attendance", label: "Vehicle Attendance", icon: Calendar, roles: ["admin", "owner", "employee"], employeeAccess: "attendance" },
+    ],
+  },
+  {
+    label: "Customer Billing",
+    items: [
+      { path: "/customers", label: "Customers", icon: Users, roles: ["admin", "employee"], employeeAccess: "projects" },
+      { path: "/project-rates", label: "Project Rates", icon: DollarSign, roles: ["admin"] },
+      {
+        path: "/customer-invoices",
+        label: "Customer Invoices",
+        icon: Receipt,
+        roles: ["admin", "employee"],
+        employeeAccess: "payments",
+      },
+      { path: "/payments", label: "Payments", icon: CreditCard, roles: ["admin", "owner", "employee"], employeeAccess: "payments" },
+    ],
+  },
 ] as const;
 
 export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
@@ -68,7 +93,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
     }
   };
 
-  const items = navigationItems.filter((item) => {
+  const filterItem = (item: NavigationItem) => {
     if (!item.roles) {
       return true;
     }
@@ -84,7 +109,16 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
     }
 
     return true;
-  });
+  };
+
+  const filteredSections = navigationSections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter(filterItem),
+    }))
+    .filter((section) => section.items.length > 0);
+
+  const flatItems = filteredSections.flatMap((section) => section.items);
 
   return (
     <aside
@@ -126,28 +160,68 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
 
         {/* Navigation */}
         <nav className="flex-1 space-y-2 overflow-y-auto p-4">
-          {items.map((item) => {
-            const Icon = item.icon;
-            const isActive = location === item.path;
+          {isOpen ? (
+            <Accordion
+              type="multiple"
+              defaultValue={filteredSections.map((section) => section.label)}
+              className="space-y-2"
+            >
+              {filteredSections.map((section) => (
+                <AccordionItem key={section.label} value={section.label} className="border-none">
+                  <AccordionTrigger className="text-sm font-semibold text-foreground">
+                    {section.label}
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-2 pt-0">
+                    {section.items.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = location === item.path;
 
-            return (
-              <Link key={item.path} href={item.path}>
-                <a
-                  className={cn(
-                    "flex items-center gap-3 rounded-md px-3 py-2 font-medium transition-colors",
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-                  )}
-                  data-testid={`nav-${item.label.toLowerCase()}`}
-                  onClick={handleNavClick}
-                >
-                  <Icon className="h-5 w-5 flex-shrink-0" />
-                  {isOpen && <span className="truncate">{item.label}</span>}
-                </a>
-              </Link>
-            );
-          })}
+                      return (
+                        <Link key={item.path} href={item.path}>
+                          <a
+                            className={cn(
+                              "flex items-center gap-3 rounded-md px-3 py-2 font-medium transition-colors",
+                              isActive
+                                ? "bg-primary text-primary-foreground"
+                                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                            )}
+                            data-testid={`nav-${item.label.toLowerCase()}`}
+                            onClick={handleNavClick}
+                          >
+                            <Icon className="h-5 w-5 flex-shrink-0" />
+                            <span className="truncate">{item.label}</span>
+                          </a>
+                        </Link>
+                      );
+                    })}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          ) : (
+            flatItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = location === item.path;
+
+              return (
+                <Link key={item.path} href={item.path}>
+                  <a
+                    className={cn(
+                      "flex items-center gap-3 rounded-md px-3 py-2 font-medium transition-colors",
+                      isActive
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                    )}
+                    data-testid={`nav-${item.label.toLowerCase()}`}
+                    onClick={handleNavClick}
+                  >
+                    <Icon className="h-5 w-5 flex-shrink-0" />
+                    {isOpen && <span className="truncate">{item.label}</span>}
+                  </a>
+                </Link>
+              );
+            })
+          )}
         </nav>
 
         {/* User Profile */}
