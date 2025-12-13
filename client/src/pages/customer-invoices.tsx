@@ -7,6 +7,12 @@ import {
   AlertDescription,
   AlertTitle,
 } from "@/components/ui/alert";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -153,20 +159,40 @@ export default function CustomerInvoices() {
     user?.role === "admin" ||
     (user?.role === "employee" && user.employeeAccess?.includes("payments"));
 
+  const roundCurrency = (value: number | string | undefined | null) =>
+    Math.round(Number(value ?? 0) * 100) / 100;
+
   const formatCurrency = (value: number | string | undefined | null) =>
-    Number(value ?? 0).toFixed(2);
+    roundCurrency(value).toFixed(2);
 
   const invoicePayments = invoice?.payments ?? [];
 
   const totalPaid = useMemo(
-    () => invoicePayments.reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0),
+    () =>
+      roundCurrency(
+        invoicePayments.reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0),
+      ),
     [invoicePayments]
   );
 
   const outstandingAmount = useMemo(
-    () => Math.max(Number(invoice?.total ?? 0) - totalPaid, 0),
+    () => Math.max(roundCurrency(Number(invoice?.total ?? 0) - totalPaid), 0),
     [invoice, totalPaid]
   );
+
+  const accordionDefaults = useMemo(() => {
+    const defaults = ["details", "created-list"] as string[];
+
+    if (calculation) {
+      defaults.push("preview");
+    }
+
+    if (invoice) {
+      defaults.push("invoice-details", "invoice-payments");
+    }
+
+    return defaults;
+  }, [calculation, invoice]);
 
   const paymentBlocked = !invoice || outstandingAmount <= 0;
 
@@ -235,7 +261,7 @@ export default function CustomerInvoices() {
 
   const handleStatusChange = async (
     invoiceId: string,
-    status: "pending" | "paid" | "overdue",
+    status: "pending" | "partial" | "paid" | "overdue",
   ) => {
     setUpdatingInvoiceId(invoiceId);
     try {
@@ -273,6 +299,17 @@ export default function CustomerInvoices() {
       toast({
         title: "Invoice already paid",
         description: "This invoice has no outstanding balance to record.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const paymentAmount = Number(values.amount ?? 0);
+
+    if (paymentAmount > outstandingAmount) {
+      toast({
+        title: "Payment too large",
+        description: "Payment cannot exceed the outstanding balance.",
         variant: "destructive",
       });
       return;
@@ -322,7 +359,13 @@ export default function CustomerInvoices() {
         </Alert>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <Accordion type="multiple" defaultValue={accordionDefaults} className="space-y-4">
+        <AccordionItem value="details">
+          <AccordionTrigger className="text-lg font-semibold">
+            Invoice details & rates
+          </AccordionTrigger>
+          <AccordionContent>
+            <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Invoice details</CardTitle>
@@ -471,6 +514,7 @@ export default function CustomerInvoices() {
                           </FormControl>
                           <SelectContent>
                             <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="partial">Partial</SelectItem>
                             <SelectItem value="paid">Paid</SelectItem>
                             <SelectItem value="overdue">Overdue</SelectItem>
                           </SelectContent>
@@ -569,11 +613,18 @@ export default function CustomerInvoices() {
           </CardContent>
         </Card>
       </div>
+          </AccordionContent>
+        </AccordionItem>
 
-      {calculation && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+        {calculation && (
+          <AccordionItem value="preview">
+            <AccordionTrigger className="text-lg font-semibold">
+              Invoice preview
+            </AccordionTrigger>
+            <AccordionContent>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
               <ClipboardCheck className="h-5 w-5" /> Invoice preview
             </CardTitle>
             <CardDescription>
@@ -666,397 +717,437 @@ export default function CustomerInvoices() {
             </div>
           </CardContent>
         </Card>
+      </AccordionContent>
+    </AccordionItem>
       )}
 
       {invoice && (
+        <>
+          <AccordionItem value="invoice-details">
+            <AccordionTrigger className="text-lg font-semibold">Invoice details</AccordionTrigger>
+            <AccordionContent>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <ClipboardCheck className="h-5 w-5" /> Invoice created
+                  </CardTitle>
+                  <CardDescription>
+                    Review the calculated totals and line items for this invoice.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-4">
+                    <div>
+                      <div className="text-sm text-muted-foreground">Customer</div>
+                      <div className="font-medium">{selectedProject?.customer.name}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Project</div>
+                      <div className="font-medium">{selectedProject?.name}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Period</div>
+                      <div className="font-medium">
+                        {invoice.periodStart} — {invoice.periodEnd}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Status</div>
+                      <Badge className="mt-1 capitalize">{invoice.status}</Badge>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="grid gap-4 md:grid-cols-4">
+                    <div>
+                      <div className="text-sm text-muted-foreground">Invoice number</div>
+                      <div className="font-medium">{invoice.invoiceNumber ?? "Pending number"}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Due date</div>
+                      <div className="font-medium">{invoice.dueDate}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Total paid</div>
+                      <div className="text-lg font-semibold">${formatCurrency(totalPaid)}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Outstanding</div>
+                      <div className="text-lg font-semibold">${formatCurrency(outstandingAmount)}</div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="grid gap-4 md:grid-cols-4">
+                    <div>
+                      <div className="text-sm text-muted-foreground">Subtotal</div>
+                      <div className="text-lg font-semibold">${formatCurrency(invoice.subtotal)}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Adjustment</div>
+                      <div className="text-lg font-semibold">${formatCurrency(invoice.adjustment)}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Sales tax</div>
+                      <div className="text-lg font-semibold">
+                        {Number(invoice.salesTaxRate ?? 0)}% (${formatCurrency(invoice.salesTaxAmount)})
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Total</div>
+                      <div className="text-lg font-semibold">${formatCurrency(invoice.total)}</div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">
+                      Line items by vehicle and month
+                    </div>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Vehicle</TableHead>
+                          <TableHead>Month</TableHead>
+                          <TableHead className="text-right">Present days</TableHead>
+                          <TableHead className="text-right">Daily rate</TableHead>
+                          <TableHead className="text-right">Amount</TableHead>
+                          <TableHead className="text-right">Sales tax</TableHead>
+                          <TableHead className="text-right">Total</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {invoice.items.map((item) => (
+                          <TableRow key={item.id}>
+                            <TableCell>
+                              <div className="font-medium">{item.vehicle.licensePlate}</div>
+                              <div className="text-sm text-muted-foreground">
+                                {item.vehicle.make} {item.vehicle.model}
+                              </div>
+                            </TableCell>
+                            <TableCell>{item.monthLabel ?? `${item.month}/${item.year}`}</TableCell>
+                            <TableCell className="text-right">{item.presentDays}</TableCell>
+                            <TableCell className="text-right">${formatCurrency(item.dailyRate)}</TableCell>
+                            <TableCell className="text-right">${formatCurrency(item.amount)}</TableCell>
+                            <TableCell className="text-right">${formatCurrency(item.salesTaxAmount)}</TableCell>
+                            <TableCell className="text-right">${formatCurrency(item.totalAmount)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </AccordionContent>
+          </AccordionItem>
+
+          <AccordionItem value="invoice-payments">
+            <AccordionTrigger className="text-lg font-semibold">Invoice payments</AccordionTrigger>
+            <AccordionContent>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <ClipboardCheck className="h-5 w-5" /> Payments & balance
+                  </CardTitle>
+                  <CardDescription>
+                    Review balances and record payments for this invoice.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div>
+                      <div className="text-sm text-muted-foreground">Invoice total</div>
+                      <div className="text-lg font-semibold">${formatCurrency(invoice.total)}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Total paid</div>
+                      <div className="text-lg font-semibold">${formatCurrency(totalPaid)}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Outstanding</div>
+                      <div className="text-lg font-semibold">${formatCurrency(outstandingAmount)}</div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-medium text-muted-foreground">Payments</div>
+                      <div className="text-xs text-muted-foreground">
+                        Record payments to track outstanding balances.
+                      </div>
+                    </div>
+
+                    {invoicePayments.length > 0 ? (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Amount</TableHead>
+                            <TableHead>Method</TableHead>
+                            <TableHead>Reference</TableHead>
+                            <TableHead>Notes</TableHead>
+                            <TableHead>Recorded by</TableHead>
+                            <TableHead>Transaction date</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {invoicePayments.map((payment) => (
+                            <TableRow key={payment.id}>
+                              <TableCell>${formatCurrency(payment.amount)}</TableCell>
+                              <TableCell className="capitalize">{payment.method.replace("_", " ")}</TableCell>
+                              <TableCell>{payment.referenceNumber ?? "—"}</TableCell>
+                              <TableCell className="max-w-xs truncate">{payment.notes ?? "—"}</TableCell>
+                              <TableCell>{payment.recordedBy ?? "—"}</TableCell>
+                              <TableCell>{payment.transactionDate}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No payments recorded yet.</p>
+                    )}
+
+                    {canManageInvoices && (
+                      <Form {...paymentForm}>
+                        <form
+                          className="grid gap-4 md:grid-cols-5 md:items-end"
+                          onSubmit={handleRecordPayment}
+                        >
+                          <FormField
+                            control={paymentForm.control}
+                            name="amount"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Payment amount</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    max={paymentBlocked ? undefined : outstandingAmount}
+                                    disabled={paymentBlocked || isRecordingPayment}
+                                    {...field}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={paymentForm.control}
+                            name="method"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Method</FormLabel>
+                                <Select
+                                  onValueChange={field.onChange}
+                                  value={field.value}
+                                  disabled={paymentBlocked || isRecordingPayment}
+                                >
+                                  <FormControl>
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="cash">Cash</SelectItem>
+                                    <SelectItem value="bank_transfer">Bank transfer</SelectItem>
+                                    <SelectItem value="cheque">Cheque</SelectItem>
+                                    <SelectItem value="mobile_wallet">Mobile wallet</SelectItem>
+                                    <SelectItem value="other">Other</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={paymentForm.control}
+                            name="transactionDate"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Transaction date</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="date"
+                                    disabled={paymentBlocked || isRecordingPayment}
+                                    {...field}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={paymentForm.control}
+                            name="referenceNumber"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Reference</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    placeholder="Receipt or ref"
+                                    disabled={paymentBlocked || isRecordingPayment}
+                                    {...field}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={paymentForm.control}
+                            name="recordedBy"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Recorded by</FormLabel>
+                                <FormControl>
+                                  <Input disabled={paymentBlocked || isRecordingPayment} {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={paymentForm.control}
+                            name="notes"
+                            render={({ field }) => (
+                              <FormItem className="md:col-span-5">
+                                <FormLabel>Notes</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    placeholder="Optional notes"
+                                    disabled={paymentBlocked || isRecordingPayment}
+                                    {...field}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <div className="md:col-span-5">
+                            <Button
+                              type="submit"
+                              disabled={isRecordingPayment || paymentBlocked}
+                              variant={paymentBlocked ? "secondary" : "default"}
+                            >
+                              {isRecordingPayment ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <ClipboardCheck className="mr-2 h-4 w-4" />
+                              )}
+                              Record payment
+                            </Button>
+                            {paymentBlocked && (
+                              <p className="mt-1 text-sm text-muted-foreground">
+                                Payments can only be recorded for invoices with an outstanding balance.
+                              </p>
+                            )}
+                          </div>
+                        </form>
+                      </Form>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </AccordionContent>
+          </AccordionItem>
+        </>
+      )}
+
+      <AccordionItem value="created-list">
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ClipboardCheck className="h-5 w-5" /> Invoice created
-            </CardTitle>
+            <CardTitle>Created invoices</CardTitle>
             <CardDescription>
-              Review the calculated totals and line items for this invoice.
+              View previously generated invoices and update their payment status.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-4">
-              <div>
-                <div className="text-sm text-muted-foreground">Customer</div>
-                <div className="font-medium">{selectedProject?.customer.name}</div>
+          <CardContent>
+            {invoicesLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading invoices...
               </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Project</div>
-                <div className="font-medium">{selectedProject?.name}</div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Period</div>
-                <div className="font-medium">
-                  {invoice.periodStart} — {invoice.periodEnd}
-                </div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Status</div>
-                <Badge className="mt-1 capitalize">{invoice.status}</Badge>
-              </div>
-            </div>
-
-            <Separator />
-
-            <div className="grid gap-4 md:grid-cols-4">
-              <div>
-                <div className="text-sm text-muted-foreground">Invoice number</div>
-                <div className="font-medium">{invoice.invoiceNumber ?? "Pending number"}</div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Due date</div>
-                <div className="font-medium">{invoice.dueDate}</div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Total paid</div>
-                <div className="text-lg font-semibold">${formatCurrency(totalPaid)}</div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Outstanding</div>
-                <div className="text-lg font-semibold">
-                  ${formatCurrency(outstandingAmount)}
-                </div>
-              </div>
-            </div>
-
-            <Separator />
-
-            <div className="grid gap-4 md:grid-cols-4">
-              <div>
-                <div className="text-sm text-muted-foreground">Subtotal</div>
-                <div className="text-lg font-semibold">${formatCurrency(invoice.subtotal)}</div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Adjustment</div>
-                <div className="text-lg font-semibold">${formatCurrency(invoice.adjustment)}</div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Sales tax</div>
-                <div className="text-lg font-semibold">
-                  {Number(invoice.salesTaxRate ?? 0)}% (${formatCurrency(invoice.salesTaxAmount)})
-                </div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Total</div>
-                <div className="text-lg font-semibold">${formatCurrency(invoice.total)}</div>
-              </div>
-            </div>
-
-            <Separator />
-
-            <div className="space-y-2">
-              <div className="text-sm font-medium text-muted-foreground">
-                Line items by vehicle and month
-              </div>
+            ) : invoices.length > 0 ? (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Vehicle</TableHead>
-                    <TableHead>Month</TableHead>
-                    <TableHead className="text-right">Present days</TableHead>
-                    <TableHead className="text-right">Daily rate</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead className="text-right">Sales tax</TableHead>
+                    <TableHead>Invoice</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Project</TableHead>
+                    <TableHead>Period</TableHead>
                     <TableHead className="text-right">Total</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {invoice.items.map((item) => (
-                    <TableRow key={item.id}>
+                  {invoices.map((row) => (
+                    <TableRow key={row.id}>
                       <TableCell>
-                        <div className="font-medium">{item.vehicle.licensePlate}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {item.vehicle.make} {item.vehicle.model}
+                        <div className="font-medium">{row.invoiceNumber ?? "—"}</div>
+                        <div className="text-xs text-muted-foreground">Due {row.dueDate}</div>
+                      </TableCell>
+                      <TableCell>{row.customer.name}</TableCell>
+                      <TableCell>{row.project.name}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-col text-sm">
+                          <span>{row.periodStart}</span>
+                          <span>{row.periodEnd}</span>
                         </div>
                       </TableCell>
-                      <TableCell>{item.monthLabel ?? `${item.month}/${item.year}`}</TableCell>
-                      <TableCell className="text-right">{item.presentDays}</TableCell>
-                      <TableCell className="text-right">${formatCurrency(item.dailyRate)}</TableCell>
-                      <TableCell className="text-right">${formatCurrency(item.amount)}</TableCell>
-                      <TableCell className="text-right">${formatCurrency(item.salesTaxAmount)}</TableCell>
-                      <TableCell className="text-right">${formatCurrency(item.totalAmount)}</TableCell>
+                      <TableCell className="text-right">${formatCurrency(row.total)}</TableCell>
+                      <TableCell>
+                        <Select
+                          disabled={!canManageInvoices || updatingInvoiceId === row.id}
+                          value={row.status}
+                          onValueChange={(value) =>
+                            handleStatusChange(row.id, value as "pending" | "partial" | "paid" | "overdue")
+                          }
+                        >
+                          <FormControl>
+                            <SelectTrigger className="w-32 capitalize">
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="partial">Partial</SelectItem>
+                            <SelectItem value="paid">Paid</SelectItem>
+                            <SelectItem value="overdue">Overdue</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setInvoice(row)}
+                          disabled={updatingInvoiceId === row.id}
+                        >
+                          View
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-            </div>
-
-            <Separator />
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-medium text-muted-foreground">Payments</div>
-                <div className="text-xs text-muted-foreground">
-                  Record payments to track outstanding balances.
-                </div>
-              </div>
-
-              {invoicePayments.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Method</TableHead>
-                      <TableHead>Reference</TableHead>
-                      <TableHead>Notes</TableHead>
-                      <TableHead>Recorded by</TableHead>
-                      <TableHead>Transaction date</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {invoicePayments.map((payment) => (
-                      <TableRow key={payment.id}>
-                        <TableCell>${formatCurrency(payment.amount)}</TableCell>
-                        <TableCell className="capitalize">{payment.method.replace("_", " ")}</TableCell>
-                        <TableCell>{payment.referenceNumber ?? "—"}</TableCell>
-                        <TableCell className="max-w-xs truncate">{payment.notes ?? "—"}</TableCell>
-                        <TableCell>{payment.recordedBy ?? "—"}</TableCell>
-                        <TableCell>{payment.transactionDate}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                <p className="text-sm text-muted-foreground">No payments recorded yet.</p>
-              )}
-
-              {canManageInvoices && (
-                <Form {...paymentForm}>
-                  <form
-                    className="grid gap-4 md:grid-cols-5 md:items-end"
-                    onSubmit={handleRecordPayment}
-                  >
-                    <FormField
-                      control={paymentForm.control}
-                      name="amount"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Payment amount</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              disabled={paymentBlocked || isRecordingPayment}
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={paymentForm.control}
-                      name="method"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Method</FormLabel>
-                          <Select
-                            onValueChange={field.onChange}
-                            value={field.value}
-                            disabled={paymentBlocked || isRecordingPayment}
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="cash">Cash</SelectItem>
-                              <SelectItem value="bank_transfer">Bank transfer</SelectItem>
-                              <SelectItem value="cheque">Cheque</SelectItem>
-                              <SelectItem value="mobile_wallet">Mobile wallet</SelectItem>
-                              <SelectItem value="other">Other</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={paymentForm.control}
-                      name="transactionDate"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Transaction date</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="date"
-                              disabled={paymentBlocked || isRecordingPayment}
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={paymentForm.control}
-                      name="referenceNumber"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Reference</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="Receipt or ref"
-                              disabled={paymentBlocked || isRecordingPayment}
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={paymentForm.control}
-                      name="recordedBy"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Recorded by</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="Name"
-                              disabled={paymentBlocked || isRecordingPayment}
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={paymentForm.control}
-                      name="notes"
-                      render={({ field }) => (
-                        <FormItem className="md:col-span-5">
-                          <FormLabel>Notes</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="Optional notes"
-                              disabled={paymentBlocked || isRecordingPayment}
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <div className="md:col-span-5">
-                      <Button
-                        type="submit"
-                        disabled={isRecordingPayment || paymentBlocked}
-                        variant={paymentBlocked ? "secondary" : "default"}
-                      >
-                        {isRecordingPayment ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <ClipboardCheck className="mr-2 h-4 w-4" />
-                        )}
-                        Record payment
-                      </Button>
-                      {paymentBlocked && (
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          Payments can only be recorded for invoices with an outstanding balance.
-                        </p>
-                      )}
-                    </div>
-                  </form>
-                </Form>
-              )}
-            </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No invoices have been created yet.</p>
+            )}
           </CardContent>
         </Card>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Created invoices</CardTitle>
-          <CardDescription>
-            View previously generated invoices and update their payment status.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {invoicesLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading invoices...
-            </div>
-          ) : invoices.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Invoice</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Project</TableHead>
-                  <TableHead>Period</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invoices.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell>
-                      <div className="font-medium">{row.invoiceNumber ?? "—"}</div>
-                      <div className="text-xs text-muted-foreground">Due {row.dueDate}</div>
-                    </TableCell>
-                    <TableCell>{row.customer.name}</TableCell>
-                    <TableCell>{row.project.name}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-col text-sm">
-                        <span>{row.periodStart}</span>
-                        <span>{row.periodEnd}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">${formatCurrency(row.total)}</TableCell>
-                    <TableCell>
-                      <Select
-                        disabled={!canManageInvoices || updatingInvoiceId === row.id}
-                        value={row.status}
-                        onValueChange={(value) =>
-                          handleStatusChange(row.id, value as "pending" | "paid" | "overdue")
-                        }
-                      >
-                        <FormControl>
-                          <SelectTrigger className="w-32 capitalize">
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="paid">Paid</SelectItem>
-                          <SelectItem value="overdue">Overdue</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setInvoice(row)}
-                        disabled={updatingInvoiceId === row.id}
-                      >
-                        View
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <p className="text-sm text-muted-foreground">No invoices have been created yet.</p>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+      </AccordionItem>
+    </Accordion>
+  </div>
   );
 }

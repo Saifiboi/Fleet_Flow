@@ -1711,20 +1711,20 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    const subtotal = items.reduce((sum, item) => sum + Number(item.amount), 0);
-    const adjustmentNumber = Number(payload.adjustment ?? 0);
-    const salesTaxRateNumber = Number(payload.salesTaxRate ?? 0);
-    const taxableBase = subtotal + adjustmentNumber;
-    const salesTaxAmount = Number((taxableBase * (salesTaxRateNumber / 100)).toFixed(2));
-    const total = Number((taxableBase + salesTaxAmount).toFixed(2));
+    const roundCurrency = (value: number) => Math.round(value * 100) / 100;
+
+    const subtotal = roundCurrency(items.reduce((sum, item) => sum + Number(item.amount), 0));
+    const adjustmentNumber = roundCurrency(Number(payload.adjustment ?? 0));
+    const salesTaxRateNumber = Number(Number(payload.salesTaxRate ?? 0).toFixed(2));
+    const taxableBase = roundCurrency(subtotal + adjustmentNumber);
+    const salesTaxAmount = roundCurrency(taxableBase * (salesTaxRateNumber / 100));
+    const total = Math.round(taxableBase + salesTaxAmount);
 
     const itemsWithTax = items.map((item) => {
       const adjustmentShare = subtotal === 0 ? 0 : (Number(item.amount) / subtotal) * adjustmentNumber;
-      const taxableAmount = Number(item.amount) + adjustmentShare;
-      const itemSalesTaxAmount = Number(
-        (taxableAmount * (salesTaxRateNumber / 100)).toFixed(2)
-      );
-      const totalAmount = Number((taxableAmount + itemSalesTaxAmount).toFixed(2));
+        const taxableAmount = roundCurrency(Number(item.amount) + adjustmentShare);
+        const itemSalesTaxAmount = roundCurrency(taxableAmount * (salesTaxRateNumber / 100));
+        const totalAmount = roundCurrency(taxableAmount + itemSalesTaxAmount);
 
       return {
         ...item,
@@ -1902,6 +1902,12 @@ export class DatabaseStorage implements IStorage {
         throw error;
       }
 
+      if (paymentAmount > outstanding) {
+        const error: any = new Error("Payment cannot exceed the outstanding balance");
+        error.status = 400;
+        throw error;
+      }
+
       const paymentValues: InsertCustomerInvoicePayment = {
         ...payment,
         invoiceId,
@@ -1915,6 +1921,11 @@ export class DatabaseStorage implements IStorage {
         await tx
           .update(customerInvoices)
           .set({ status: "paid" })
+          .where(eq(customerInvoices.id, invoiceId));
+      } else if (totalPaid > 0 && invoice.status !== "partial") {
+        await tx
+          .update(customerInvoices)
+          .set({ status: "partial" })
           .where(eq(customerInvoices.id, invoiceId));
       }
 

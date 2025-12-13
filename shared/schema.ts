@@ -778,7 +778,10 @@ export const createCustomerInvoiceSchema = z
       .coerce
       .number({ invalid_type_error: "Sales tax rate must be a valid number" })
       .default(0),
-    status: z.enum(["pending", "paid", "overdue"]).default("pending").optional(),
+    status: z
+      .enum(["pending", "partial", "paid", "overdue"])
+      .default("pending")
+      .optional(),
   })
   .superRefine((data, ctx) => {
     const parseDate = (value: string, field: keyof typeof data) => {
@@ -815,7 +818,7 @@ export const createCustomerInvoiceSchema = z
   });
 
 export const updateCustomerInvoiceStatusSchema = z.object({
-  status: z.enum(["pending", "paid", "overdue"]),
+  status: z.enum(["pending", "partial", "paid", "overdue"]),
 });
 
 export const insertCustomerInvoicePaymentSchema = createInsertSchema(customerInvoicePayments)
