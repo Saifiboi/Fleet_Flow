@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { addDays, format, startOfMonth } from "date-fns";
@@ -153,12 +153,6 @@ export default function CustomerInvoices() {
   }, [projectId, startDate, endDate, showCreateForm]);
 
   useEffect(() => {
-    if (!baseCalculation) return;
-
-    setCalculation(recalculateWithAdjustments(baseCalculation));
-  }, [adjustment, baseCalculation, recalculateWithAdjustments]);
-
-  useEffect(() => {
     paymentForm.reset({
       amount: 0,
       method: "cash",
@@ -261,6 +255,12 @@ export default function CustomerInvoices() {
     },
     [adjustment, itemAdjustments, roundCurrency, salesTaxRate],
   );
+
+  useEffect(() => {
+    if (!baseCalculation) return;
+
+    setCalculation(recalculateWithAdjustments(baseCalculation));
+  }, [adjustment, baseCalculation, recalculateWithAdjustments]);
 
   const handleItemAdjustmentChange = (
     item: CustomerInvoiceCalculationItem,
