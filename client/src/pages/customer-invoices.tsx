@@ -230,7 +230,7 @@ export default function CustomerInvoices() {
       );
       const taxableBase = roundCurrency(subtotal + adjustmentNumber);
       const salesTaxAmount = roundCurrency(taxableBase * (salesTaxRateNumber / 100));
-      const total = Math.round(taxableBase + salesTaxAmount);
+      const total = roundCurrency(taxableBase + salesTaxAmount);
 
       const items = itemsWithAdjustments.map((item) => {
         const adjustmentShare = subtotal === 0 ? 0 : (Number(item.amount) / subtotal) * adjustmentNumber;

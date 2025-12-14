@@ -1741,7 +1741,7 @@ export class DatabaseStorage implements IStorage {
     const salesTaxRateNumber = Number(Number(payload.salesTaxRate ?? 0).toFixed(2));
     const taxableBase = roundCurrency(subtotal + adjustmentNumber);
     const salesTaxAmount = roundCurrency(taxableBase * (salesTaxRateNumber / 100));
-    const total = Math.round(taxableBase + salesTaxAmount);
+    const total = roundCurrency(taxableBase + salesTaxAmount);
 
     const itemsWithTax = items.map((item) => {
       const adjustmentShare = subtotal === 0 ? 0 : (Number(item.amount) / subtotal) * adjustmentNumber;
