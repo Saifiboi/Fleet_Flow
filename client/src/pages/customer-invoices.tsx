@@ -186,6 +186,44 @@ export default function CustomerInvoices() {
       maximumFractionDigits: 2,
     }).format(roundCurrency(value));
 
+  type InvoiceWithRoundedItems = {
+    subtotal: number | string;
+    adjustment: number | string;
+    salesTaxRate: number | string;
+    salesTaxAmount: number | string;
+    total: number | string;
+    items: Array<
+      {
+        projectRate?: number | string;
+        dailyRate?: number | string;
+        vehicleMob?: number | string;
+        vehicleDimob?: number | string;
+        amount?: number | string;
+        salesTaxAmount?: number | string;
+        totalAmount?: number | string;
+      } & Record<string, unknown>
+    >;
+  };
+
+  const roundInvoiceAmounts = <T extends InvoiceWithRoundedItems>(invoice: T): T => ({
+    ...invoice,
+    subtotal: roundCurrency(invoice.subtotal),
+    adjustment: roundCurrency(invoice.adjustment),
+    salesTaxRate: roundCurrency(invoice.salesTaxRate),
+    salesTaxAmount: roundCurrency(invoice.salesTaxAmount),
+    total: roundCurrency(invoice.total),
+    items: invoice.items.map((item) => ({
+      ...item,
+      projectRate: roundCurrency(item.projectRate),
+      dailyRate: roundCurrency(item.dailyRate),
+      vehicleMob: roundCurrency(item.vehicleMob),
+      vehicleDimob: roundCurrency(item.vehicleDimob),
+      amount: roundCurrency(item.amount),
+      salesTaxAmount: roundCurrency(item.salesTaxAmount),
+      totalAmount: roundCurrency(item.totalAmount),
+    })),
+  });
+
   const getItemKey = (item: { vehicleId: string; month: number; year: number }) =>
     `${item.vehicleId}-${item.month}-${item.year}`;
 
@@ -406,7 +444,7 @@ export default function CustomerInvoices() {
         customerId: selectedProject?.customerId ?? values.customerId,
         items: calculation ? buildItemPayload(calculation.items) : undefined,
       };
-      const result = await calculateCustomerInvoice(payload);
+      const result = roundInvoiceAmounts(await calculateCustomerInvoice(payload));
       if (result.invoiceNumber) {
         form.setValue("invoiceNumber", result.invoiceNumber);
       }
@@ -421,7 +459,7 @@ export default function CustomerInvoices() {
       );
       setItemAdjustments(overrides);
       setBaseCalculation(result);
-      setCalculation(recalculateWithAdjustments(result, overrides));
+      setCalculation(roundInvoiceAmounts(recalculateWithAdjustments(result, overrides)));
       setInvoice(null);
       openSections("preview");
       toast({
@@ -487,7 +525,7 @@ export default function CustomerInvoices() {
     try {
       const updated = await updateCustomerInvoiceStatus(invoiceId, { status });
       if (invoice?.id === invoiceId) {
-        setInvoice(updated);
+        setInvoice(roundInvoiceAmounts(updated));
       }
       toast({
         title: "Invoice updated",
@@ -538,7 +576,7 @@ export default function CustomerInvoices() {
     setIsRecordingPayment(true);
     try {
       const updated = await recordCustomerInvoicePayment(invoice.id, values);
-      setInvoice(updated);
+      setInvoice(roundInvoiceAmounts(updated));
       toast({
         title: "Payment recorded",
         description: "Invoice payment has been saved.",
@@ -574,7 +612,7 @@ export default function CustomerInvoices() {
   };
 
   const handleViewInvoice = (row: CustomerInvoiceWithDetails) => {
-    setInvoice(row);
+    setInvoice(roundInvoiceAmounts(row));
     setCalculation(null);
     setShowCreateForm(false);
     form.setValue("projectId", row.projectId);
