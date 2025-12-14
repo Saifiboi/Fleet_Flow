@@ -20,11 +20,8 @@ export function exportCustomerInvoicePdf(
   invoice: CustomerInvoiceWithItems | CustomerInvoiceWithDetails,
   formatCurrency: (value: number | string | undefined | null) => string,
 ): boolean {
-  const payments = "payments" in invoice ? invoice.payments ?? [] : [];
   const customer = "customer" in invoice ? invoice.customer : undefined;
   const project = "project" in invoice ? invoice.project : undefined;
-  const totalPaid = payments.reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0);
-  const outstanding = Math.max(Number(invoice.total ?? 0) - totalPaid, 0);
 
   const invoiceNumber = invoice.invoiceNumber ?? "Pending";
   const doc = new jsPDF();
@@ -58,12 +55,12 @@ export function exportCustomerInvoicePdf(
     buildSummaryRow("Adjustment", formatCurrency(invoice.adjustment)),
     buildSummaryRow(`Sales tax (${invoice.salesTaxRate ?? 0}% )`, formatCurrency(invoice.salesTaxAmount)),
     buildSummaryRow("Total", formatCurrency(invoice.total)),
-    buildSummaryRow("Total paid", formatCurrency(totalPaid)),
-    buildSummaryRow("Outstanding", formatCurrency(outstanding)),
   ];
 
   const infoStartY = 44;
   const billToDetails = [customer?.name, customer?.email].filter(Boolean).join("\n") || "-";
+  const billToAddress = customer?.address ?? customer?.companyAddress ?? "-";
+  const taxNumber = customer?.taxNumber ?? "-";
   const projectDetails = project?.name ?? "-";
 
   autoTable(doc, {
@@ -73,6 +70,8 @@ export function exportCustomerInvoicePdf(
     body: [
       ["Bill to", billToDetails],
       ["Project", projectDetails],
+      ["Address", billToAddress],
+      ["NTN", taxNumber],
       ["Invoice #", invoiceNumber],
       ["Period", `${invoice.periodStart} — ${invoice.periodEnd}`],
       ["Due date", invoice.dueDate ?? "-"],
@@ -112,13 +111,11 @@ export function exportCustomerInvoicePdf(
     head: [
       [
         "Vehicle",
-        "Details",
-        "Month",
-        "Project rate",
-        "Present days",
+        "Type",
+        "Rate",
+        "Days",
         "MOB",
         "DI MOB",
-        "Daily rate",
         "Amount",
         "Sales tax",
         "Total",
@@ -126,13 +123,11 @@ export function exportCustomerInvoicePdf(
     ],
     body: invoice.items.map((item) => [
       item.vehicle?.licensePlate ?? "-",
-      item.vehicle ? `${item.vehicle.make} ${item.vehicle.model}` : "-",
-      item.monthLabel ?? `${item.month}/${item.year}`,
+      item.vehicle ? `${item.vehicle?.year ?? ""} ${item.vehicle?.model ?? ""}`.trim() || "-" : "-",
       formatCurrency(item.projectRate),
       item.presentDays,
       formatCurrency(item.vehicleMob),
       formatCurrency(item.vehicleDimob),
-      formatCurrency(item.dailyRate),
       formatCurrency(item.amount),
       formatCurrency(item.salesTaxAmount),
       formatCurrency(item.totalAmount),
@@ -142,15 +137,13 @@ export function exportCustomerInvoicePdf(
     columnStyles: {
       0: { halign: "left" },
       1: { halign: "left" },
-      2: { halign: "left" },
+      2: { halign: "right" },
       3: { halign: "right" },
       4: { halign: "right" },
       5: { halign: "right" },
       6: { halign: "right" },
       7: { halign: "right" },
       8: { halign: "right" },
-      9: { halign: "right" },
-      10: { halign: "right" },
     },
     theme: "grid",
   });
@@ -192,10 +185,6 @@ export function exportCustomerInvoiceExcel(
   invoice: CustomerInvoiceWithItems | CustomerInvoiceWithDetails,
   formatCurrency: (value: number | string | undefined | null) => string,
 ): boolean {
-  const payments = "payments" in invoice ? invoice.payments ?? [] : [];
-  const totalPaid = payments.reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0);
-  const outstanding = Math.max(Number(invoice.total ?? 0) - totalPaid, 0);
-
   const summaryData = [
     ["Field", "Value"],
     ["Invoice number", invoice.invoiceNumber ?? "Pending"],
@@ -206,33 +195,27 @@ export function exportCustomerInvoiceExcel(
     ["Adjustment", formatCurrency(invoice.adjustment)],
     [`Sales tax (${invoice.salesTaxRate ?? 0}% )`, formatCurrency(invoice.salesTaxAmount)],
     ["Total", formatCurrency(invoice.total)],
-    ["Total paid", formatCurrency(totalPaid)],
-    ["Outstanding", formatCurrency(outstanding)],
   ];
 
   const itemsData = [
     [
       "Vehicle",
-      "Details",
-      "Month",
-      "Project rate",
-      "Present days",
+      "Type",
+      "Rate",
+      "Days",
       "MOB",
       "DI MOB",
-      "Daily rate",
       "Amount",
       "Sales tax",
       "Total",
     ],
     ...invoice.items.map((item) => [
       item.vehicle?.licensePlate ?? "-",
-      item.vehicle ? `${item.vehicle.make} ${item.vehicle.model}` : "-",
-      item.monthLabel ?? `${item.month}/${item.year}`,
+      item.vehicle ? `${item.vehicle?.year ?? ""} ${item.vehicle?.model ?? ""}`.trim() || "-" : "-",
       formatCurrency(item.projectRate),
       item.presentDays,
       formatCurrency(item.vehicleMob),
       formatCurrency(item.vehicleDimob),
-      formatCurrency(item.dailyRate),
       formatCurrency(item.amount),
       formatCurrency(item.salesTaxAmount),
       formatCurrency(item.totalAmount),
