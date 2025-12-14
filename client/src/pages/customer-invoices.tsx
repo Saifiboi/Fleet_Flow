@@ -58,6 +58,7 @@ import {
   useCustomerInvoices,
   recordCustomerInvoicePayment,
 } from "@/lib/api";
+import { exportCustomerInvoiceExcel, exportCustomerInvoicePdf } from "@/lib/invoice-pdf";
 import type {
   CreateCustomerInvoiceRequest,
   CustomerInvoiceWithItems,
@@ -72,6 +73,7 @@ import {
   Calculator,
   ClipboardCheck,
   FileText,
+  FileSpreadsheet,
   Loader2,
   Receipt,
   Wallet,
@@ -352,6 +354,48 @@ export default function CustomerInvoices() {
     setInvoice(null);
     resetAccordion();
   };
+
+  const handleExportInvoice = useCallback(() => {
+    if (!invoice) {
+      toast({
+        variant: "destructive",
+        title: "No invoice selected",
+        description: "Select or create an invoice before exporting it.",
+      });
+      return;
+    }
+
+    const success = exportCustomerInvoicePdf(invoice, formatCurrency);
+
+    if (!success) {
+      toast({
+        variant: "destructive",
+        title: "Unable to open PDF",
+        description: "Allow pop-ups to download or print the invoice.",
+      });
+    }
+  }, [formatCurrency, invoice, toast]);
+
+  const handleExportInvoiceExcel = useCallback(() => {
+    if (!invoice) {
+      toast({
+        variant: "destructive",
+        title: "No invoice selected",
+        description: "Select or create an invoice before exporting it.",
+      });
+      return;
+    }
+
+    const success = exportCustomerInvoiceExcel(invoice, formatCurrency);
+
+    if (!success) {
+      toast({
+        variant: "destructive",
+        title: "Unable to export", 
+        description: "Try again to download the Excel copy of this invoice.",
+      });
+    }
+  }, [formatCurrency, invoice, toast]);
 
   const handleCalculate = form.handleSubmit(async (values) => {
     openSections("details");
@@ -1172,13 +1216,23 @@ export default function CustomerInvoices() {
             <AccordionTrigger className="text-lg font-semibold">Invoice details</AccordionTrigger>
             <AccordionContent>
               <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <ClipboardCheck className="h-5 w-5" /> Invoice created
-                  </CardTitle>
-                  <CardDescription>
-                    Review the calculated totals and line items for this invoice.
-                  </CardDescription>
+                <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <ClipboardCheck className="h-5 w-5" /> Invoice created
+                    </CardTitle>
+                    <CardDescription>
+                      Review the calculated totals and line items for this invoice.
+                    </CardDescription>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" onClick={handleExportInvoice}>
+                      <FileText className="mr-2 h-4 w-4" /> Export PDF
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={handleExportInvoiceExcel}>
+                      <FileSpreadsheet className="mr-2 h-4 w-4" /> Export Excel
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid gap-4 md:grid-cols-4">
