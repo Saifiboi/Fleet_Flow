@@ -1531,6 +1531,9 @@ export class DatabaseStorage implements IStorage {
       const invoiceItems = calculation.items.map(({ vehicle, ...item }) => ({
         ...item,
         invoiceId: invoice.id,
+        projectRate: item.projectRate.toFixed(2),
+        vehicleMob: item.vehicleMob.toFixed(2),
+        vehicleDimob: item.vehicleDimob.toFixed(2),
         dailyRate: item.dailyRate.toFixed(2),
         amount: item.amount.toFixed(2),
         salesTaxRate: item.salesTaxRate.toFixed(2),
@@ -1634,6 +1637,19 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    const overrideMap = new Map<
+      string,
+      { vehicleMob: number | undefined; vehicleDimob: number | undefined }
+    >();
+
+    payload.items?.forEach((item) => {
+      const key = `${item.vehicleId}-${item.month}-${item.year}`;
+      overrideMap.set(key, {
+        vehicleMob: Number(item.vehicleMob ?? 0),
+        vehicleDimob: Number(item.vehicleDimob ?? 0),
+      });
+    });
+
     const attendance = await db
       .select({
         attendanceDate: vehicleAttendance.attendanceDate,
@@ -1685,6 +1701,7 @@ export class DatabaseStorage implements IStorage {
     });
 
     const monthFormatter = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" });
+    const roundCurrency = (value: number) => Math.round(value * 100) / 100;
     const items: CustomerInvoiceCalculationItem[] = [];
 
     for (const [vehicleId, monthMap] of buckets.entries()) {
@@ -1693,7 +1710,12 @@ export class DatabaseStorage implements IStorage {
       for (const [, bucket] of monthMap.entries()) {
         const daysInMonth = new Date(Date.UTC(bucket.year, bucket.month, 0)).getUTCDate();
         const dailyRate = rateNumber / daysInMonth;
-        const amount = dailyRate * bucket.presentDays;
+        const key = `${vehicleId}-${bucket.month}-${bucket.year}`;
+        const override = overrideMap.get(key);
+        const vehicleMob = roundCurrency(override?.vehicleMob ?? 0);
+        const vehicleDimob = roundCurrency(override?.vehicleDimob ?? 0);
+        const baseAmount = roundCurrency(dailyRate * bucket.presentDays);
+        const amount = roundCurrency(baseAmount + vehicleMob + vehicleDimob);
 
         const referenceDate = new Date(Date.UTC(bucket.year, bucket.month - 1, 1));
         const monthLabel = monthFormatter.format(referenceDate);
@@ -1705,13 +1727,14 @@ export class DatabaseStorage implements IStorage {
           year: bucket.year,
           monthLabel,
           presentDays: bucket.presentDays,
+          projectRate: roundCurrency(rateNumber),
+          vehicleMob,
+          vehicleDimob,
           dailyRate: Number(dailyRate.toFixed(2)),
-          amount: Number(amount.toFixed(2)),
+          amount,
         });
       }
     }
-
-    const roundCurrency = (value: number) => Math.round(value * 100) / 100;
 
     const subtotal = roundCurrency(items.reduce((sum, item) => sum + Number(item.amount), 0));
     const adjustmentNumber = roundCurrency(Number(payload.adjustment ?? 0));

@@ -207,6 +207,9 @@ export const customerInvoiceItems = pgTable("customer_invoice_items", {
   year: integer("year").notNull(),
   monthLabel: text("month_label"),
   presentDays: integer("present_days").notNull().default(0),
+  projectRate: decimal("project_rate", { precision: 10, scale: 2 }).notNull().default("0"),
+  vehicleMob: decimal("vehicle_mob", { precision: 10, scale: 2 }).notNull().default("0"),
+  vehicleDimob: decimal("vehicle_dimob", { precision: 10, scale: 2 }).notNull().default("0"),
   dailyRate: decimal("daily_rate", { precision: 10, scale: 2 }).notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   salesTaxRate: decimal("sales_tax_rate", { precision: 5, scale: 2 }).notNull().default("0"),
@@ -782,6 +785,21 @@ export const createCustomerInvoiceSchema = z
       .enum(["pending", "partial", "paid", "overdue"])
       .default("pending")
       .optional(),
+    items: z
+      .array(
+        z.object({
+          vehicleId: z.string().uuid(),
+          month: z.number(),
+          year: z.number(),
+          vehicleMob: z.coerce
+            .number({ invalid_type_error: "MOB must be a number" })
+            .default(0),
+          vehicleDimob: z.coerce
+            .number({ invalid_type_error: "DI MOB must be a number" })
+            .default(0),
+        }),
+      )
+      .optional(),
   })
   .superRefine((data, ctx) => {
     const parseDate = (value: string, field: keyof typeof data) => {
@@ -1071,6 +1089,9 @@ export type CustomerInvoiceCalculationItem = {
   year: number;
   monthLabel?: string | null;
   presentDays: number;
+  projectRate: number;
+  vehicleMob: number;
+  vehicleDimob: number;
   dailyRate: number;
   amount: number;
   salesTaxRate: number;

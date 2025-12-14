@@ -62,6 +62,7 @@ import type {
   CreateCustomerInvoiceRequest,
   CustomerInvoiceWithItems,
   CustomerInvoiceCalculation,
+  CustomerInvoiceCalculationItem,
   CustomerInvoiceWithDetails,
   CreateCustomerInvoicePayment,
 } from "@shared/schema";
@@ -87,7 +88,11 @@ export default function CustomerInvoices() {
   const [invoice, setInvoice] = useState<
     CustomerInvoiceWithItems | CustomerInvoiceWithDetails | null
   >(null);
+  const [baseCalculation, setBaseCalculation] = useState<CustomerInvoiceCalculation | null>(null);
   const [calculation, setCalculation] = useState<CustomerInvoiceCalculation | null>(null);
+  const [itemAdjustments, setItemAdjustments] = useState<
+    Record<string, { vehicleMob: number; vehicleDimob: number }>
+  >({});
   const [isCalculating, setIsCalculating] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [updatingInvoiceId, setUpdatingInvoiceId] = useState<string | null>(null);
@@ -142,12 +147,16 @@ export default function CustomerInvoices() {
     if (!showCreateForm) return;
 
     setInvoice(null);
+    setBaseCalculation(null);
+    setItemAdjustments({});
     setCalculation(null);
   }, [projectId, startDate, endDate, showCreateForm]);
 
   useEffect(() => {
-    setCalculation(null);
-  }, [adjustment, salesTaxRate]);
+    if (!baseCalculation) return;
+
+    setCalculation(recalculateWithAdjustments(baseCalculation));
+  }, [adjustment, baseCalculation, recalculateWithAdjustments]);
 
   useEffect(() => {
     paymentForm.reset({
@@ -180,6 +189,102 @@ export default function CustomerInvoices() {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(roundCurrency(value));
+
+  const getItemKey = (item: { vehicleId: string; month: number; year: number }) =>
+    `${item.vehicleId}-${item.month}-${item.year}`;
+
+  const buildItemPayload = (items: CustomerInvoiceCalculationItem[]) =>
+    items.map((item) => {
+      const override = itemAdjustments[getItemKey(item)];
+      return {
+        vehicleId: item.vehicleId,
+        month: item.month,
+        year: item.year,
+        vehicleMob: roundCurrency(override?.vehicleMob ?? item.vehicleMob ?? 0),
+        vehicleDimob: roundCurrency(override?.vehicleDimob ?? item.vehicleDimob ?? 0),
+      };
+    });
+
+  const recalculateWithAdjustments = useCallback(
+    (
+      source: CustomerInvoiceCalculation,
+      overrides: Record<string, { vehicleMob: number; vehicleDimob: number }> = itemAdjustments,
+    ): CustomerInvoiceCalculation => {
+      const adjustmentNumber = roundCurrency(adjustment);
+      const salesTaxRateNumber = Number(Number(salesTaxRate ?? 0).toFixed(2));
+
+      const itemsWithAdjustments = source.items.map((item) => {
+        const override = overrides[getItemKey(item)];
+        const vehicleMob = roundCurrency(override?.vehicleMob ?? item.vehicleMob ?? 0);
+        const vehicleDimob = roundCurrency(override?.vehicleDimob ?? item.vehicleDimob ?? 0);
+        const baseAmount = roundCurrency(item.dailyRate * item.presentDays);
+        const amount = roundCurrency(baseAmount + vehicleMob + vehicleDimob);
+
+        return {
+          ...item,
+          vehicleMob,
+          vehicleDimob,
+          amount,
+          salesTaxRate: salesTaxRateNumber,
+        };
+      });
+
+      const subtotal = roundCurrency(
+        itemsWithAdjustments.reduce((sum, item) => sum + Number(item.amount), 0),
+      );
+      const taxableBase = roundCurrency(subtotal + adjustmentNumber);
+      const salesTaxAmount = roundCurrency(taxableBase * (salesTaxRateNumber / 100));
+      const total = Math.round(taxableBase + salesTaxAmount);
+
+      const items = itemsWithAdjustments.map((item) => {
+        const adjustmentShare = subtotal === 0 ? 0 : (Number(item.amount) / subtotal) * adjustmentNumber;
+        const taxableAmount = roundCurrency(Number(item.amount) + adjustmentShare);
+        const itemSalesTaxAmount = roundCurrency(taxableAmount * (salesTaxRateNumber / 100));
+        const totalAmount = roundCurrency(taxableAmount + itemSalesTaxAmount);
+
+        return {
+          ...item,
+          salesTaxAmount: itemSalesTaxAmount,
+          totalAmount,
+        };
+      });
+
+      return {
+        ...source,
+        subtotal,
+        adjustment: adjustmentNumber,
+        salesTaxRate: salesTaxRateNumber,
+        salesTaxAmount,
+        total,
+        items,
+      };
+    },
+    [adjustment, itemAdjustments, roundCurrency, salesTaxRate],
+  );
+
+  const handleItemAdjustmentChange = (
+    item: CustomerInvoiceCalculationItem,
+    field: "vehicleMob" | "vehicleDimob",
+    value: number,
+  ) => {
+    const key = getItemKey(item);
+    setItemAdjustments((prev) => {
+      const next = { ...prev };
+      const current =
+        next[key] ?? {
+          vehicleMob: roundCurrency(item.vehicleMob),
+          vehicleDimob: roundCurrency(item.vehicleDimob),
+        };
+
+      next[key] = { ...current, [field]: roundCurrency(value) };
+
+      if (baseCalculation) {
+        setCalculation(recalculateWithAdjustments(baseCalculation, next));
+      }
+
+      return next;
+    });
+  };
 
   const invoicePayments = invoice?.payments ?? [];
 
@@ -242,6 +347,8 @@ export default function CustomerInvoices() {
   const handleBackToCreated = () => {
     setShowCreateForm(false);
     setCalculation(null);
+    setBaseCalculation(null);
+    setItemAdjustments({});
     setInvoice(null);
     resetAccordion();
   };
@@ -253,12 +360,24 @@ export default function CustomerInvoices() {
       const payload: CreateCustomerInvoiceRequest = {
         ...values,
         customerId: selectedProject?.customerId ?? values.customerId,
+        items: calculation ? buildItemPayload(calculation.items) : undefined,
       };
       const result = await calculateCustomerInvoice(payload);
       if (result.invoiceNumber) {
         form.setValue("invoiceNumber", result.invoiceNumber);
       }
-      setCalculation(result);
+      const overrides = Object.fromEntries(
+        result.items.map((item) => [
+          getItemKey(item),
+          {
+            vehicleMob: roundCurrency(item.vehicleMob),
+            vehicleDimob: roundCurrency(item.vehicleDimob),
+          },
+        ]),
+      );
+      setItemAdjustments(overrides);
+      setBaseCalculation(result);
+      setCalculation(recalculateWithAdjustments(result, overrides));
       setInvoice(null);
       openSections("preview");
       toast({
@@ -286,15 +405,18 @@ export default function CustomerInvoices() {
       return;
     }
 
-    setIsCreating(true);
+      setIsCreating(true);
     try {
       const payload: CreateCustomerInvoiceRequest = {
         ...values,
         customerId: selectedProject?.customerId ?? values.customerId,
+        items: buildItemPayload(calculation.items),
       };
       const created = await createCustomerInvoice(payload);
       setInvoice(null);
       setCalculation(null);
+      setBaseCalculation(null);
+      setItemAdjustments({});
       setShowCreateForm(false);
       resetAccordion();
       toast({
@@ -969,7 +1091,10 @@ export default function CustomerInvoices() {
                         <TableRow>
                           <TableHead>Vehicle</TableHead>
                           <TableHead>Month</TableHead>
+                          <TableHead className="text-right">Project rate</TableHead>
                           <TableHead className="text-right">Present days</TableHead>
+                          <TableHead className="text-right">MOB</TableHead>
+                          <TableHead className="text-right">DI MOB</TableHead>
                           <TableHead className="text-right">Daily rate</TableHead>
                           <TableHead className="text-right">Amount</TableHead>
                           <TableHead className="text-right">Sales tax</TableHead>
@@ -986,7 +1111,46 @@ export default function CustomerInvoices() {
                               </div>
                             </TableCell>
                             <TableCell>{item.monthLabel ?? `${item.month}/${item.year}`}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(item.projectRate)}</TableCell>
                             <TableCell className="text-right">{item.presentDays}</TableCell>
+                            <TableCell className="text-right">
+                              <Input
+                                type="number"
+                                inputMode="decimal"
+                                step="0.01"
+                                min={0}
+                                value={
+                                  itemAdjustments[getItemKey(item)]?.vehicleMob ??
+                                  roundCurrency(item.vehicleMob)
+                                }
+                                onChange={(event) =>
+                                  handleItemAdjustmentChange(
+                                    item,
+                                    "vehicleMob",
+                                    Number(event.target.value),
+                                  )
+                                }
+                              />
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Input
+                                type="number"
+                                inputMode="decimal"
+                                step="0.01"
+                                min={0}
+                                value={
+                                  itemAdjustments[getItemKey(item)]?.vehicleDimob ??
+                                  roundCurrency(item.vehicleDimob)
+                                }
+                                onChange={(event) =>
+                                  handleItemAdjustmentChange(
+                                    item,
+                                    "vehicleDimob",
+                                    Number(event.target.value),
+                                  )
+                                }
+                              />
+                            </TableCell>
                             <TableCell className="text-right">{formatCurrency(item.dailyRate)}</TableCell>
                             <TableCell className="text-right">{formatCurrency(item.amount)}</TableCell>
                             <TableCell className="text-right">{formatCurrency(item.salesTaxAmount)}</TableCell>
@@ -1093,7 +1257,10 @@ export default function CustomerInvoices() {
                         <TableRow>
                           <TableHead>Vehicle</TableHead>
                           <TableHead>Month</TableHead>
+                          <TableHead className="text-right">Project rate</TableHead>
                           <TableHead className="text-right">Present days</TableHead>
+                          <TableHead className="text-right">MOB</TableHead>
+                          <TableHead className="text-right">DI MOB</TableHead>
                           <TableHead className="text-right">Daily rate</TableHead>
                           <TableHead className="text-right">Amount</TableHead>
                           <TableHead className="text-right">Sales tax</TableHead>
@@ -1110,7 +1277,10 @@ export default function CustomerInvoices() {
                               </div>
                             </TableCell>
                             <TableCell>{item.monthLabel ?? `${item.month}/${item.year}`}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(item.projectRate)}</TableCell>
                             <TableCell className="text-right">{item.presentDays}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(item.vehicleMob)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(item.vehicleDimob)}</TableCell>
                             <TableCell className="text-right">{formatCurrency(item.dailyRate)}</TableCell>
                             <TableCell className="text-right">{formatCurrency(item.amount)}</TableCell>
                             <TableCell className="text-right">{formatCurrency(item.salesTaxAmount)}</TableCell>
