@@ -17,6 +17,12 @@ import type {
   VehicleAttendanceSummary,
   CreateVehiclePaymentForPeriod,
   VehiclePaymentForPeriodResult,
+  CreateCustomerInvoiceRequest,
+  CustomerInvoiceWithItems,
+  CustomerInvoiceCalculation,
+  CustomerInvoiceWithDetails,
+  UpdateCustomerInvoiceStatus,
+  CreateCustomerInvoicePayment,
   UserWithOwner,
   OwnershipHistoryWithOwner,
   ProjectVehicleCustomerRateWithVehicle,
@@ -159,9 +165,55 @@ export const useProjectCustomerRates = (projectId?: string) =>
     },
   });
 
+export const useCustomerInvoices = () =>
+  useQuery<CustomerInvoiceWithDetails[]>({
+    queryKey: ["/api/customer-invoices"],
+  });
+
 export const createVehiclePaymentForPeriod = async (
   payload: CreateVehiclePaymentForPeriod
 ): Promise<VehiclePaymentForPeriodResult> => {
   const res = await apiRequest("POST", "/api/payments/calculate", payload);
   return (await res.json()) as VehiclePaymentForPeriodResult;
+};
+
+export const createCustomerInvoice = async (
+  payload: CreateCustomerInvoiceRequest
+): Promise<CustomerInvoiceWithItems> => {
+  const res = await apiRequest("POST", "/api/customer-invoices", payload);
+  const text = await res.text();
+
+  try {
+    return JSON.parse(text) as CustomerInvoiceWithItems;
+  } catch (error) {
+    throw new Error(
+      text ||
+        (error instanceof Error
+          ? error.message
+          : "Received an invalid response while creating the invoice"),
+    );
+  }
+};
+
+export const calculateCustomerInvoice = async (
+  payload: CreateCustomerInvoiceRequest
+): Promise<CustomerInvoiceCalculation> => {
+  const res = await apiRequest("POST", "/api/customer-invoices/calculate", payload);
+  return (await res.json()) as CustomerInvoiceCalculation;
+};
+
+export const updateCustomerInvoiceStatus = async (
+  id: string,
+  payload: UpdateCustomerInvoiceStatus
+): Promise<CustomerInvoiceWithDetails> => {
+  const res = await apiRequest("PATCH", `/api/customer-invoices/${id}/status`, payload);
+  return (await res.json()) as CustomerInvoiceWithDetails;
+};
+
+export const recordCustomerInvoicePayment = async (
+  id: string,
+  payload: CreateCustomerInvoicePayment
+): Promise<CustomerInvoiceWithDetails> => {
+  const res = await apiRequest("POST", `/api/customer-invoices/${id}/payments`, payload);
+  return (await res.json()) as CustomerInvoiceWithDetails;
 };

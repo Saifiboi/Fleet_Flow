@@ -13,6 +13,9 @@ import {
   createPaymentRequestSchema,
   createPaymentTransactionSchema,
   createVehiclePaymentForPeriodSchema,
+  createCustomerInvoiceSchema,
+  createCustomerInvoicePaymentSchema,
+  updateCustomerInvoiceStatusSchema,
   insertMaintenanceRecordSchema,
   insertOwnershipHistorySchema,
   updateOwnerSchema,
@@ -1153,6 +1156,100 @@ export async function registerRoutes(app: Application): Promise<void> {
     }
   });
 
+  app.get("/api/customer-invoices", async (req, res) => {
+    if (!requireAdminOrEmployee(req, res, "payments")) {
+      return;
+    }
+
+    try {
+      const projectIds = isEmployee(req) ? employeeProjectIds(req) : undefined;
+      const invoices = await storage.getCustomerInvoices({ projectIds });
+      res.json(invoices);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/customer-invoices/calculate", async (req, res) => {
+    if (!requireAdminOrEmployee(req, res, "payments", { manage: true })) {
+      return;
+    }
+
+    try {
+      const payload = createCustomerInvoiceSchema.parse(req.body);
+      const invoice = await storage.calculateCustomerInvoice(payload);
+      res.status(200).json(invoice);
+    } catch (error: any) {
+      const status = error.status ?? 400;
+      res.status(status).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/customer-invoices", async (req, res) => {
+    if (!requireAdminOrEmployee(req, res, "payments", { manage: true })) {
+      return;
+    }
+
+    try {
+      const payload = createCustomerInvoiceSchema.parse(req.body);
+      const invoice = await storage.createCustomerInvoice(payload);
+      res.status(201).json(invoice);
+    } catch (error: any) {
+      const status = error.status ?? 400;
+      res.status(status).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/customer-invoices/:id/status", async (req, res) => {
+    if (!requireAdminOrEmployee(req, res, "payments", { manage: true })) {
+      return;
+    }
+
+    try {
+      const { status } = updateCustomerInvoiceStatusSchema.parse(req.body);
+      const invoice = await storage.getCustomerInvoice(req.params.id);
+
+      if (!invoice) {
+        return res.status(404).json({ message: "Invoice not found" });
+      }
+
+      if (isEmployee(req) && !employeeProjectIds(req).includes(invoice.projectId)) {
+        return res.status(403).json({ message: "You cannot update invoices for this project" });
+      }
+
+      const updated = await storage.updateCustomerInvoiceStatus(req.params.id, status);
+      res.json(updated);
+    } catch (error: any) {
+      const status = error.status ?? 400;
+      res.status(status).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/customer-invoices/:id/payments", async (req, res) => {
+    if (!requireAdminOrEmployee(req, res, "payments", { manage: true })) {
+      return;
+    }
+
+    try {
+      const payment = createCustomerInvoicePaymentSchema.parse(req.body);
+      const invoice = await storage.getCustomerInvoice(req.params.id);
+
+      if (!invoice) {
+        return res.status(404).json({ message: "Invoice not found" });
+      }
+
+      if (isEmployee(req) && !employeeProjectIds(req).includes(invoice.projectId)) {
+        return res.status(403).json({ message: "You cannot update invoices for this project" });
+      }
+
+      const updated = await storage.recordCustomerInvoicePayment(req.params.id, payment);
+      res.status(201).json(updated);
+    } catch (error: any) {
+      const status = error.status ?? 400;
+      res.status(status).json({ message: error.message });
+    }
+  });
+
   app.put("/api/payments/:id", async (_req, res) => {
     res.status(405).json({ message: "Payments cannot be modified after they are created." });
   });
@@ -1660,6 +1757,11 @@ export async function registerRoutes(app: Application): Promise<void> {
       res.status(400).json({ message: error?.message || "Failed to delete attendance" });
     }
   });
+
+  app.use("/api", (_req, res) => {
+    res.status(404).json({ message: "API route not found" });
+  });
+
   app.get("/chicken", async (req: Request, res: Response) => {
     res.json({ message: "healthy", status: 200 });
   });
