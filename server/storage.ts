@@ -1705,11 +1705,11 @@ export class DatabaseStorage implements IStorage {
     const items: CustomerInvoiceCalculationItem[] = [];
 
     for (const [vehicleId, monthMap] of buckets.entries()) {
-      const rateNumber = rateMap.get(vehicleId) ?? 0;
+      const rateNumber = roundCurrency(rateMap.get(vehicleId) ?? 0);
 
       for (const [, bucket] of monthMap.entries()) {
         const daysInMonth = new Date(Date.UTC(bucket.year, bucket.month, 0)).getUTCDate();
-        const dailyRate = rateNumber / daysInMonth;
+        const dailyRate = roundCurrency(rateNumber / daysInMonth);
         const key = `${vehicleId}-${bucket.month}-${bucket.year}`;
         const override = overrideMap.get(key);
         const vehicleMob = roundCurrency(override?.vehicleMob ?? 0);
@@ -1730,7 +1730,7 @@ export class DatabaseStorage implements IStorage {
           projectRate: roundCurrency(rateNumber),
           vehicleMob,
           vehicleDimob,
-          dailyRate: Number(dailyRate.toFixed(2)),
+          dailyRate,
           amount,
         });
       }
