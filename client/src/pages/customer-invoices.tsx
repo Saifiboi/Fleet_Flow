@@ -176,7 +176,7 @@ export default function CustomerInvoices() {
     (user?.role === "employee" && user.employeeAccess?.includes("payments"));
 
   const roundCurrency = (value: number | string | undefined | null) =>
-    Math.round(Number(value ?? 0) * 100) / 100;
+    Number(Number(value ?? 0).toFixed(2));
 
   const formatCurrency = (value: number | string | undefined | null) =>
     new Intl.NumberFormat("en-PK", {

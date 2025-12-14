@@ -1500,6 +1500,8 @@ export class DatabaseStorage implements IStorage {
 
   async createCustomerInvoice(payload: CreateCustomerInvoiceRequest): Promise<CustomerInvoiceWithItems> {
     const calculation = await this.calculateCustomerInvoice(payload);
+    const formatCurrency = (value: number | string | null | undefined) =>
+      Number(Number(value ?? 0).toFixed(2)).toFixed(2);
 
     return await db.transaction(async (tx) => {
       await this.ensureInvoicePeriodAvailable(
@@ -1517,11 +1519,11 @@ export class DatabaseStorage implements IStorage {
         periodStart: calculation.periodStart,
         periodEnd: calculation.periodEnd,
         dueDate: calculation.dueDate,
-        subtotal: calculation.subtotal.toFixed(2),
-        adjustment: calculation.adjustment.toFixed(2),
-        salesTaxRate: calculation.salesTaxRate.toFixed(2),
-        salesTaxAmount: calculation.salesTaxAmount.toFixed(2),
-        total: calculation.total.toFixed(2),
+        subtotal: formatCurrency(calculation.subtotal),
+        adjustment: formatCurrency(calculation.adjustment),
+        salesTaxRate: formatCurrency(calculation.salesTaxRate),
+        salesTaxAmount: formatCurrency(calculation.salesTaxAmount),
+        total: formatCurrency(calculation.total),
         invoiceNumber,
         status: calculation.status ?? "pending",
       };
@@ -1531,14 +1533,14 @@ export class DatabaseStorage implements IStorage {
       const invoiceItems = calculation.items.map(({ vehicle, ...item }) => ({
         ...item,
         invoiceId: invoice.id,
-        projectRate: item.projectRate.toFixed(2),
-        vehicleMob: item.vehicleMob.toFixed(2),
-        vehicleDimob: item.vehicleDimob.toFixed(2),
-        dailyRate: item.dailyRate.toFixed(2),
-        amount: item.amount.toFixed(2),
-        salesTaxRate: item.salesTaxRate.toFixed(2),
-        salesTaxAmount: item.salesTaxAmount.toFixed(2),
-        totalAmount: item.totalAmount.toFixed(2),
+        projectRate: formatCurrency(item.projectRate),
+        vehicleMob: formatCurrency(item.vehicleMob),
+        vehicleDimob: formatCurrency(item.vehicleDimob),
+        dailyRate: formatCurrency(item.dailyRate),
+        amount: formatCurrency(item.amount),
+        salesTaxRate: formatCurrency(item.salesTaxRate),
+        salesTaxAmount: formatCurrency(item.salesTaxAmount),
+        totalAmount: formatCurrency(item.totalAmount),
       }));
 
       const createdItems = await tx.insert(customerInvoiceItems).values(invoiceItems).returning();
@@ -1701,7 +1703,8 @@ export class DatabaseStorage implements IStorage {
     });
 
     const monthFormatter = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" });
-    const roundCurrency = (value: number) => Math.round(value * 100) / 100;
+    const roundCurrency = (value: number | string | null | undefined) =>
+      Number(Number(value ?? 0).toFixed(2));
     const items: CustomerInvoiceCalculationItem[] = [];
 
     for (const [vehicleId, monthMap] of buckets.entries()) {
