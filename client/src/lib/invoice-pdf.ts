@@ -3,18 +3,12 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import type { CustomerInvoiceWithDetails, CustomerInvoiceWithItems } from "@shared/schema";
 
-const BANK_DETAILS = {
-  accountName: "FleetFlow Logistics",
-  accountNumber: "1234-567890-12",
-  bankName: "National Bank of Pakistan",
-  iban: "PK12NBPA0000001234567890",
-  swift: "NBPAPKKA",
-  branch: "Main Boulevard Branch",
-};
-
 const buildSummaryRow = (label: string, value: string) => ({ label, value });
 
 const buildInvoiceTitle = (invoiceNumber: string) => `Invoice-${invoiceNumber.replace(/\s+/g, "-")}`;
+
+const formatAmount = (value: number | string | undefined | null) =>
+  (Math.round(Number(value ?? 0) * 100) / 100).toFixed(2);
 
 export function exportCustomerInvoicePdf(
   invoice: CustomerInvoiceWithItems | CustomerInvoiceWithDetails,
@@ -24,9 +18,11 @@ export function exportCustomerInvoicePdf(
   const project = "project" in invoice ? invoice.project : undefined;
 
   const invoiceNumber = invoice.invoiceNumber ?? "Pending";
+  const invoiceDate = invoice.createdAt
+    ? new Date(invoice.createdAt).toISOString().split("T")[0]
+    : "-";
   const doc = new jsPDF();
   const marginLeft = 14;
-  const lineHeight = 8;
   const pageWidth = doc.internal.pageSize.getWidth();
   const usableWidth = pageWidth - marginLeft * 2;
   const gapBetweenTables = 6;
@@ -45,16 +41,19 @@ export function exportCustomerInvoicePdf(
 
   doc.setFontSize(18);
   doc.text(`Invoice ${invoiceNumber}`, marginLeft, 18);
-  doc.setFontSize(11);
-  doc.setTextColor("#475569");
-  doc.text(`Period: ${invoice.periodStart} — ${invoice.periodEnd}`, marginLeft, 26);
-  doc.text(`Status: ${invoice.status}  |  Due: ${invoice.dueDate ?? "-"}`, marginLeft, 26 + lineHeight);
 
   const summary = [
     buildSummaryRow("Subtotal", formatCurrency(invoice.subtotal)),
     buildSummaryRow("Adjustment", formatCurrency(invoice.adjustment)),
     buildSummaryRow(`Sales tax (${invoice.salesTaxRate ?? 0}% )`, formatCurrency(invoice.salesTaxAmount)),
     buildSummaryRow("Total", formatCurrency(invoice.total)),
+  ];
+
+  const invoiceMeta = [
+    ["Invoice #", invoiceNumber],
+    ["Invoice date", invoiceDate],
+    ["Period", `${invoice.periodStart} — ${invoice.periodEnd}`],
+    ["Due date", invoice.dueDate ?? "-"],
   ];
 
   const infoStartY = 44;
@@ -72,10 +71,6 @@ export function exportCustomerInvoicePdf(
       ["Project", projectDetails],
       ["Address", billToAddress],
       ["NTN", taxNumber],
-      ["Invoice #", invoiceNumber],
-      ["Period", `${invoice.periodStart} — ${invoice.periodEnd}`],
-      ["Due date", invoice.dueDate ?? "-"],
-      ["Status", invoice.status],
     ],
     styles: { fontSize: 10, cellPadding: 3, halign: "left", lineColor: [226, 232, 240], lineWidth: 0.1 },
     headStyles: { fontStyle: "bold", fillColor: [241, 245, 249], textColor: [15, 23, 42] },
@@ -104,14 +99,33 @@ export function exportCustomerInvoicePdf(
   });
 
   const summaryFinalY = (doc as any).lastAutoTable?.finalY ?? infoStartY;
-  const itemsStartY = Math.max(infoFinalY, summaryFinalY) + 12;
+  autoTable(doc, {
+    startY: summaryFinalY + 6,
+    margin: { left: summaryMarginLeft },
+    theme: "plain",
+    head: [["Invoice", ""]],
+    body: invoiceMeta,
+    styles: { fontSize: 10, cellPadding: 3, halign: "left", lineColor: [226, 232, 240], lineWidth: 0.1 },
+    headStyles: { fontStyle: "bold", fillColor: [241, 245, 249], textColor: [15, 23, 42] },
+    columnStyles: {
+      0: { fontStyle: "bold", cellWidth: Math.min(40, summaryTableWidth * 0.5) },
+      1: { cellWidth: Math.max(summaryTableWidth - Math.min(40, summaryTableWidth * 0.5), 40) },
+    },
+    tableWidth: summaryTableWidth,
+  });
+
+  const metaFinalY = (doc as any).lastAutoTable?.finalY ?? summaryFinalY;
+  const itemsStartY = Math.max(infoFinalY, metaFinalY) + 12;
 
   autoTable(doc, {
     startY: itemsStartY,
     head: [
       [
+        "S. No.",
         "Vehicle",
         "Type",
+        "Year",
+        "Model",
         "Rate",
         "Days",
         "MOB",
@@ -121,60 +135,37 @@ export function exportCustomerInvoicePdf(
         "Total",
       ],
     ],
-    body: invoice.items.map((item) => [
+    body: invoice.items.map((item, index) => [
+      index + 1,
       item.vehicle?.licensePlate ?? "-",
-      item.vehicle ? `${item.vehicle?.year ?? ""} ${item.vehicle?.model ?? ""}`.trim() || "-" : "-",
-      formatCurrency(item.projectRate),
+      item.vehicle?.make ?? "-",
+      item.vehicle?.year ?? "-",
+      item.vehicle?.model ?? "-",
+      formatAmount(item.projectRate),
       item.presentDays,
-      formatCurrency(item.vehicleMob),
-      formatCurrency(item.vehicleDimob),
-      formatCurrency(item.amount),
-      formatCurrency(item.salesTaxAmount),
-      formatCurrency(item.totalAmount),
+      formatAmount(item.vehicleMob),
+      formatAmount(item.vehicleDimob),
+      formatAmount(item.amount),
+      formatAmount(item.salesTaxAmount),
+      formatAmount(item.totalAmount),
     ]),
     styles: { fontSize: 9, cellPadding: 3, valign: "middle" },
     headStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], halign: "center", valign: "middle" },
     columnStyles: {
       0: { halign: "left" },
       1: { halign: "left" },
-      2: { halign: "right" },
+      2: { halign: "left" },
       3: { halign: "right" },
-      4: { halign: "right" },
+      4: { halign: "left" },
       5: { halign: "right" },
       6: { halign: "right" },
       7: { halign: "right" },
       8: { halign: "right" },
+      9: { halign: "right" },
+      10: { halign: "right" },
+      11: { halign: "right" },
     },
     theme: "grid",
-  });
-
-  const detailsStartY = (doc as any).lastAutoTable?.finalY + 12 || itemsStartY + 40;
-
-  doc.setTextColor("#0f172a");
-  doc.setFontSize(12);
-  doc.text("Payment instructions", marginLeft, detailsStartY);
-  doc.setTextColor("#475569");
-  doc.setFontSize(10);
-  doc.text(
-    `Transfer payments to the bank account below and share remittance advice with billing@fleetflow.test.`,
-    marginLeft,
-    detailsStartY + lineHeight,
-    { maxWidth: 180 },
-  );
-
-  doc.setTextColor("#0f172a");
-  doc.setFontSize(11);
-  const bankLines = [
-    `Account name: ${BANK_DETAILS.accountName}`,
-    `Account number: ${BANK_DETAILS.accountNumber}`,
-    `Bank: ${BANK_DETAILS.bankName}`,
-    `IBAN: ${BANK_DETAILS.iban}`,
-    `SWIFT: ${BANK_DETAILS.swift}`,
-    `Branch: ${BANK_DETAILS.branch}`,
-  ];
-
-  bankLines.forEach((line, index) => {
-    doc.text(line, marginLeft, detailsStartY + lineHeight * (index + 2));
   });
 
   doc.save(`${buildInvoiceTitle(invoiceNumber)}.pdf`);
@@ -188,8 +179,8 @@ export function exportCustomerInvoiceExcel(
   const summaryData = [
     ["Field", "Value"],
     ["Invoice number", invoice.invoiceNumber ?? "Pending"],
+    ["Invoice date", invoice.createdAt ? new Date(invoice.createdAt).toISOString().split("T")[0] : "-"],
     ["Period", `${invoice.periodStart} — ${invoice.periodEnd}`],
-    ["Status", invoice.status],
     ["Due date", invoice.dueDate ?? "-"],
     ["Subtotal", formatCurrency(invoice.subtotal)],
     ["Adjustment", formatCurrency(invoice.adjustment)],
@@ -199,8 +190,11 @@ export function exportCustomerInvoiceExcel(
 
   const itemsData = [
     [
+      "S. No.",
       "Vehicle",
       "Type",
+      "Year",
+      "Model",
       "Rate",
       "Days",
       "MOB",
@@ -209,16 +203,19 @@ export function exportCustomerInvoiceExcel(
       "Sales tax",
       "Total",
     ],
-    ...invoice.items.map((item) => [
+    ...invoice.items.map((item, index) => [
+      index + 1,
       item.vehicle?.licensePlate ?? "-",
-      item.vehicle ? `${item.vehicle?.year ?? ""} ${item.vehicle?.model ?? ""}`.trim() || "-" : "-",
-      formatCurrency(item.projectRate),
+      item.vehicle?.make ?? "-",
+      item.vehicle?.year ?? "-",
+      item.vehicle?.model ?? "-",
+      formatAmount(item.projectRate),
       item.presentDays,
-      formatCurrency(item.vehicleMob),
-      formatCurrency(item.vehicleDimob),
-      formatCurrency(item.amount),
-      formatCurrency(item.salesTaxAmount),
-      formatCurrency(item.totalAmount),
+      formatAmount(item.vehicleMob),
+      formatAmount(item.vehicleDimob),
+      formatAmount(item.amount),
+      formatAmount(item.salesTaxAmount),
+      formatAmount(item.totalAmount),
     ]),
   ];
 
