@@ -25,22 +25,19 @@ export function exportCustomerInvoicePdf(
   const marginLeft = 14;
   const pageWidth = doc.internal.pageSize.getWidth();
   const usableWidth = pageWidth - marginLeft * 2;
-  const gapBetweenTables = 6;
+  const accentColor: [number, number, number] = [251, 146, 60];
 
-  const minSummaryWidth = 80;
-  const minDetailsWidth = 90;
-  let summaryTableWidth = 90;
-  let detailsTableWidth = usableWidth - summaryTableWidth - gapBetweenTables;
+  doc.setFillColor(...accentColor);
+  doc.rect(marginLeft, 16, usableWidth, 12, "F");
+  doc.setFontSize(16);
+  doc.setTextColor(255, 255, 255);
+  doc.text("Sale Tax Invoice", marginLeft + usableWidth / 2, 24, { align: "center" });
+  doc.setTextColor(0, 0, 0);
 
-  if (detailsTableWidth < minDetailsWidth) {
-    detailsTableWidth = minDetailsWidth;
-    summaryTableWidth = Math.max(usableWidth - detailsTableWidth - gapBetweenTables, minSummaryWidth);
-  }
-
-  const summaryMarginLeft = marginLeft + detailsTableWidth + gapBetweenTables;
-
-  doc.setFontSize(18);
-  doc.text(`Invoice ${invoiceNumber}`, marginLeft, 18);
+  const columnGap = 8;
+  const detailsTableWidth = Math.max(usableWidth * 0.58, 110);
+  const summaryTableWidth = usableWidth - detailsTableWidth - columnGap;
+  const summaryMarginLeft = marginLeft + detailsTableWidth + columnGap;
 
   const summary = [
     buildSummaryRow("Subtotal", formatCurrency(invoice.subtotal)),
@@ -51,7 +48,7 @@ export function exportCustomerInvoicePdf(
 
   const invoiceMeta = [
     ["Invoice #", invoiceNumber],
-    ["Invoice date", invoiceDate],
+    ["Date", invoiceDate],
     ["Period", `${invoice.periodStart} — ${invoice.periodEnd}`],
     ["Due date", invoice.dueDate ?? "-"],
   ];
@@ -61,22 +58,24 @@ export function exportCustomerInvoicePdf(
   const billToAddress = customer?.address ?? customer?.companyAddress ?? "-";
   const taxNumber = customer?.taxNumber ?? "-";
   const projectDetails = project?.name ?? "-";
+  const contactNumber = customer?.phone ?? "-";
 
   autoTable(doc, {
     startY: infoStartY,
-    theme: "plain",
+    theme: "grid",
     head: [["Details", ""]],
     body: [
       ["Bill to", billToDetails],
       ["Project", projectDetails],
       ["Address", billToAddress],
       ["NTN", taxNumber],
+      ["Contact No", contactNumber],
     ],
-    styles: { fontSize: 10, cellPadding: 3, halign: "left", lineColor: [226, 232, 240], lineWidth: 0.1 },
-    headStyles: { fontStyle: "bold", fillColor: [241, 245, 249], textColor: [15, 23, 42] },
+    styles: { fontSize: 10, cellPadding: 4, halign: "left" },
+    headStyles: { fontStyle: "bold", fillColor: accentColor, textColor: [255, 255, 255], halign: "left" },
     columnStyles: {
-      0: { fontStyle: "bold", cellWidth: Math.min(32, detailsTableWidth * 0.35) },
-      1: { cellWidth: Math.max(detailsTableWidth - Math.min(32, detailsTableWidth * 0.35), 58) },
+      0: { fontStyle: "bold", cellWidth: Math.min(36, detailsTableWidth * 0.32) },
+      1: { cellWidth: Math.max(detailsTableWidth - Math.min(36, detailsTableWidth * 0.32), 70) },
     },
     tableWidth: detailsTableWidth,
   });
@@ -86,27 +85,11 @@ export function exportCustomerInvoicePdf(
   autoTable(doc, {
     startY: infoStartY,
     margin: { left: summaryMarginLeft },
-    head: [["Summary", "Amount"]],
-    body: summary.map((row) => [row.label, row.value]),
-    styles: { fontSize: 10, cellPadding: 4 },
-    headStyles: { fillColor: [15, 23, 42], halign: "center" },
-    columnStyles: {
-      0: { halign: "left", cellWidth: Math.max(summaryTableWidth * 0.55, 42) },
-      1: { halign: "right", cellWidth: Math.max(summaryTableWidth * 0.45, 36) },
-    },
-    theme: "striped",
-    tableWidth: summaryTableWidth,
-  });
-
-  const summaryFinalY = (doc as any).lastAutoTable?.finalY ?? infoStartY;
-  autoTable(doc, {
-    startY: summaryFinalY + 6,
-    margin: { left: summaryMarginLeft },
-    theme: "plain",
+    theme: "grid",
     head: [["Invoice", ""]],
     body: invoiceMeta,
-    styles: { fontSize: 10, cellPadding: 3, halign: "left", lineColor: [226, 232, 240], lineWidth: 0.1 },
-    headStyles: { fontStyle: "bold", fillColor: [241, 245, 249], textColor: [15, 23, 42] },
+    styles: { fontSize: 10, cellPadding: 4, halign: "left" },
+    headStyles: { fontStyle: "bold", fillColor: accentColor, textColor: [255, 255, 255], halign: "left" },
     columnStyles: {
       0: { fontStyle: "bold", cellWidth: Math.min(40, summaryTableWidth * 0.5) },
       1: { cellWidth: Math.max(summaryTableWidth - Math.min(40, summaryTableWidth * 0.5), 40) },
@@ -114,8 +97,27 @@ export function exportCustomerInvoicePdf(
     tableWidth: summaryTableWidth,
   });
 
-  const metaFinalY = (doc as any).lastAutoTable?.finalY ?? summaryFinalY;
-  const itemsStartY = Math.max(infoFinalY, metaFinalY) + 12;
+  const metaFinalY = (doc as any).lastAutoTable?.finalY ?? infoStartY;
+  const summaryStartY = Math.max(infoFinalY, metaFinalY) + 10;
+
+  autoTable(doc, {
+    startY: summaryStartY,
+    head: [["SubTotal", "Adjustment", `Sale Tax (${invoice.salesTaxRate ?? 0}% )`, "Total"]],
+    body: [summary.map((row) => row.value)],
+    styles: { fontSize: 10, cellPadding: 4, halign: "right" },
+    headStyles: { fillColor: accentColor, textColor: [0, 0, 0], halign: "center" },
+    columnStyles: {
+      0: { halign: "right" },
+      1: { halign: "right" },
+      2: { halign: "right" },
+      3: { halign: "right" },
+    },
+    theme: "grid",
+    tableWidth: usableWidth,
+    margin: { left: marginLeft },
+  });
+
+  const itemsStartY = ((doc as any).lastAutoTable?.finalY ?? summaryStartY) + 12;
 
   autoTable(doc, {
     startY: itemsStartY,
@@ -176,19 +178,33 @@ export function exportCustomerInvoiceExcel(
   invoice: CustomerInvoiceWithItems | CustomerInvoiceWithDetails,
   formatCurrency: (value: number | string | undefined | null) => string,
 ): boolean {
-  const summaryData = [
-    ["Field", "Value"],
-    ["Invoice number", invoice.invoiceNumber ?? "Pending"],
-    ["Invoice date", invoice.createdAt ? new Date(invoice.createdAt).toISOString().split("T")[0] : "-"],
-    ["Period", `${invoice.periodStart} — ${invoice.periodEnd}`],
-    ["Due date", invoice.dueDate ?? "-"],
-    ["Subtotal", formatCurrency(invoice.subtotal)],
-    ["Adjustment", formatCurrency(invoice.adjustment)],
-    [`Sales tax (${invoice.salesTaxRate ?? 0}% )`, formatCurrency(invoice.salesTaxAmount)],
-    ["Total", formatCurrency(invoice.total)],
+  const customer = "customer" in invoice ? invoice.customer : undefined;
+  const project = "project" in invoice ? invoice.project : undefined;
+
+  const invoiceNumber = invoice.invoiceNumber ?? "Pending";
+  const invoiceDate = invoice.createdAt ? new Date(invoice.createdAt).toISOString().split("T")[0] : "-";
+  const billToAddress = customer?.address ?? customer?.companyAddress ?? "-";
+  const taxNumber = customer?.taxNumber ?? "-";
+  const contactNumber = customer?.phone ?? "-";
+  const summaryValues = [
+    formatCurrency(invoice.subtotal),
+    formatCurrency(invoice.adjustment),
+    formatCurrency(invoice.salesTaxAmount),
+    formatCurrency(invoice.total),
   ];
 
-  const itemsData = [
+  const sheetData = [
+    ["Sale Tax Invoice"],
+    [],
+    ["Customer", customer?.name ?? "-", "", "", "Invoice#", invoiceNumber],
+    ["Address", billToAddress, "", "", "Date", invoiceDate],
+    ["Contact No", contactNumber, "", "", "Period", `${invoice.periodStart} — ${invoice.periodEnd}`],
+    ["Project", project?.name ?? "-", "", "", "Due Date", invoice.dueDate ?? "-"],
+    ["NTN", taxNumber],
+    [],
+    ["SubTotal", "Adjustment", `Sale Tax (${invoice.salesTaxRate ?? 0}% )`, "Total"],
+    summaryValues,
+    [],
     [
       "S. No.",
       "Vehicle",
@@ -220,13 +236,15 @@ export function exportCustomerInvoiceExcel(
   ];
 
   const workbook = XLSX.utils.book_new();
-  const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
-  const itemsSheet = XLSX.utils.aoa_to_sheet(itemsData);
+  const sheet = XLSX.utils.aoa_to_sheet(sheetData);
 
-  XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
-  XLSX.utils.book_append_sheet(workbook, itemsSheet, "Line Items");
+  sheet["!merges"] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 11 } },
+  ];
 
-  const filename = `${buildInvoiceTitle(invoice.invoiceNumber ?? "Pending")}.xlsx`;
+  XLSX.utils.book_append_sheet(workbook, sheet, "Invoice");
+
+  const filename = `${buildInvoiceTitle(invoiceNumber)}.xlsx`;
   XLSX.writeFile(workbook, filename);
 
   return true;
