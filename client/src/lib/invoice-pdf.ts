@@ -38,21 +38,6 @@ export function exportCustomerInvoicePdf(
   doc.text(`Period: ${invoice.periodStart} — ${invoice.periodEnd}`, marginLeft, 26);
   doc.text(`Status: ${invoice.status}  |  Due: ${invoice.dueDate ?? "-"}`, marginLeft, 26 + lineHeight);
 
-  // Company and customer panels
-  doc.setTextColor("#0f172a");
-  doc.setFontSize(12);
-  doc.text("Bill to", marginLeft, 48);
-  doc.setFontSize(11);
-  doc.text(customer?.name ?? "-", marginLeft, 48 + lineHeight);
-  doc.setTextColor("#475569");
-  doc.text(customer?.email ?? "", marginLeft, 48 + lineHeight * 2);
-
-  doc.setTextColor("#0f172a");
-  doc.setFontSize(12);
-  doc.text("Project", 120, 48);
-  doc.setFontSize(11);
-  doc.text(project?.name ?? "-", 120, 48 + lineHeight);
-
   const summary = [
     buildSummaryRow("Subtotal", formatCurrency(invoice.subtotal)),
     buildSummaryRow("Adjustment", formatCurrency(invoice.adjustment)),
@@ -62,17 +47,42 @@ export function exportCustomerInvoicePdf(
     buildSummaryRow("Outstanding", formatCurrency(outstanding)),
   ];
 
+  const infoStartY = 44;
+  const billToDetails = [customer?.name, customer?.email].filter(Boolean).join("\n") || "-";
+  const projectDetails = project?.name ?? "-";
+
   autoTable(doc, {
-    startY: 70,
+    startY: infoStartY,
+    theme: "plain",
+    head: [["Details", ""]],
+    body: [
+      ["Bill to", billToDetails],
+      ["Project", projectDetails],
+      ["Invoice #", invoiceNumber],
+      ["Period", `${invoice.periodStart} — ${invoice.periodEnd}`],
+      ["Due date", invoice.dueDate ?? "-"],
+      ["Status", invoice.status],
+    ],
+    styles: { fontSize: 10, cellPadding: 3, halign: "left", lineColor: [226, 232, 240], lineWidth: 0.1 },
+    headStyles: { fontStyle: "bold", fillColor: [241, 245, 249], textColor: [15, 23, 42] },
+    columnStyles: { 0: { fontStyle: "bold", cellWidth: 40 }, 1: { cellWidth: 90 } },
+  });
+
+  const infoFinalY = (doc as any).lastAutoTable?.finalY ?? infoStartY;
+
+  autoTable(doc, {
+    startY: infoStartY,
+    margin: { left: 130 },
     head: [["Summary", "Amount"]],
     body: summary.map((row) => [row.label, row.value]),
     styles: { fontSize: 10, cellPadding: 4, halign: "right" },
     headStyles: { fillColor: [15, 23, 42], halign: "center" },
-    columnStyles: { 0: { halign: "left", cellWidth: 100 }, 1: { cellWidth: 60 } },
+    columnStyles: { 0: { halign: "left", cellWidth: 60 }, 1: { cellWidth: 50 } },
     theme: "striped",
   });
 
-  const itemsStartY = (doc as any).lastAutoTable?.finalY + 12 || 90;
+  const summaryFinalY = (doc as any).lastAutoTable?.finalY ?? infoStartY;
+  const itemsStartY = Math.max(infoFinalY, summaryFinalY) + 12;
 
   autoTable(doc, {
     startY: itemsStartY,
