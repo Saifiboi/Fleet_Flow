@@ -30,6 +30,21 @@ export function exportCustomerInvoicePdf(
   const doc = new jsPDF();
   const marginLeft = 14;
   const lineHeight = 8;
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const usableWidth = pageWidth - marginLeft * 2;
+  const gapBetweenTables = 6;
+
+  const minSummaryWidth = 80;
+  const minDetailsWidth = 90;
+  let summaryTableWidth = 90;
+  let detailsTableWidth = usableWidth - summaryTableWidth - gapBetweenTables;
+
+  if (detailsTableWidth < minDetailsWidth) {
+    detailsTableWidth = minDetailsWidth;
+    summaryTableWidth = Math.max(usableWidth - detailsTableWidth - gapBetweenTables, minSummaryWidth);
+  }
+
+  const summaryMarginLeft = marginLeft + detailsTableWidth + gapBetweenTables;
 
   doc.setFontSize(18);
   doc.text(`Invoice ${invoiceNumber}`, marginLeft, 18);
@@ -65,20 +80,28 @@ export function exportCustomerInvoicePdf(
     ],
     styles: { fontSize: 10, cellPadding: 3, halign: "left", lineColor: [226, 232, 240], lineWidth: 0.1 },
     headStyles: { fontStyle: "bold", fillColor: [241, 245, 249], textColor: [15, 23, 42] },
-    columnStyles: { 0: { fontStyle: "bold", cellWidth: 40 }, 1: { cellWidth: 90 } },
+    columnStyles: {
+      0: { fontStyle: "bold", cellWidth: Math.min(32, detailsTableWidth * 0.35) },
+      1: { cellWidth: Math.max(detailsTableWidth - Math.min(32, detailsTableWidth * 0.35), 58) },
+    },
+    tableWidth: detailsTableWidth,
   });
 
   const infoFinalY = (doc as any).lastAutoTable?.finalY ?? infoStartY;
 
   autoTable(doc, {
     startY: infoStartY,
-    margin: { left: 130 },
+    margin: { left: summaryMarginLeft },
     head: [["Summary", "Amount"]],
     body: summary.map((row) => [row.label, row.value]),
-    styles: { fontSize: 10, cellPadding: 4, halign: "right" },
+    styles: { fontSize: 10, cellPadding: 4 },
     headStyles: { fillColor: [15, 23, 42], halign: "center" },
-    columnStyles: { 0: { halign: "left", cellWidth: 60 }, 1: { cellWidth: 50 } },
+    columnStyles: {
+      0: { halign: "left", cellWidth: Math.max(summaryTableWidth * 0.55, 42) },
+      1: { halign: "right", cellWidth: Math.max(summaryTableWidth * 0.45, 36) },
+    },
     theme: "striped",
+    tableWidth: summaryTableWidth,
   });
 
   const summaryFinalY = (doc as any).lastAutoTable?.finalY ?? infoStartY;
@@ -114,9 +137,12 @@ export function exportCustomerInvoicePdf(
       formatCurrency(item.salesTaxAmount),
       formatCurrency(item.totalAmount),
     ]),
-    styles: { fontSize: 9, cellPadding: 3 },
-    headStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42] },
+    styles: { fontSize: 9, cellPadding: 3, valign: "middle" },
+    headStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], halign: "center", valign: "middle" },
     columnStyles: {
+      0: { halign: "left" },
+      1: { halign: "left" },
+      2: { halign: "left" },
       3: { halign: "right" },
       4: { halign: "right" },
       5: { halign: "right" },
