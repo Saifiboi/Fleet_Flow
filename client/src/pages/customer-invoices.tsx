@@ -177,6 +177,8 @@ export default function CustomerInvoices() {
 
   const roundCurrency = (value: number | string | undefined | null) =>
     Number(Number(value ?? 0).toFixed(2));
+  const roundInvoiceTotal = (value: number | string | undefined | null) =>
+    Math.round(Number(value ?? 0));
 
   const formatCurrency = (value: number | string | undefined | null) =>
     new Intl.NumberFormat("en-PK", {
@@ -197,7 +199,7 @@ export default function CustomerInvoices() {
 
   const roundInvoiceAmounts = <T extends InvoiceWithRoundedItems>(invoice: T): T => ({
     ...invoice,
-    total: roundCurrency(invoice.total),
+    total: roundInvoiceTotal(invoice.total),
     items: invoice.items,
   });
 
@@ -243,7 +245,7 @@ export default function CustomerInvoices() {
       const subtotal = itemsWithAdjustments.reduce((sum, item) => sum + Number(item.amount), 0);
       const taxableBase = subtotal + adjustmentNumber;
       const salesTaxAmount = taxableBase * (salesTaxRateNumber / 100);
-      const total = roundCurrency(taxableBase + salesTaxAmount);
+      const total = roundInvoiceTotal(taxableBase + salesTaxAmount);
 
       const items = itemsWithAdjustments.map((item) => {
         const adjustmentShare = subtotal === 0 ? 0 : (Number(item.amount) / subtotal) * adjustmentNumber;

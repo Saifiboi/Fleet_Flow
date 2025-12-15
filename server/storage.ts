@@ -1705,6 +1705,8 @@ export class DatabaseStorage implements IStorage {
     const monthFormatter = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" });
     const roundCurrency = (value: number | string | null | undefined) =>
       Number(Number(value ?? 0).toFixed(2));
+    const roundInvoiceTotal = (value: number | string | null | undefined) =>
+      Math.round(Number(value ?? 0));
     const items: CustomerInvoiceCalculationItem[] = [];
 
     for (const [vehicleId, monthMap] of buckets.entries()) {
@@ -1744,7 +1746,7 @@ export class DatabaseStorage implements IStorage {
     const salesTaxRateNumber = Number(Number(payload.salesTaxRate ?? 0).toFixed(2));
     const taxableBase = subtotal + adjustmentNumber;
     const salesTaxAmount = taxableBase * (salesTaxRateNumber / 100);
-    const total = roundCurrency(taxableBase + salesTaxAmount);
+    const total = roundInvoiceTotal(taxableBase + salesTaxAmount);
 
     const itemsWithTax = items.map((item) => {
       const adjustmentShare = subtotal === 0 ? 0 : (Number(item.amount) / subtotal) * adjustmentNumber;
