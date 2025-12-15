@@ -252,7 +252,7 @@ export default function Maintenance() {
             {canManageMaintenance && (
               <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
                 <DialogTrigger asChild>
-                  <Button data-testid="add-maintenance-button">
+                  <Button className="w-full sm:w-auto" data-testid="add-maintenance-button">
                     <Plus className="mr-2 w-4 h-4" />
                     Add Maintenance Record
                   </Button>

@@ -1099,45 +1099,22 @@ export default function Attendance() {
                   const formatStatusLabel = (status: string) =>
                     status ? status.charAt(0).toUpperCase() + status.slice(1) : status;
 
+                  const statusBadgeClass = (status?: string) =>
+                    status === "present" ? "bg-green-100 text-green-700 border-green-200" : undefined;
+
                   const previousStatus = (() => {
                     if (existingRecord && isCurrentOrPastDate) {
                       return (
                         <div className="space-y-1">
-                          <Badge variant="outline">{formatStatusLabel(existingRecord.status)}</Badge>
+                          <Badge variant="outline" className={statusBadgeClass(existingRecord.status)}>
+                            {formatStatusLabel(existingRecord.status)}
+                          </Badge>
                           {existingRecord.notes ? (
                             <div className="text-xs text-muted-foreground">{existingRecord.notes}</div>
                           ) : null}
                           {existingRecord.isPaid ? (
                             <div className="text-xs text-muted-foreground">Included in a payment.</div>
                           ) : null}
-                        </div>
-                      );
-                    }
-
-                    if (isLocked && lockedReason === "cross-project" && isCurrentOrPastDate) {
-                      return (
-                        <div className="space-y-1">
-                          <Badge variant="outline">Reserved</Badge>
-                          <div className="text-xs text-muted-foreground">
-                            {state.lockedProjectName
-                              ? `Attendance already marked for ${state.lockedProjectName}.`
-                              : "Attendance already marked for another project."}
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    return <span className="text-xs text-muted-foreground">{isCurrentOrPastDate ? "No record" : "Upcoming"}</span>;
-                  })();
-
-                  const paymentStatus = (() => {
-                    if (existingRecord && isCurrentOrPastDate) {
-                      return (
-                        <div className="space-y-1">
-                          <Badge variant="outline">{existingRecord.isPaid ? "Paid" : "Unpaid"}</Badge>
-                          <div className="text-xs text-muted-foreground">
-                            {existingRecord.isPaid ? "Paid attendance cannot be edited." : "Pending payment."}
-                          </div>
                         </div>
                       );
                     }
@@ -1173,10 +1150,6 @@ export default function Attendance() {
                           <div>
                             <p className="text-xs text-muted-foreground">Previous status</p>
                             {previousStatus}
-                          </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground">Payment status</p>
-                            {paymentStatus}
                           </div>
                           <div className="flex flex-col gap-2">
                             <p className="text-xs text-muted-foreground">Status</p>
