@@ -50,6 +50,7 @@ const navigationSections: NavigationSection[] = [
       { path: "/vehicles", label: "Vehicles", icon: Car, roles: ["admin", "owner", "employee"], employeeAccess: "vehicles" },
       { path: "/assignments", label: "Assignments", icon: Calendar, roles: ["admin", "owner", "employee"], employeeAccess: "assignments" },
       { path: "/maintenance", label: "Maintenance", icon: Wrench, roles: ["admin", "owner", "employee"], employeeAccess: "maintenance" },
+      { path: "/attendance", label: "Vehicle Attendance", icon: Calendar, roles: ["admin", "owner", "employee"], employeeAccess: "attendance" },
     ],
   },
   {
@@ -63,7 +64,6 @@ const navigationSections: NavigationSection[] = [
         roles: ["admin", "employee"],
         employeeAccess: "projectAttendance",
       },
-      { path: "/attendance", label: "Vehicle Attendance", icon: Calendar, roles: ["admin", "owner", "employee"], employeeAccess: "attendance" },
     ],
   },
   {
@@ -78,7 +78,7 @@ const navigationSections: NavigationSection[] = [
         roles: ["admin", "employee"],
         employeeAccess: "payments",
       },
-      { path: "/payments", label: "Payments", icon: CreditCard, roles: ["admin", "owner", "employee"], employeeAccess: "payments" },
+      { path: "/payments", label: "Vehicle Payment", icon: CreditCard, roles: ["admin", "owner", "employee"], employeeAccess: "payments" },
     ],
   },
 ] as const;
