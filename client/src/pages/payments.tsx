@@ -389,11 +389,16 @@ export default function Payments() {
   };
 
   const formatCurrency = (value: number | string | null | undefined) => {
-    const numeric = Number(value ?? 0);
-    if (Number.isNaN(numeric)) {
-      return "0.00";
+    if (value === undefined || value === null || value === "") {
+      return "—";
     }
-    return numeric.toFixed(2);
+
+    const numeric = Number(value);
+    if (Number.isNaN(numeric)) {
+      return String(value);
+    }
+
+    return new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR" }).format(numeric);
   };
 
   const handleTransactionSubmit = transactionForm.handleSubmit((values) => {
