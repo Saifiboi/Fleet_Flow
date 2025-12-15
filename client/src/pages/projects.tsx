@@ -15,14 +15,14 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import ProjectForm from "@/components/forms/project-form";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { FolderKanban, Plus, Edit, Eye, Trash2, Search, MapPin, Calendar } from "lucide-react";
+import { FolderKanban, Plus, Edit, Eye, Trash2, Search, MapPin, Calendar, Users } from "lucide-react";
 import { format } from "date-fns";
-import type { Project } from "@shared/schema";
+import type { ProjectWithCustomer } from "@shared/schema";
 
 export default function Projects() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [editingProject, setEditingProject] = useState<ProjectWithCustomer | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const { toast } = useToast();
 
@@ -48,11 +48,12 @@ export default function Projects() {
     },
   });
 
-  const filteredProjects = projects?.filter((project: Project) => {
-    const matchesSearch = 
+  const filteredProjects = projects?.filter((project: ProjectWithCustomer) => {
+    const matchesSearch =
       project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       project.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (project.description && project.description.toLowerCase().includes(searchTerm.toLowerCase()));
+      (project.description && project.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      project.customer.name.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = statusFilter === "all" || project.status === statusFilter;
     
@@ -73,7 +74,7 @@ export default function Projects() {
     return <Badge variant={variants[status] || "outline"}>{labels[status] || status}</Badge>;
   };
 
-  const handleEdit = (project: Project) => {
+  const handleEdit = (project: ProjectWithCustomer) => {
     setEditingProject(project);
     setIsFormOpen(true);
   };
@@ -145,6 +146,7 @@ export default function Projects() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Project</TableHead>
+                    <TableHead>Customer</TableHead>
                     <TableHead>Location</TableHead>
                     <TableHead>Start Date</TableHead>
                     <TableHead>End Date</TableHead>
@@ -156,7 +158,7 @@ export default function Projects() {
                   {isLoading ? (
                     Array.from({ length: 5 }).map((_, i) => (
                       <TableRow key={i}>
-                        {Array.from({ length: 6 }).map((_, j) => (
+                        {Array.from({ length: 7 }).map((_, j) => (
                           <TableCell key={j}>
                             <Skeleton className="h-4 w-full" />
                           </TableCell>
@@ -165,7 +167,7 @@ export default function Projects() {
                     ))
                   ) : filteredProjects?.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8">
+                      <TableCell colSpan={7} className="text-center py-8">
                         <div className="flex flex-col items-center space-y-2">
                           <FolderKanban className="w-12 h-12 text-muted-foreground" />
                           <p className="text-muted-foreground">No projects found</p>
@@ -178,7 +180,7 @@ export default function Projects() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredProjects?.map((project: Project) => (
+                    filteredProjects?.map((project: ProjectWithCustomer) => (
                       <TableRow key={project.id} data-testid={`project-row-${project.id}`}>
                         <TableCell>
                           <div className="flex items-center space-x-3">
@@ -194,6 +196,12 @@ export default function Projects() {
                               )}
                             </div>
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          <p className="text-sm font-medium text-foreground">{project.customer.name}</p>
+                          {project.customer.contactName && (
+                            <p className="text-xs text-muted-foreground">{project.customer.contactName}</p>
+                          )}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center space-x-2">
@@ -298,7 +306,7 @@ export default function Projects() {
                       </CardContent>
                     </Card>
                   )
-                : filteredProjects?.map((project: Project) => (
+                : filteredProjects?.map((project: ProjectWithCustomer) => (
                     <Card key={project.id} data-testid={`project-card-${project.id}`}>
                       <CardContent className="p-4 space-y-3">
                         <div className="flex items-start justify-between gap-3">
@@ -311,6 +319,13 @@ export default function Projects() {
                               {project.description && (
                                 <p className="text-xs text-muted-foreground line-clamp-2">{project.description}</p>
                               )}
+                              <div className="text-xs text-muted-foreground flex items-center space-x-1">
+                                <Users className="w-3 h-3" />
+                                <span>
+                                  {project.customer.name}
+                                  {project.customer.contactName ? ` • ${project.customer.contactName}` : ""}
+                                </span>
+                              </div>
                               <div className="text-xs text-muted-foreground flex items-center space-x-1">
                                 <MapPin className="w-3 h-3" />
                                 <span>{project.location}</span>

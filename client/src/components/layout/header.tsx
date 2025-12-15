@@ -26,20 +26,32 @@ const pageLabels: Record<string, { title: string; description: string }> = {
     title: "Owners",
     description: "Manage vehicle owners and their contact information",
   },
+  "/customers": {
+    title: "Customers",
+    description: "Manage project customers and their contacts",
+  },
   "/projects": {
     title: "Projects",
     description: "Manage active projects and assignments",
   },
+  "/project-rates": {
+    title: "Project Rates",
+    description: "Set customer pricing for project vehicles",
+  },
   "/assignments": {
     title: "Assignments",
     description: "Vehicle assignments to projects",
+  },
+  "/customer-invoices": {
+    title: "Customer Invoices",
+    description: "Calculate project billing and generate invoices",
   },
   "/project-attendance": {
     title: "Project Attendance",
     description: "Bulk mark vehicle presence across projects",
   },
   "/payments": {
-    title: "Payments",
+    title: "Vehicle Payment",
     description: "Track payments and outstanding invoices",
   },
   "/attendance": {

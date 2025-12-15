@@ -138,7 +138,7 @@ export default function Vehicles() {
       return String(value);
     }
 
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(numericValue);
+    return new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR" }).format(numericValue);
   };
 
   const renderDetail = (label: string, value: ReactNode) => (

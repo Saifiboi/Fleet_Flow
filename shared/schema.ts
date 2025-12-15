@@ -1,5 +1,16 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, decimal, date, timestamp, integer, boolean, primaryKey } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  varchar,
+  decimal,
+  date,
+  timestamp,
+  integer,
+  boolean,
+  primaryKey,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -16,6 +27,19 @@ export const owners = pgTable("owners", {
   companyName: text("company_name"), // Required for corporate
   contactPerson: text("contact_person"), // Required for corporate
   companyRegistrationNumber: text("company_registration_number"), // Required for corporate
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const customers = pgTable("customers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  contactName: text("contact_name"),
+  email: text("email"),
+  phone: text("phone"),
+  address: text("address"),
+  companyName: text("company_name"),
+  companyAddress: text("company_address"),
+  taxNumber: text("tax_number"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -73,6 +97,9 @@ export const vehicles = pgTable("vehicles", {
 
 export const projects = pgTable("projects", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerId: varchar("customer_id")
+    .notNull()
+    .references(() => customers.id, { onDelete: "restrict" }),
   name: text("name").notNull(),
   description: text("description"),
   location: text("location").notNull(),
@@ -93,6 +120,29 @@ export const assignments = pgTable("assignments", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const projectVehicleCustomerRates = pgTable(
+  "project_vehicle_customer_rates",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    projectId: varchar("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    customerId: varchar("customer_id")
+      .notNull()
+      .references(() => customers.id, { onDelete: "cascade" }),
+    vehicleId: varchar("vehicle_id")
+      .notNull()
+      .references(() => vehicles.id, { onDelete: "cascade" }),
+    rate: decimal("rate", { precision: 10, scale: 2 }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    projectVehicleCustomerRateUnique: uniqueIndex(
+      "project_vehicle_customer_rates_project_id_vehicle_id_key",
+    ).on(table.projectId, table.vehicleId),
+  }),
+);
+
 export const payments = pgTable("payments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   assignmentId: varchar("assignment_id").notNull().references(() => assignments.id, { onDelete: "cascade" }),
@@ -108,6 +158,77 @@ export const payments = pgTable("payments", {
   paidDate: date("paid_date"),
   status: text("status").notNull().default("pending"), // pending, paid, overdue
   invoiceNumber: text("invoice_number"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const customerInvoices = pgTable(
+  "customer_invoices",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    customerId: varchar("customer_id")
+      .notNull()
+      .references(() => customers.id, { onDelete: "cascade" }),
+    projectId: varchar("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull().default("0"),
+    adjustment: decimal("adjustment", { precision: 10, scale: 2 }).notNull().default("0"),
+    salesTaxRate: decimal("sales_tax_rate", { precision: 5, scale: 2 }).notNull().default("0"),
+    salesTaxAmount: decimal("sales_tax_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+    total: decimal("total", { precision: 10, scale: 2 }).notNull(),
+    invoiceNumber: text("invoice_number"),
+    status: text("status").notNull().default("pending"),
+    dueDate: date("due_date").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    customerInvoicePeriodUnique: uniqueIndex("customer_invoices_project_period_key").on(
+      table.projectId,
+      table.periodStart,
+      table.periodEnd,
+    ),
+    customerInvoiceNumberUnique: uniqueIndex("customer_invoices_invoice_number_key").on(
+      table.invoiceNumber,
+    ),
+  })
+);
+
+export const customerInvoiceItems = pgTable("customer_invoice_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  invoiceId: varchar("invoice_id")
+    .notNull()
+    .references(() => customerInvoices.id, { onDelete: "cascade" }),
+  vehicleId: varchar("vehicle_id")
+    .notNull()
+    .references(() => vehicles.id, { onDelete: "cascade" }),
+  month: integer("month").notNull(),
+  year: integer("year").notNull(),
+  monthLabel: text("month_label"),
+  presentDays: integer("present_days").notNull().default(0),
+  projectRate: decimal("project_rate", { precision: 10, scale: 2 }).notNull().default("0"),
+  vehicleMob: decimal("vehicle_mob", { precision: 10, scale: 2 }).notNull().default("0"),
+  vehicleDimob: decimal("vehicle_dimob", { precision: 10, scale: 2 }).notNull().default("0"),
+  dailyRate: decimal("daily_rate", { precision: 10, scale: 2 }).notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  salesTaxRate: decimal("sales_tax_rate", { precision: 5, scale: 2 }).notNull().default("0"),
+  salesTaxAmount: decimal("sales_tax_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const customerInvoicePayments = pgTable("customer_invoice_payments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  invoiceId: varchar("invoice_id")
+    .notNull()
+    .references(() => customerInvoices.id, { onDelete: "cascade" }),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  method: text("method").notNull().default("cash"),
+  referenceNumber: text("reference_number"),
+  notes: text("notes"),
+  recordedBy: text("recorded_by"),
+  transactionDate: date("transaction_date").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -168,6 +289,10 @@ export const ownersRelations = relations(owners, ({ many }) => ({
   ownershipHistory: many(ownershipHistory),
 }));
 
+export const customersRelations = relations(customers, ({ many }) => ({
+  projects: many(projects),
+}));
+
 export const usersRelations = relations(users, ({ one }) => ({
   owner: one(owners, {
     fields: [users.ownerId],
@@ -192,14 +317,43 @@ export const vehiclesRelations = relations(vehicles, ({ one, many }) => ({
     references: [owners.id],
   }),
   assignments: many(assignments),
+  customerRates: many(projectVehicleCustomerRates),
   maintenanceRecords: many(maintenanceRecords),
   ownershipHistory: many(ownershipHistory),
   vehicleAttendance: many(vehicleAttendance),
 }));
 
-export const projectsRelations = relations(projects, ({ many }) => ({
+export const projectsRelations = relations(projects, ({ one, many }) => ({
+  customer: one(customers, {
+    fields: [projects.customerId],
+    references: [customers.id],
+  }),
   assignments: many(assignments),
+  customerRates: many(projectVehicleCustomerRates),
   vehicleAttendance: many(vehicleAttendance),
+}));
+
+export const customerInvoicesRelations = relations(customerInvoices, ({ one, many }) => ({
+  customer: one(customers, {
+    fields: [customerInvoices.customerId],
+    references: [customers.id],
+  }),
+  project: one(projects, {
+    fields: [customerInvoices.projectId],
+    references: [projects.id],
+  }),
+  items: many(customerInvoiceItems),
+}));
+
+export const customerInvoiceItemsRelations = relations(customerInvoiceItems, ({ one }) => ({
+  invoice: one(customerInvoices, {
+    fields: [customerInvoiceItems.invoiceId],
+    references: [customerInvoices.id],
+  }),
+  vehicle: one(vehicles, {
+    fields: [customerInvoiceItems.vehicleId],
+    references: [vehicles.id],
+  }),
 }));
 
 export const assignmentsRelations = relations(assignments, ({ one, many }) => ({
@@ -213,6 +367,24 @@ export const assignmentsRelations = relations(assignments, ({ one, many }) => ({
   }),
   payments: many(payments),
 }));
+
+export const projectVehicleCustomerRateRelations = relations(
+  projectVehicleCustomerRates,
+  ({ one }) => ({
+    vehicle: one(vehicles, {
+      fields: [projectVehicleCustomerRates.vehicleId],
+      references: [vehicles.id],
+    }),
+    project: one(projects, {
+      fields: [projectVehicleCustomerRates.projectId],
+      references: [projects.id],
+    }),
+    customer: one(customers, {
+      fields: [projectVehicleCustomerRates.customerId],
+      references: [customers.id],
+    }),
+  }),
+);
 
 export const paymentsRelations = relations(payments, ({ one, many }) => ({
   assignment: one(assignments, {
@@ -430,6 +602,11 @@ export const insertOwnerSchema = createInsertSchema(owners).omit({
   }
 );
 
+export const insertCustomerSchema = createInsertSchema(customers).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertVehicleSchema = createInsertSchema(vehicles).omit({
   id: true,
   createdAt: true,
@@ -491,15 +668,39 @@ export const insertProjectSchema = createInsertSchema(projects).omit({
   id: true,
   createdAt: true,
 }).extend({
+  customerId: z.string().uuid({ message: "Customer is required" }),
   endDate: z.string().optional().transform(val => val === "" ? null : val), // Make endDate truly optional
 });
 
-export const insertAssignmentSchema = createInsertSchema(assignments).omit({
-  id: true,
-  createdAt: true,
-}).extend({
-  endDate: z.string().optional().transform(val => val === "" ? null : val), // Make endDate truly optional
-});
+export const insertAssignmentSchema = createInsertSchema(assignments, {
+  monthlyRate: z
+    .string({ required_error: "Monthly rate is required" })
+    .refine(
+      (val) => !isNaN(parseFloat(val)) && parseFloat(val) >= 0,
+      "Monthly rate must be a valid non-negative number"
+    ),
+})
+  .omit({
+    id: true,
+    createdAt: true,
+  })
+  .extend({
+    endDate: z.string().optional().transform(val => val === "" ? null : val), // Make endDate truly optional
+  });
+
+export const insertProjectVehicleCustomerRateSchema = createInsertSchema(projectVehicleCustomerRates, {
+  rate: z
+    .string({ required_error: "Customer rate is required" })
+    .refine(
+      (val) => !isNaN(parseFloat(val)) && parseFloat(val) >= 0,
+      "Customer rate must be a valid non-negative number"
+    ),
+})
+  .omit({ id: true, createdAt: true, customerId: true })
+  .extend({
+    projectId: z.string().uuid({ message: "Project is required" }),
+    vehicleId: z.string().uuid({ message: "Vehicle is required" }),
+  });
 
 export const insertPaymentSchema = createInsertSchema(payments).omit({
   id: true,
@@ -534,6 +735,139 @@ export const insertPaymentSchema = createInsertSchema(payments).omit({
 export const createPaymentRequestSchema = insertPaymentSchema.extend({
   attendanceDates: z.array(z.string()).optional(),
   maintenanceRecordIds: z.array(z.string()).optional(),
+});
+
+export const insertCustomerInvoiceSchema = createInsertSchema(customerInvoices).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  invoiceNumber: z.string().optional(),
+  periodStart: z.string(),
+  periodEnd: z.string(),
+  dueDate: z.string(),
+  subtotal: z.coerce
+    .number({ invalid_type_error: "Subtotal must be a valid number" })
+    .transform((value) => value.toFixed(2)),
+  adjustment: z.coerce
+    .number({ invalid_type_error: "Adjustment must be a valid number" })
+    .transform((value) => value.toFixed(2)),
+  salesTaxRate: z.coerce
+    .number({ invalid_type_error: "Sales tax rate must be a valid number" })
+    .transform((value) => value.toFixed(2)),
+  salesTaxAmount: z.coerce
+    .number({ invalid_type_error: "Sales tax amount must be a valid number" })
+    .transform((value) => value.toFixed(2)),
+  total: z.coerce
+    .number({ invalid_type_error: "Total must be a valid number" })
+    .transform((value) => value.toFixed(2)),
+});
+
+export const createCustomerInvoiceSchema = z
+  .object({
+    customerId: z.string().uuid({ message: "Customer is required" }),
+    projectId: z.string().uuid({ message: "Project is required" }),
+    startDate: z.string().min(1, "Start date is required"),
+    endDate: z.string().min(1, "End date is required"),
+    dueDate: z.string().min(1, "Due date is required"),
+    invoiceNumber: z
+      .string()
+      .optional()
+      .transform((value) => (value === "" ? undefined : value)),
+    adjustment: z
+      .coerce
+      .number({ invalid_type_error: "Adjustment must be a valid number" })
+      .default(0),
+    salesTaxRate: z
+      .coerce
+      .number({ invalid_type_error: "Sales tax rate must be a valid number" })
+      .default(0),
+    status: z
+      .enum(["pending", "partial", "paid", "overdue"])
+      .default("pending")
+      .optional(),
+    items: z
+      .array(
+        z.object({
+          vehicleId: z.string().uuid(),
+          month: z.number(),
+          year: z.number(),
+          vehicleMob: z.coerce
+            .number({ invalid_type_error: "MOB must be a number" })
+            .default(0),
+          vehicleDimob: z.coerce
+            .number({ invalid_type_error: "DI MOB must be a number" })
+            .default(0),
+        }),
+      )
+      .optional(),
+  })
+  .superRefine((data, ctx) => {
+    const parseDate = (value: string, field: keyof typeof data) => {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field],
+          message: "Please provide a valid date",
+        });
+      }
+      return date;
+    };
+
+    const start = parseDate(data.startDate, "startDate");
+    const end = parseDate(data.endDate, "endDate");
+    const due = parseDate(data.dueDate, "dueDate");
+
+    if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && start > end) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endDate"],
+        message: "End date must be on or after the start date",
+      });
+    }
+
+    if (!Number.isNaN(end.getTime()) && !Number.isNaN(due.getTime()) && due < end) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["dueDate"],
+        message: "Due date must be on or after the end date",
+      });
+    }
+  });
+
+export const updateCustomerInvoiceStatusSchema = z.object({
+  status: z.enum(["pending", "partial", "paid", "overdue"]),
+});
+
+export const insertCustomerInvoicePaymentSchema = createInsertSchema(customerInvoicePayments)
+  .omit({ id: true, createdAt: true })
+  .extend({
+    invoiceId: z.string().min(1, "Invoice is required"),
+    amount: z
+      .coerce
+      .number({ invalid_type_error: "Amount must be a valid number" })
+      .gt(0, "Amount must be greater than zero")
+      .transform((value) => value.toFixed(2)),
+    method: z.enum(["cash", "bank_transfer", "cheque", "mobile_wallet", "other"]).default(
+      "cash",
+    ),
+    transactionDate: z.string().min(1, "Transaction date is required"),
+    referenceNumber: z
+      .string()
+      .optional()
+      .transform((value) => (value === "" ? undefined : value)),
+    notes: z
+      .string()
+      .optional()
+      .transform((value) => (value === "" ? undefined : value)),
+    recordedBy: z
+      .string()
+      .optional()
+      .transform((value) => (value === "" ? undefined : value)),
+  });
+
+export const createCustomerInvoicePaymentSchema = insertCustomerInvoicePaymentSchema.omit({
+  invoiceId: true,
 });
 
 export const insertPaymentTransactionSchema = createInsertSchema(paymentTransactions).omit({
@@ -699,12 +1033,18 @@ export const updateOwnerSchema = z.object({
   }
 );
 
+export const updateCustomerSchema = insertCustomerSchema.partial();
+
 export const updateOwnershipHistorySchema = insertOwnershipHistorySchema.partial();
 
 // Types
 export type Owner = typeof owners.$inferSelect;
 export type InsertOwner = z.infer<typeof insertOwnerSchema>;
 export type UpdateOwner = z.infer<typeof updateOwnerSchema>;
+
+export type Customer = typeof customers.$inferSelect;
+export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
+export type UpdateCustomer = z.infer<typeof updateCustomerSchema>;
 
 export type OwnershipHistory = typeof ownershipHistory.$inferSelect;
 export type InsertOwnershipHistory = z.infer<typeof insertOwnershipHistorySchema>;
@@ -718,14 +1058,73 @@ export type InsertVehicle = z.infer<typeof insertVehicleSchema>;
 export type TransferVehicleOwnership = z.infer<typeof transferVehicleOwnershipSchema>;
 
 export type Project = typeof projects.$inferSelect;
+export type ProjectWithCustomer = Project & { customer: Customer };
 export type InsertProject = z.infer<typeof insertProjectSchema>;
 
 export type Assignment = typeof assignments.$inferSelect;
 export type InsertAssignment = z.infer<typeof insertAssignmentSchema>;
 
+export type ProjectVehicleCustomerRate = typeof projectVehicleCustomerRates.$inferSelect;
+export type InsertProjectVehicleCustomerRate = z.infer<
+  typeof insertProjectVehicleCustomerRateSchema
+>;
+export type ProjectVehicleCustomerRateWithVehicle = ProjectVehicleCustomerRate & {
+  vehicle: VehicleWithOwner;
+};
+
 export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 export type CreatePaymentRequest = z.infer<typeof createPaymentRequestSchema>;
+
+export type CustomerInvoice = typeof customerInvoices.$inferSelect;
+export type InsertCustomerInvoice = z.infer<typeof insertCustomerInvoiceSchema>;
+export type CustomerInvoiceItem = typeof customerInvoiceItems.$inferSelect;
+export type CreateCustomerInvoiceRequest = z.infer<typeof createCustomerInvoiceSchema>;
+export type CustomerInvoiceItemWithVehicle = CustomerInvoiceItem & { vehicle: VehicleWithOwner };
+export type CustomerInvoiceWithItems = CustomerInvoice & { items: CustomerInvoiceItemWithVehicle[] };
+export type CustomerInvoiceCalculationItem = {
+  vehicleId: string;
+  vehicle: VehicleWithOwner;
+  month: number;
+  year: number;
+  monthLabel?: string | null;
+  presentDays: number;
+  projectRate: number;
+  vehicleMob: number;
+  vehicleDimob: number;
+  dailyRate: number;
+  amount: number;
+  salesTaxRate: number;
+  salesTaxAmount: number;
+  totalAmount: number;
+};
+
+export type CustomerInvoiceCalculation = {
+  customerId: string;
+  projectId: string;
+  periodStart: string;
+  periodEnd: string;
+  dueDate: string;
+  subtotal: number;
+  adjustment: number;
+  salesTaxRate: number;
+  salesTaxAmount: number;
+  total: number;
+  invoiceNumber?: string;
+  status: "pending" | "paid" | "overdue";
+  items: CustomerInvoiceCalculationItem[];
+};
+
+export type CustomerInvoicePayment = typeof customerInvoicePayments.$inferSelect;
+export type InsertCustomerInvoicePayment = z.infer<typeof insertCustomerInvoicePaymentSchema>;
+export type CreateCustomerInvoicePayment = z.infer<typeof createCustomerInvoicePaymentSchema>;
+
+export type CustomerInvoiceWithDetails = CustomerInvoiceWithItems & {
+  customer: Customer;
+  project: Project;
+  payments: CustomerInvoicePayment[];
+};
+export type UpdateCustomerInvoiceStatus = z.infer<typeof updateCustomerInvoiceStatusSchema>;
 
 export type MaintenanceRecord = typeof maintenanceRecords.$inferSelect;
 export type InsertMaintenanceRecord = z.infer<typeof insertMaintenanceRecordSchema>;
@@ -742,7 +1141,7 @@ export type VehicleWithOwner = Vehicle & {
 
 export type AssignmentWithDetails = Assignment & {
   vehicle: VehicleWithOwner;
-  project: Project;
+  project: ProjectWithCustomer;
 };
 
 export type PaymentTransaction = typeof paymentTransactions.$inferSelect;

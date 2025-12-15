@@ -4,7 +4,8 @@ import type {
   Owner,
   Vehicle,
   VehicleWithOwner,
-  Project,
+  ProjectWithCustomer,
+  Customer,
   Assignment,
   AssignmentWithDetails,
   Payment,
@@ -16,8 +17,15 @@ import type {
   VehicleAttendanceSummary,
   CreateVehiclePaymentForPeriod,
   VehiclePaymentForPeriodResult,
+  CreateCustomerInvoiceRequest,
+  CustomerInvoiceWithItems,
+  CustomerInvoiceCalculation,
+  CustomerInvoiceWithDetails,
+  UpdateCustomerInvoiceStatus,
+  CreateCustomerInvoicePayment,
   UserWithOwner,
   OwnershipHistoryWithOwner,
+  ProjectVehicleCustomerRateWithVehicle,
 } from "@shared/schema";
 
 // Typed query hooks to fix TypeScript issues
@@ -33,8 +41,12 @@ export const useVehicles = () => useQuery<VehicleWithOwner[]>({
   queryKey: ["/api/vehicles"],
 });
 
-export const useProjects = () => useQuery<Project[]>({
+export const useProjects = () => useQuery<ProjectWithCustomer[]>({
   queryKey: ["/api/projects"],
+});
+
+export const useCustomers = () => useQuery<Customer[]>({
+  queryKey: ["/api/customers"],
 });
 
 export const useAssignments = () => useQuery<AssignmentWithDetails[]>({
@@ -57,9 +69,11 @@ export const useVehiclesByOwner = (ownerId: string) => useQuery<VehicleWithOwner
   queryKey: ["/api/vehicles/owner", ownerId],
 });
 
-export const useAssignmentsByProject = (projectId: string) => useQuery<AssignmentWithDetails[]>({
-  queryKey: ["/api/assignments/project", projectId],
-});
+export const useAssignmentsByProject = (projectId?: string, options?: { enabled?: boolean }) =>
+  useQuery<AssignmentWithDetails[]>({
+    queryKey: ["/api/assignments/project", projectId ?? ""],
+    enabled: !!projectId && (options?.enabled ?? true),
+  });
 
 export const useAssignmentsByVehicle = (vehicleId?: string, options?: { enabled?: boolean }) =>
   useQuery<AssignmentWithDetails[]>({
@@ -141,9 +155,65 @@ export const useVehicleAttendanceSummary = (params: {
     },
   });
 
+export const useProjectCustomerRates = (projectId?: string) =>
+  useQuery<ProjectVehicleCustomerRateWithVehicle[]>({
+    queryKey: ["/api/projects", projectId ?? "", "customer-rates"],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/projects/${projectId}/customer-rates`);
+      return (await res.json()) as ProjectVehicleCustomerRateWithVehicle[];
+    },
+  });
+
+export const useCustomerInvoices = () =>
+  useQuery<CustomerInvoiceWithDetails[]>({
+    queryKey: ["/api/customer-invoices"],
+  });
+
 export const createVehiclePaymentForPeriod = async (
   payload: CreateVehiclePaymentForPeriod
 ): Promise<VehiclePaymentForPeriodResult> => {
   const res = await apiRequest("POST", "/api/payments/calculate", payload);
   return (await res.json()) as VehiclePaymentForPeriodResult;
+};
+
+export const createCustomerInvoice = async (
+  payload: CreateCustomerInvoiceRequest
+): Promise<CustomerInvoiceWithItems> => {
+  const res = await apiRequest("POST", "/api/customer-invoices", payload);
+  const text = await res.text();
+
+  try {
+    return JSON.parse(text) as CustomerInvoiceWithItems;
+  } catch (error) {
+    throw new Error(
+      text ||
+        (error instanceof Error
+          ? error.message
+          : "Received an invalid response while creating the invoice"),
+    );
+  }
+};
+
+export const calculateCustomerInvoice = async (
+  payload: CreateCustomerInvoiceRequest
+): Promise<CustomerInvoiceCalculation> => {
+  const res = await apiRequest("POST", "/api/customer-invoices/calculate", payload);
+  return (await res.json()) as CustomerInvoiceCalculation;
+};
+
+export const updateCustomerInvoiceStatus = async (
+  id: string,
+  payload: UpdateCustomerInvoiceStatus
+): Promise<CustomerInvoiceWithDetails> => {
+  const res = await apiRequest("PATCH", `/api/customer-invoices/${id}/status`, payload);
+  return (await res.json()) as CustomerInvoiceWithDetails;
+};
+
+export const recordCustomerInvoicePayment = async (
+  id: string,
+  payload: CreateCustomerInvoicePayment
+): Promise<CustomerInvoiceWithDetails> => {
+  const res = await apiRequest("POST", `/api/customer-invoices/${id}/payments`, payload);
+  return (await res.json()) as CustomerInvoiceWithDetails;
 };

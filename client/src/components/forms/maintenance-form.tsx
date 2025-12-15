@@ -347,11 +347,12 @@ export default function MaintenanceForm({ record, onSuccess }: MaintenanceFormPr
             )}
         />
 
-        <div className="flex gap-2">
-          <Button 
-            type="submit" 
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button
+            type="submit"
             disabled={maintenanceMutation.isPending}
             data-testid="button-submit"
+            className="w-full sm:w-auto"
           >
             {maintenanceMutation.isPending ? "Saving..." : (isEditing ? "Update Record" : "Create Record")}
           </Button>

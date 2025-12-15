@@ -35,6 +35,8 @@ export default function Assignments() {
 
   const { data: projects = [] } = useProjects();
 
+  const columnCount = canManageAssignments ? 7 : 6;
+
   const deleteAssignmentMutation = useMutation({
     mutationFn: async (id: string) => {
       await apiRequest("DELETE", `/api/assignments/${id}`);
@@ -184,7 +186,7 @@ export default function Assignments() {
                   {isLoading ? (
                     Array.from({ length: 5 }).map((_, i) => (
                       <TableRow key={i}>
-                        {Array.from({ length: 7 }).map((_, j) => (
+                        {Array.from({ length: columnCount }).map((_, j) => (
                           <TableCell key={j}>
                             <Skeleton className="h-4 w-full" />
                           </TableCell>
@@ -193,7 +195,7 @@ export default function Assignments() {
                     ))
                   ) : filteredAssignments?.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8">
+                      <TableCell colSpan={columnCount} className="text-center py-8">
                         <div className="flex flex-col items-center space-y-2">
                           <Calendar className="w-12 h-12 text-muted-foreground" />
                           <p className="text-muted-foreground">No assignments found</p>
