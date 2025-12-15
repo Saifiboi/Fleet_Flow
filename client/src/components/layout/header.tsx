@@ -51,7 +51,7 @@ const pageLabels: Record<string, { title: string; description: string }> = {
     description: "Bulk mark vehicle presence across projects",
   },
   "/payments": {
-    title: "Payments",
+    title: "Vehicle Payment",
     description: "Track payments and outstanding invoices",
   },
   "/attendance": {

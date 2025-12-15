@@ -1500,6 +1500,8 @@ export class DatabaseStorage implements IStorage {
 
   async createCustomerInvoice(payload: CreateCustomerInvoiceRequest): Promise<CustomerInvoiceWithItems> {
     const calculation = await this.calculateCustomerInvoice(payload);
+    const formatCurrency = (value: number | string | null | undefined) =>
+      Number(Number(value ?? 0).toFixed(2)).toFixed(2);
 
     return await db.transaction(async (tx) => {
       await this.ensureInvoicePeriodAvailable(
@@ -1517,11 +1519,11 @@ export class DatabaseStorage implements IStorage {
         periodStart: calculation.periodStart,
         periodEnd: calculation.periodEnd,
         dueDate: calculation.dueDate,
-        subtotal: calculation.subtotal.toFixed(2),
-        adjustment: calculation.adjustment.toFixed(2),
-        salesTaxRate: calculation.salesTaxRate.toFixed(2),
-        salesTaxAmount: calculation.salesTaxAmount.toFixed(2),
-        total: calculation.total.toFixed(2),
+        subtotal: formatCurrency(calculation.subtotal),
+        adjustment: formatCurrency(calculation.adjustment),
+        salesTaxRate: formatCurrency(calculation.salesTaxRate),
+        salesTaxAmount: formatCurrency(calculation.salesTaxAmount),
+        total: formatCurrency(calculation.total),
         invoiceNumber,
         status: calculation.status ?? "pending",
       };
@@ -1531,14 +1533,14 @@ export class DatabaseStorage implements IStorage {
       const invoiceItems = calculation.items.map(({ vehicle, ...item }) => ({
         ...item,
         invoiceId: invoice.id,
-        projectRate: item.projectRate.toFixed(2),
-        vehicleMob: item.vehicleMob.toFixed(2),
-        vehicleDimob: item.vehicleDimob.toFixed(2),
-        dailyRate: item.dailyRate.toFixed(2),
-        amount: item.amount.toFixed(2),
-        salesTaxRate: item.salesTaxRate.toFixed(2),
-        salesTaxAmount: item.salesTaxAmount.toFixed(2),
-        totalAmount: item.totalAmount.toFixed(2),
+        projectRate: formatCurrency(item.projectRate),
+        vehicleMob: formatCurrency(item.vehicleMob),
+        vehicleDimob: formatCurrency(item.vehicleDimob),
+        dailyRate: formatCurrency(item.dailyRate),
+        amount: formatCurrency(item.amount),
+        salesTaxRate: formatCurrency(item.salesTaxRate),
+        salesTaxAmount: formatCurrency(item.salesTaxAmount),
+        totalAmount: formatCurrency(item.totalAmount),
       }));
 
       const createdItems = await tx.insert(customerInvoiceItems).values(invoiceItems).returning();
@@ -1701,21 +1703,24 @@ export class DatabaseStorage implements IStorage {
     });
 
     const monthFormatter = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" });
-    const roundCurrency = (value: number) => Math.round(value * 100) / 100;
+    const roundCurrency = (value: number | string | null | undefined) =>
+      Number(Number(value ?? 0).toFixed(2));
+    const roundInvoiceTotal = (value: number | string | null | undefined) =>
+      Math.round(Number(value ?? 0));
     const items: CustomerInvoiceCalculationItem[] = [];
 
     for (const [vehicleId, monthMap] of buckets.entries()) {
-      const rateNumber = rateMap.get(vehicleId) ?? 0;
+      const rateNumber = Number(rateMap.get(vehicleId) ?? 0);
 
       for (const [, bucket] of monthMap.entries()) {
         const daysInMonth = new Date(Date.UTC(bucket.year, bucket.month, 0)).getUTCDate();
         const dailyRate = rateNumber / daysInMonth;
         const key = `${vehicleId}-${bucket.month}-${bucket.year}`;
         const override = overrideMap.get(key);
-        const vehicleMob = roundCurrency(override?.vehicleMob ?? 0);
-        const vehicleDimob = roundCurrency(override?.vehicleDimob ?? 0);
-        const baseAmount = roundCurrency(dailyRate * bucket.presentDays);
-        const amount = roundCurrency(baseAmount + vehicleMob + vehicleDimob);
+        const vehicleMob = Number(override?.vehicleMob ?? 0);
+        const vehicleDimob = Number(override?.vehicleDimob ?? 0);
+        const baseAmount = dailyRate * bucket.presentDays;
+        const amount = baseAmount + vehicleMob + vehicleDimob;
 
         const referenceDate = new Date(Date.UTC(bucket.year, bucket.month - 1, 1));
         const monthLabel = monthFormatter.format(referenceDate);
@@ -1727,27 +1732,27 @@ export class DatabaseStorage implements IStorage {
           year: bucket.year,
           monthLabel,
           presentDays: bucket.presentDays,
-          projectRate: roundCurrency(rateNumber),
+          projectRate: rateNumber,
           vehicleMob,
           vehicleDimob,
-          dailyRate: Number(dailyRate.toFixed(2)),
+          dailyRate,
           amount,
         });
       }
     }
 
-    const subtotal = roundCurrency(items.reduce((sum, item) => sum + Number(item.amount), 0));
-    const adjustmentNumber = roundCurrency(Number(payload.adjustment ?? 0));
+    const subtotal = items.reduce((sum, item) => sum + Number(item.amount), 0);
+    const adjustmentNumber = Number(payload.adjustment ?? 0);
     const salesTaxRateNumber = Number(Number(payload.salesTaxRate ?? 0).toFixed(2));
-    const taxableBase = roundCurrency(subtotal + adjustmentNumber);
-    const salesTaxAmount = roundCurrency(taxableBase * (salesTaxRateNumber / 100));
-    const total = Math.round(taxableBase + salesTaxAmount);
+    const taxableBase = subtotal + adjustmentNumber;
+    const salesTaxAmount = taxableBase * (salesTaxRateNumber / 100);
+    const total = roundInvoiceTotal(taxableBase + salesTaxAmount);
 
     const itemsWithTax = items.map((item) => {
       const adjustmentShare = subtotal === 0 ? 0 : (Number(item.amount) / subtotal) * adjustmentNumber;
-        const taxableAmount = roundCurrency(Number(item.amount) + adjustmentShare);
-        const itemSalesTaxAmount = roundCurrency(taxableAmount * (salesTaxRateNumber / 100));
-        const totalAmount = roundCurrency(taxableAmount + itemSalesTaxAmount);
+      const taxableAmount = Number(item.amount) + adjustmentShare;
+      const itemSalesTaxAmount = taxableAmount * (salesTaxRateNumber / 100);
+      const totalAmount = taxableAmount + itemSalesTaxAmount;
 
       return {
         ...item,

@@ -176,7 +176,9 @@ export default function CustomerInvoices() {
     (user?.role === "employee" && user.employeeAccess?.includes("payments"));
 
   const roundCurrency = (value: number | string | undefined | null) =>
-    Math.round(Number(value ?? 0) * 100) / 100;
+    Number(Number(value ?? 0).toFixed(2));
+  const roundInvoiceTotal = (value: number | string | undefined | null) =>
+    Math.round(Number(value ?? 0));
 
   const formatCurrency = (value: number | string | undefined | null) =>
     new Intl.NumberFormat("en-PK", {
@@ -185,6 +187,21 @@ export default function CustomerInvoices() {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(roundCurrency(value));
+
+  type InvoiceWithRoundedItems = {
+    subtotal: number | string;
+    adjustment: number | string;
+    salesTaxRate: number | string;
+    salesTaxAmount: number | string;
+    total: number | string;
+    items: Array<Record<string, unknown>>;
+  };
+
+  const roundInvoiceAmounts = <T extends InvoiceWithRoundedItems>(invoice: T): T => ({
+    ...invoice,
+    total: roundInvoiceTotal(invoice.total),
+    items: invoice.items,
+  });
 
   const getItemKey = (item: { vehicleId: string; month: number; year: number }) =>
     `${item.vehicleId}-${item.month}-${item.year}`;
@@ -196,8 +213,8 @@ export default function CustomerInvoices() {
         vehicleId: item.vehicleId,
         month: item.month,
         year: item.year,
-        vehicleMob: roundCurrency(override?.vehicleMob ?? item.vehicleMob ?? 0),
-        vehicleDimob: roundCurrency(override?.vehicleDimob ?? item.vehicleDimob ?? 0),
+        vehicleMob: Number(override?.vehicleMob ?? item.vehicleMob ?? 0),
+        vehicleDimob: Number(override?.vehicleDimob ?? item.vehicleDimob ?? 0),
       };
     });
 
@@ -206,15 +223,15 @@ export default function CustomerInvoices() {
       source: CustomerInvoiceCalculation,
       overrides: Record<string, { vehicleMob: number; vehicleDimob: number }> = itemAdjustments,
     ): CustomerInvoiceCalculation => {
-      const adjustmentNumber = roundCurrency(adjustment);
+      const adjustmentNumber = Number(adjustment ?? 0);
       const salesTaxRateNumber = Number(Number(salesTaxRate ?? 0).toFixed(2));
 
       const itemsWithAdjustments = source.items.map((item) => {
         const override = overrides[getItemKey(item)];
-        const vehicleMob = roundCurrency(override?.vehicleMob ?? item.vehicleMob ?? 0);
-        const vehicleDimob = roundCurrency(override?.vehicleDimob ?? item.vehicleDimob ?? 0);
-        const baseAmount = roundCurrency(item.dailyRate * item.presentDays);
-        const amount = roundCurrency(baseAmount + vehicleMob + vehicleDimob);
+        const vehicleMob = Number(override?.vehicleMob ?? item.vehicleMob ?? 0);
+        const vehicleDimob = Number(override?.vehicleDimob ?? item.vehicleDimob ?? 0);
+        const baseAmount = item.dailyRate * item.presentDays;
+        const amount = baseAmount + vehicleMob + vehicleDimob;
 
         return {
           ...item,
@@ -225,18 +242,16 @@ export default function CustomerInvoices() {
         };
       });
 
-      const subtotal = roundCurrency(
-        itemsWithAdjustments.reduce((sum, item) => sum + Number(item.amount), 0),
-      );
-      const taxableBase = roundCurrency(subtotal + adjustmentNumber);
-      const salesTaxAmount = roundCurrency(taxableBase * (salesTaxRateNumber / 100));
-      const total = Math.round(taxableBase + salesTaxAmount);
+      const subtotal = itemsWithAdjustments.reduce((sum, item) => sum + Number(item.amount), 0);
+      const taxableBase = subtotal + adjustmentNumber;
+      const salesTaxAmount = taxableBase * (salesTaxRateNumber / 100);
+      const total = roundInvoiceTotal(taxableBase + salesTaxAmount);
 
       const items = itemsWithAdjustments.map((item) => {
         const adjustmentShare = subtotal === 0 ? 0 : (Number(item.amount) / subtotal) * adjustmentNumber;
-        const taxableAmount = roundCurrency(Number(item.amount) + adjustmentShare);
-        const itemSalesTaxAmount = roundCurrency(taxableAmount * (salesTaxRateNumber / 100));
-        const totalAmount = roundCurrency(taxableAmount + itemSalesTaxAmount);
+        const taxableAmount = Number(item.amount) + adjustmentShare;
+        const itemSalesTaxAmount = taxableAmount * (salesTaxRateNumber / 100);
+        const totalAmount = taxableAmount + itemSalesTaxAmount;
 
         return {
           ...item,
@@ -274,11 +289,11 @@ export default function CustomerInvoices() {
       const next = { ...prev };
       const current =
         next[key] ?? {
-          vehicleMob: roundCurrency(item.vehicleMob),
-          vehicleDimob: roundCurrency(item.vehicleDimob),
+          vehicleMob: Number(item.vehicleMob),
+          vehicleDimob: Number(item.vehicleDimob),
         };
 
-      next[key] = { ...current, [field]: roundCurrency(value) };
+      next[key] = { ...current, [field]: Number(value) };
 
       if (baseCalculation) {
         setCalculation(recalculateWithAdjustments(baseCalculation, next));
@@ -406,7 +421,7 @@ export default function CustomerInvoices() {
         customerId: selectedProject?.customerId ?? values.customerId,
         items: calculation ? buildItemPayload(calculation.items) : undefined,
       };
-      const result = await calculateCustomerInvoice(payload);
+      const result = roundInvoiceAmounts(await calculateCustomerInvoice(payload));
       if (result.invoiceNumber) {
         form.setValue("invoiceNumber", result.invoiceNumber);
       }
@@ -414,14 +429,14 @@ export default function CustomerInvoices() {
         result.items.map((item) => [
           getItemKey(item),
           {
-            vehicleMob: roundCurrency(item.vehicleMob),
-            vehicleDimob: roundCurrency(item.vehicleDimob),
+            vehicleMob: Number(item.vehicleMob),
+            vehicleDimob: Number(item.vehicleDimob),
           },
         ]),
       );
       setItemAdjustments(overrides);
       setBaseCalculation(result);
-      setCalculation(recalculateWithAdjustments(result, overrides));
+      setCalculation(roundInvoiceAmounts(recalculateWithAdjustments(result, overrides)));
       setInvoice(null);
       openSections("preview");
       toast({
@@ -487,7 +502,7 @@ export default function CustomerInvoices() {
     try {
       const updated = await updateCustomerInvoiceStatus(invoiceId, { status });
       if (invoice?.id === invoiceId) {
-        setInvoice(updated);
+        setInvoice(roundInvoiceAmounts(updated));
       }
       toast({
         title: "Invoice updated",
@@ -538,7 +553,7 @@ export default function CustomerInvoices() {
     setIsRecordingPayment(true);
     try {
       const updated = await recordCustomerInvoicePayment(invoice.id, values);
-      setInvoice(updated);
+      setInvoice(roundInvoiceAmounts(updated));
       toast({
         title: "Payment recorded",
         description: "Invoice payment has been saved.",
@@ -574,7 +589,7 @@ export default function CustomerInvoices() {
   };
 
   const handleViewInvoice = (row: CustomerInvoiceWithDetails) => {
-    setInvoice(row);
+    setInvoice(roundInvoiceAmounts(row));
     setCalculation(null);
     setShowCreateForm(false);
     form.setValue("projectId", row.projectId);
