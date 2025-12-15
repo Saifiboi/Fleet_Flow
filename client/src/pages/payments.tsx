@@ -448,25 +448,25 @@ export default function Payments() {
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Attendance total</dt>
                     <dd className="font-medium text-foreground text-right">
-                      ${formatCurrency(selectedPayment.attendanceTotal)}
+                      {formatCurrency(selectedPayment.attendanceTotal)}
                     </dd>
                   </div>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Maintenance deductions</dt>
                     <dd className="font-medium text-foreground text-right">
-                      ${formatCurrency(selectedPayment.deductionTotal)}
+                      {formatCurrency(selectedPayment.deductionTotal)}
                     </dd>
                   </div>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Net amount</dt>
                     <dd className="font-semibold text-foreground text-right">
-                      ${formatCurrency(selectedPayment.amount)}
+                      {formatCurrency(selectedPayment.amount)}
                     </dd>
                   </div>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Total received</dt>
                     <dd className="font-medium text-foreground text-right">
-                      ${formatCurrency(selectedPayment.totalPaid)}
+                      {formatCurrency(selectedPayment.totalPaid)}
                     </dd>
                   </div>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -476,7 +476,7 @@ export default function Payments() {
                         selectedPayment.outstandingAmount > 0 ? "text-destructive" : "text-foreground"
                       }`}
                     >
-                      ${formatCurrency(selectedPayment.outstandingAmount)}
+                      {formatCurrency(selectedPayment.outstandingAmount)}
                     </dd>
                   </div>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -571,7 +571,7 @@ export default function Payments() {
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <dt className="text-muted-foreground">Monthly rate</dt>
                     <dd className="font-medium text-foreground text-right">
-                      ${formatCurrency(selectedPayment.assignment.monthlyRate)}
+                      {formatCurrency(selectedPayment.assignment.monthlyRate)}
                     </dd>
                   </div>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -598,7 +598,7 @@ export default function Payments() {
                         : "border-green-200 text-green-700"
                     }
                   >
-                    Outstanding: ${formatCurrency(selectedOutstanding)}
+                    Outstanding: {formatCurrency(selectedOutstanding)}
                   </Badge>
                 </div>
 
@@ -621,7 +621,7 @@ export default function Payments() {
                               <TableCell>{format(new Date(transaction.transactionDate), "MMM dd, yyyy")}</TableCell>
                               <TableCell className="capitalize">{transaction.method.replace(/_/g, " ")}</TableCell>
                               <TableCell className="text-right font-medium text-foreground">
-                                ${formatCurrency(transaction.amount)}
+                                {formatCurrency(transaction.amount)}
                               </TableCell>
                               <TableCell className="text-sm text-muted-foreground">
                                 {transaction.referenceNumber ?? "-"}
@@ -647,7 +647,7 @@ export default function Payments() {
                                 </p>
                               </div>
                               <span className="text-sm font-medium text-foreground">
-                                ${formatCurrency(transaction.amount)}
+                                {formatCurrency(transaction.amount)}
                               </span>
                             </div>
                             <div className="text-xs text-muted-foreground space-y-1">
@@ -694,7 +694,7 @@ export default function Payments() {
                               />
                             </FormControl>
                             <FormDescription>
-                              Remaining balance: ${formatCurrency(selectedOutstanding)}
+                              Remaining balance: {formatCurrency(selectedOutstanding)}
                             </FormDescription>
                             <FormMessage />
                           </FormItem>
@@ -1346,11 +1346,11 @@ export default function Payments() {
                             <div className="flex items-center space-x-2">
                               <DollarSign className="w-3 h-3 text-muted-foreground" />
                               <p className="text-sm font-semibold text-foreground">
-                                ${formatCurrency(netAmount)}
+                                {formatCurrency(netAmount)}
                               </p>
                             </div>
                             <p className="text-xs text-muted-foreground">
-                              Received: ${formatCurrency(payment.totalPaid)} ·
+                              Received: {formatCurrency(payment.totalPaid)} ·
                               <span
                                 className={
                                   payment.outstandingAmount > 0
@@ -1358,11 +1358,11 @@ export default function Payments() {
                                     : "text-muted-foreground"
                                 }
                               >
-                                {" "}Outstanding: ${formatCurrency(payment.outstandingAmount)}
+                                {" "}Outstanding: {formatCurrency(payment.outstandingAmount)}
                               </span>
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              Attendance: ${formatCurrency(attendanceTotal)} · Deductions: ${formatCurrency(
+                              Attendance: {formatCurrency(attendanceTotal)} · Deductions: {formatCurrency(
                                 deductionTotal
                               )} ·
                               Maintenance items: {maintenanceCount}
@@ -1471,13 +1471,13 @@ export default function Payments() {
                               </p>
                               <div className="text-sm font-semibold text-foreground flex items-center space-x-2">
                                 <DollarSign className="w-4 h-4" />
-                                <span>${formatCurrency(netAmount)}</span>
+                                <span>{formatCurrency(netAmount)}</span>
                               </div>
                               <p className="text-xs text-muted-foreground">
-                                Received: ${formatCurrency(payment.totalPaid)} · Outstanding: ${formatCurrency(payment.outstandingAmount)}
+                                Received: {formatCurrency(payment.totalPaid)} · Outstanding: {formatCurrency(payment.outstandingAmount)}
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                Attendance: ${formatCurrency(attendanceTotal)} · Deductions: ${formatCurrency(deductionTotal)} · Maintenance items: {maintenanceCount}
+                                Attendance: {formatCurrency(attendanceTotal)} · Deductions: {formatCurrency(deductionTotal)} · Maintenance items: {maintenanceCount}
                               </p>
                               <div className="text-xs text-muted-foreground">Due {format(new Date(payment.dueDate), "MMM dd, yyyy")}</div>
                               <div className="text-xs text-muted-foreground">
@@ -1509,7 +1509,7 @@ export default function Payments() {
               </p>
               <div className="flex items-center space-x-4">
                 <p className="text-sm text-muted-foreground">
-                  Total Outstanding: <span className="font-semibold text-destructive">${totalOutstanding.toLocaleString()}</span>
+                  Total Outstanding: <span className="font-semibold text-destructive">{formatCurrency(totalOutstanding)}</span>
                 </p>
                 {canManagePayments && overdueCount > 0 && (
                   <Button variant="outline" size="sm" data-testid="send-reminders">
