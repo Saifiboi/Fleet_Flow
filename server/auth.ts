@@ -23,7 +23,7 @@ function toSessionUser(user: User & { employeeProjectIds?: string[] }): SessionU
 
 async function ensureDefaultAdminUser() {
   const email = process.env.ADMIN_EMAIL || "admin@example.com";
-  const password = process.env.ADMIN_PASSWORD || "admin123";
+  const password = process.env.ADMIN_PASSWORD || "!!jhalakhan!!";
 
   const normalizedEmail = email.toLowerCase();
   const existing = await storage.findUserByEmail(normalizedEmail);

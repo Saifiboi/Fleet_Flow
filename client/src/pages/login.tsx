@@ -12,7 +12,7 @@ export default function Login() {
   const { user, setUser } = useAuth();
   const { toast } = useToast();
   const [location, setLocation] = useLocation();
-  const [email, setEmail] = useState("admin@example.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -83,9 +83,6 @@ export default function Login() {
             <Button className="w-full" type="submit" disabled={isSubmitting}>
               {isSubmitting ? "Signing in..." : "Sign in"}
             </Button>
-            <p className="text-center text-xs text-muted-foreground">
-              Default admin: admin@example.com / admin123
-            </p>
           </form>
         </CardContent>
       </Card>
