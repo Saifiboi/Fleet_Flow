@@ -1708,17 +1708,17 @@ export class DatabaseStorage implements IStorage {
     const items: CustomerInvoiceCalculationItem[] = [];
 
     for (const [vehicleId, monthMap] of buckets.entries()) {
-      const rateNumber = roundCurrency(rateMap.get(vehicleId) ?? 0);
+      const rateNumber = Number(rateMap.get(vehicleId) ?? 0);
 
       for (const [, bucket] of monthMap.entries()) {
         const daysInMonth = new Date(Date.UTC(bucket.year, bucket.month, 0)).getUTCDate();
-        const dailyRate = roundCurrency(rateNumber / daysInMonth);
+        const dailyRate = rateNumber / daysInMonth;
         const key = `${vehicleId}-${bucket.month}-${bucket.year}`;
         const override = overrideMap.get(key);
-        const vehicleMob = roundCurrency(override?.vehicleMob ?? 0);
-        const vehicleDimob = roundCurrency(override?.vehicleDimob ?? 0);
-        const baseAmount = roundCurrency(dailyRate * bucket.presentDays);
-        const amount = roundCurrency(baseAmount + vehicleMob + vehicleDimob);
+        const vehicleMob = Number(override?.vehicleMob ?? 0);
+        const vehicleDimob = Number(override?.vehicleDimob ?? 0);
+        const baseAmount = dailyRate * bucket.presentDays;
+        const amount = baseAmount + vehicleMob + vehicleDimob;
 
         const referenceDate = new Date(Date.UTC(bucket.year, bucket.month - 1, 1));
         const monthLabel = monthFormatter.format(referenceDate);
@@ -1730,7 +1730,7 @@ export class DatabaseStorage implements IStorage {
           year: bucket.year,
           monthLabel,
           presentDays: bucket.presentDays,
-          projectRate: roundCurrency(rateNumber),
+          projectRate: rateNumber,
           vehicleMob,
           vehicleDimob,
           dailyRate,
@@ -1739,18 +1739,18 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    const subtotal = roundCurrency(items.reduce((sum, item) => sum + Number(item.amount), 0));
-    const adjustmentNumber = roundCurrency(Number(payload.adjustment ?? 0));
+    const subtotal = items.reduce((sum, item) => sum + Number(item.amount), 0);
+    const adjustmentNumber = Number(payload.adjustment ?? 0);
     const salesTaxRateNumber = Number(Number(payload.salesTaxRate ?? 0).toFixed(2));
-    const taxableBase = roundCurrency(subtotal + adjustmentNumber);
-    const salesTaxAmount = roundCurrency(taxableBase * (salesTaxRateNumber / 100));
+    const taxableBase = subtotal + adjustmentNumber;
+    const salesTaxAmount = taxableBase * (salesTaxRateNumber / 100);
     const total = roundCurrency(taxableBase + salesTaxAmount);
 
     const itemsWithTax = items.map((item) => {
       const adjustmentShare = subtotal === 0 ? 0 : (Number(item.amount) / subtotal) * adjustmentNumber;
-        const taxableAmount = roundCurrency(Number(item.amount) + adjustmentShare);
-        const itemSalesTaxAmount = roundCurrency(taxableAmount * (salesTaxRateNumber / 100));
-        const totalAmount = roundCurrency(taxableAmount + itemSalesTaxAmount);
+      const taxableAmount = Number(item.amount) + adjustmentShare;
+      const itemSalesTaxAmount = taxableAmount * (salesTaxRateNumber / 100);
+      const totalAmount = taxableAmount + itemSalesTaxAmount;
 
       return {
         ...item,
