@@ -1099,8 +1099,18 @@ export default function Attendance() {
                   const formatStatusLabel = (status: string) =>
                     status ? status.charAt(0).toUpperCase() + status.slice(1) : status;
 
-                  const statusBadgeClass = (status?: string) =>
-                    status === "present" ? "bg-green-100 text-green-700 border-green-200" : undefined;
+                  const statusBadgeClass = (status?: string) => {
+                    switch (status) {
+                      case "present":
+                        return "bg-green-100 text-green-700 border-green-200";
+                      case "standby":
+                        return "bg-yellow-100 text-yellow-800 border-yellow-200";
+                      case "off":
+                        return "bg-red-100 text-red-800 border-red-200";
+                      default:
+                        return "bg-slate-100 text-slate-800 border-slate-200";
+                    }
+                  };
 
                   const previousStatus = (() => {
                     if (existingRecord && isCurrentOrPastDate) {
