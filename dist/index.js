@@ -4103,6 +4103,7 @@ async function registerRoutes(app2) {
 import express from "express";
 import fs from "fs";
 import path2 from "path";
+import { fileURLToPath } from "url";
 import { createServer as createViteServer, createLogger } from "vite";
 
 // vite.config.ts
@@ -4169,8 +4170,9 @@ async function setupVite(app2, server) {
   app2.use("*", async (req, res, next) => {
     const url = req.originalUrl;
     try {
+      const __dirname = path2.dirname(fileURLToPath(import.meta.url));
       const clientTemplate = path2.resolve(
-        import.meta.dirname,
+        __dirname,
         "..",
         "client",
         "index.html"
@@ -4189,7 +4191,8 @@ async function setupVite(app2, server) {
   });
 }
 function serveStatic(app2) {
-  const distPath = path2.resolve(import.meta.dirname, "public");
+  const __dirname = path2.dirname(fileURLToPath(import.meta.url));
+  const distPath = path2.resolve(__dirname, "public");
   if (!fs.existsSync(distPath)) {
     throw new Error(
       `Could not find the build directory: ${distPath}, make sure to build the client first`
