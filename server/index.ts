@@ -87,17 +87,10 @@ const bootstrapPromise = (async () => {
     // It is the only port that is not firewalled.
     const port = parseInt(process.env.PORT || "3000", 10);
     await new Promise<void>((resolve) => {
-      server.listen(
-        {
-          port,
-          host: "0.0.0.0",
-          reusePort: true,
-        },
-        () => {
-          log(`serving on port ${port}`);
-          resolve();
-        },
-      );
+      server.listen(port, () => {
+        log(`serving on http://localhost:${port}`);
+        resolve();
+      });
     });
   } else {
     log(
