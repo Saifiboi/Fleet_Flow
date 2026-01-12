@@ -1,5 +1,5 @@
 node_modules
-dist
+# dist - Uncommenting to deploy pre-built files to Vercel
 .DS_Store
 server/public
 vite.config.ts.*

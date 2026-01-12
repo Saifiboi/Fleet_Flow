@@ -1,5 +1,8 @@
-{
+﻿{
+  "installCommand": "echo 'Skipping install - using pre-built files'",
+  "buildCommand": "echo 'Skipping build - using pre-built files'",
+  "outputDirectory": "dist/public",
   "rewrites": [
-    { "source": "/(.*)", "destination": "/api" }
+    { "source": "/api/(.*)", "destination": "/api/index" }
   ]
 }
