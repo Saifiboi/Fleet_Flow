@@ -3,6 +3,8 @@
   "installCommand": "npm install --production",
   "buildCommand": "echo 'Using pre-built dist folder'",
   "rewrites": [
-    { "source": "/(.*)", "destination": "/api/index" }
+    { "source": "api/(.*)", "destination": "/api/index" },
+    { "source": "/(.*)", "destination": "/index.html" },
+    {"source":"/api/*/*","destination":"/api/index.js" }
   ]
 }
