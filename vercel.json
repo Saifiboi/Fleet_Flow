@@ -1,6 +1,8 @@
-{
-    "version": 2,
-    "rewrites": [
-        { "source": "/(.*)", "destination": "/api/index" }
-    ]
+﻿{
+  "version": 2,
+  "installCommand": "npm install --production",
+  "buildCommand": "echo 'Using pre-built dist folder'",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/api/index" }
+  ]
 }
