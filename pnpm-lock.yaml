@@ -101,6 +101,9 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.60.5
         version: 5.90.16(react@18.3.1)
+      '@vitejs/plugin-react':
+        specifier: ^4.3.2
+        version: 4.7.0(vite@5.4.21(@types/node@20.16.11)(lightningcss@1.30.2))
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -128,6 +131,9 @@ importers:
       embla-carousel-react:
         specifier: ^8.6.0
         version: 8.6.0(react@18.3.1)
+      esbuild:
+        specifier: ^0.25.0
+        version: 0.25.12
       express:
         specifier: ^4.21.2
         version: 4.22.1
@@ -194,9 +200,15 @@ importers:
       tw-animate-css:
         specifier: ^1.2.5
         version: 1.4.0
+      typescript:
+        specifier: 5.6.3
+        version: 5.6.3
       vaul:
         specifier: ^1.1.2
         version: 1.1.2(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      vite:
+        specifier: ^5.4.19
+        version: 5.4.21(@types/node@20.16.11)(lightningcss@1.30.2)
       wouter:
         specifier: ^3.3.5
         version: 3.9.0(react@18.3.1)
@@ -246,9 +258,6 @@ importers:
       '@types/ws':
         specifier: ^8.5.13
         version: 8.18.1
-      '@vitejs/plugin-react':
-        specifier: ^4.3.2
-        version: 4.7.0(vite@5.4.21(@types/node@20.16.11)(lightningcss@1.30.2))
       autoprefixer:
         specifier: ^10.4.20
         version: 10.4.23(postcss@8.5.6)
@@ -258,9 +267,6 @@ importers:
       drizzle-kit:
         specifier: ^0.30.4
         version: 0.30.6
-      esbuild:
-        specifier: ^0.25.0
-        version: 0.25.12
       postcss:
         specifier: ^8.4.47
         version: 8.5.6
@@ -270,12 +276,6 @@ importers:
       tsx:
         specifier: ^4.19.1
         version: 4.21.0
-      typescript:
-        specifier: 5.6.3
-        version: 5.6.3
-      vite:
-        specifier: ^5.4.19
-        version: 5.4.21(@types/node@20.16.11)(lightningcss@1.30.2)
     optionalDependencies:
       bufferutil:
         specifier: ^4.0.8
